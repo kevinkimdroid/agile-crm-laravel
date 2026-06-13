@@ -1,0 +1,1161 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Exports\TicketsWorkbookExport;
+use App\Models\Ticket;
+use App\Services\CrmService;
+use App\Services\ErpClientService;
+use App\Services\TicketAutomationService;
+use App\Services\TicketSlaService;
+use Illuminate\Http\RedirectResponse;
+use Maatwebsite\Excel\Facades\Excel;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
+use Illuminate\View\View;
+
+class TicketController extends Controller
+{
+    /** @var CrmService */
+    protected $crm;
+    /** @var ErpClientService|null */
+    protected $erp;
+    /** @var TicketAutomationService */
+    protected $automation;
+    /** @var TicketSlaService */
+    protected $sla;
+
+    public function __construct(CrmService $crm, TicketAutomationService $automation, TicketSlaService $sla, ?ErpClientService $erp = null)
+    {
+        $this->crm = $crm;
+        $this->erp = $erp ?? app()->has(ErpClientService::class) ? app(ErpClientService::class) : null;
+        $this->automation = $automation;
+        $this->sla = $sla;
+    }
+
+    public function index(Request $request): View
+    {
+        $status = $request->get('list');
+        $search = $request->get('search');
+        $ownerFilter = crm_owner_filter();
+        $assignedTo = $ownerFilter ?? ($request->filled('assigned_to') ? (int) $request->get('assigned_to') : null);
+        $page = max(1, (int) $request->get('page', 1));
+        $perPage = max(10, min(100, (int) ($request->get('per_page') ?: 25)));
+        $offset = ($page - 1) * $perPage;
+
+        $isDefaultView = (!$status || trim((string) $status) === '') && (!$search || trim((string) $search) === '') && $page === 1 && !$assignedTo;
+        $isStatusPage1 = $status && trim((string) $status) !== '' && (!$search || trim((string) $search) === '') && $page === 1 && !$assignedTo;
+        $statusSlug = $status ? str_replace(' ', '_', trim((string) $status)) : '';
+        $ownerSuffix = $ownerFilter !== null ? '_u' . $ownerFilter : '';
+        $cacheKey = $isDefaultView ? 'tickets_list_default' . $ownerSuffix : ($isStatusPage1 ? 'tickets_list_' . $statusSlug . $ownerSuffix : null);
+
+        if ($cacheKey) {
+            $ttl = $isDefaultView ? 120 : 90;
+            $cached = Cache::remember($cacheKey, $ttl, function () use ($perPage, $status, $search, $assignedTo) {
+                $items = $this->crm->getTickets($perPage, 0, $status, $search, false, $assignedTo);
+                $count = $this->crm->getTicketsCount($status, $search, $assignedTo);
+                return ['tickets' => $items, 'total' => $count];
+            });
+            $tickets = $cached['tickets'];
+            $total = $cached['total'];
+        } else {
+            $tickets = $this->crm->getTickets($perPage, $offset, $status, $search, false, $assignedTo);
+            $total = $this->crm->getTicketsCount($status, $search, $assignedTo);
+        }
+
+        $ticketCounts = $this->crm->getTicketCountsByStatus($ownerFilter);
+        $users = safe_cache_remember('ticket_assign_users', 300, fn () => $this->crm->getActiveUsers());
+
+        $tickets = new LengthAwarePaginator(
+            $tickets instanceof Collection ? $tickets : collect($tickets),
+            $total,
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+
+        return view('tickets.index', [
+            'tickets' => $tickets,
+            'ticketCounts' => $ticketCounts,
+            'total' => $total,
+            'currentList' => $status,
+            'search' => $search,
+            'assignedTo' => $assignedTo,
+            'users' => $users,
+        ]);
+    }
+
+    public function export(Request $request): \Symfony\Component\HttpFoundation\BinaryFileResponse
+    {
+        $status = $request->get('list');
+        $search = $request->get('search');
+        $assignedTo = crm_owner_filter() ?? ($request->filled('assigned_to') ? (int) $request->get('assigned_to') : null);
+
+        $tickets = $this->crm->getTicketsForExport($status, $search, 50000, $assignedTo);
+
+        $rows = collect($tickets)->map(function ($ticket) {
+            $contactName = trim(($ticket->contact_first ?? '') . ' ' . ($ticket->contact_last ?? '')) ?: '—';
+            $policyNum = pick_policy_excluding_pin($ticket->cf_860 ?? null, $ticket->cf_856 ?? null, $ticket->cf_872 ?? null);
+            if (! $policyNum && ! empty($ticket->description ?? '') && preg_match('/Related policy:\s*([^\n]+)/i', $ticket->description, $m)) {
+                $p = trim($m[1]);
+                $cid = (string) ($ticket->contact_id ?? '');
+                if ($p !== '' && $p !== $cid && ! looks_like_kra_pin($p) && ! looks_like_client_id($p)) {
+                    $policyNum = $p;
+                }
+            }
+            $ownerName = trim(($ticket->owner_first ?? '') . ' ' . ($ticket->owner_last ?? '')) ?: ($ticket->owner_username ?? '—');
+            $createdByName = trim((string) ($ticket->creator_name ?? '')) ?: ($ticket->creator_username ?? '—');
+            $closedByName = ($ticket->status ?? '') === 'Closed'
+                ? (trim((string) ($ticket->modifier_name ?? '')) ?: ($ticket->modifier_username ?? '—'))
+                : '—';
+            $ticketNo = $ticket->ticket_no ?? 'TT' . $ticket->ticketid;
+            $created = $ticket->createdtime ? date('Y-m-d H:i', strtotime($ticket->createdtime)) : '—';
+
+            return [
+                $ticketNo,
+                $ticket->title ?? 'Untitled',
+                $contactName,
+                $policyNum ?? '—',
+                $ticket->status ?? '—',
+                $ticket->priority ?? 'Normal',
+                $ticket->source ?? '—',
+                $createdByName,
+                $ownerName,
+                $closedByName,
+                $created,
+                trim($ticket->description ?? ''),
+            ];
+        })->toArray();
+
+        $ticketCollection = collect($tickets);
+        $total = $ticketCollection->count();
+        $closedCount = $ticketCollection->where('status', 'Closed')->count();
+        $openCount = $ticketCollection->where('status', 'Open')->count();
+        $inProgressCount = $ticketCollection->where('status', 'In Progress')->count();
+        $waitingCount = $ticketCollection->where('status', 'Wait For Response')->count();
+        $closureRate = $total > 0 ? round(($closedCount / $total) * 100, 1) : 0;
+        $activeBacklog = $openCount + $inProgressCount + $waitingCount;
+        $backlogRate = $total > 0 ? round(($activeBacklog / $total) * 100, 1) : 0;
+
+        $analysisRows = [
+            ['Summary', 'Total Tickets', $total, 'Keep monthly trend tracking active.'],
+            ['Summary', 'Closed Tickets', $closedCount, 'Maintain closure SLA by team and category.'],
+            ['Summary', 'Closure Rate (%)', $closureRate, $closureRate < 85 ? 'Escalate aging queue ownership daily.' : 'Closure performance is healthy.'],
+            ['Backlog', 'Open Tickets', $openCount, $openCount > 100 ? 'Automate daily reminders for stale open tickets (48h no update).' : 'Backlog is manageable; keep monitoring.'],
+            ['Backlog', 'In Progress Tickets', $inProgressCount, $inProgressCount > 50 ? 'Auto-flag tickets in progress > 72h without activity.' : 'No urgent automation pressure from in-progress volume.'],
+            ['Backlog', 'Wait For Response Tickets', $waitingCount, $waitingCount > 20 ? 'Auto-send customer follow-up nudges every 2 days.' : 'Low waiting queue; periodic nudges still recommended.'],
+            ['Automation Priority', 'Assignment', 'High', 'Auto-route tickets by keyword/category to default assignees.'],
+            ['Automation Priority', 'Aging Alerts', 'High', 'Auto-alert assignee + manager before SLA breach.'],
+            ['Automation Priority', 'Status Hygiene', 'Medium', 'Auto-close resolved tickets after confirmation window.'],
+            ['Automation Priority', 'Customer Follow-up', 'Medium', 'Auto-reminder emails/SMS for wait-for-response tickets.'],
+            ['Automation Priority', 'Escalation Rules', 'High', 'Escalate unresolved urgent/high priority tickets after TAT threshold.'],
+        ];
+
+        $filename = 'tickets-' . date('Y-m-d') . '.xlsx';
+        return Excel::download(new TicketsWorkbookExport($rows, $analysisRows), $filename);
+    }
+
+    public function create(Request $request): View
+    {
+        if ($request->get('refresh')) {
+            Cache::forget('ticket_accounts');
+            Cache::forget('ticket_create_clients');
+        }
+        $crm = app(CrmService::class);
+        $contactId = $request->filled('contact_id') ? (int) $request->get('contact_id') : null;
+        $fromServeClient = $request->get('from') === 'serve-client';
+        $fromMailManager = $request->get('from') === 'mail-manager';
+        $fromLead = $request->get('from') === 'lead';
+        $leadId = $request->filled('lead_id') ? (int) $request->get('lead_id') : null;
+        $clientNameParam = $request->filled('client_name') ? trim($request->get('client_name')) : null;
+
+        if ($fromLead && $leadId) {
+            $lead = $crm->getLead($leadId);
+            if (! $lead) {
+                return redirect()->route('leads.index')->with('error', 'Lead not found.');
+            }
+            $contact = $crm->findContactByPhoneOrEmail($lead->phone ?? $lead->mobile ?? null, $lead->email ?? '');
+            if ($contact) {
+                $contactId = (int) $contact->contactid;
+            } else {
+                $contactId = $crm->createContactFromErpClient([
+                    'first_name' => $lead->firstname ?? 'Client',
+                    'last_name' => $lead->lastname ?? '',
+                    'email' => $lead->email ?? '',
+                    'mobile' => $lead->mobile ?? $lead->phone ?? '',
+                    'phone' => $lead->phone ?? $lead->mobile ?? '',
+                ]);
+            }
+            if (! $contactId) {
+                return redirect()->route('leads.show', $leadId)->with('error', 'Could not find or create contact for this lead.');
+            }
+            $presetTitle = 'Lead follow-up: ' . ($lead->company ?: $lead->full_name);
+            $presetDescription = "Lead: {$lead->full_name}" . ($lead->company ? " ({$lead->company})" : '');
+            if ($lead->email || $lead->phone || $lead->mobile) {
+                $presetDescription .= "\n\nContact: " . trim(($lead->email ?: '') . ' ' . ($lead->phone ?: $lead->mobile ?: ''));
+            }
+            $clientNameParam = $lead->full_name;
+        }
+
+        $presetTitle = $presetTitle ?? ($request->filled('title') ? $request->get('title') : null);
+        $presetDescription = $presetDescription ?? ($request->filled('description') ? $request->get('description') : null);
+
+        if ($fromServeClient && $contactId) {
+            $clients = collect([$crm->getContactById($contactId)])->filter();
+        } else {
+            $clients = safe_cache_remember('ticket_create_clients_' . (crm_owner_filter() ?? 'all'), 120, fn () => $crm->getCustomers(100, 0, null, crm_owner_filter(), 'name', true));
+        }
+        $contactDisplay = '';
+
+        if ($contactId) {
+            $client = $clients->firstWhere('contactid', $contactId);
+            $contactDisplay = $client
+                ? trim(($client->firstname ?? '') . ' ' . ($client->lastname ?? ''))
+                : ($clientNameParam ?: $crm->getContactDisplayName($contactId));
+            if (!$client && $contactId) {
+                $singleContact = $crm->getContactById($contactId);
+                if ($singleContact) {
+                    $clients = $clients->prepend($singleContact);
+                    $contactDisplay = $contactDisplay ?: trim(($singleContact->firstname ?? '') . ' ' . ($singleContact->lastname ?? '')) ?: $clientNameParam;
+                }
+            }
+            // Ensure display when from Serve Client (client_name param)
+            $contactDisplay = $contactDisplay ?: $clientNameParam;
+        }
+        $presetPolicy = $request->filled('policy') ? trim($request->get('policy')) : null;
+        $authUser = \Illuminate\Support\Facades\Auth::guard('vtiger')->user();
+        $userRole = ($authUser && $authUser->primary_role) ? $authUser->primary_role->rolename : null;
+
+        try {
+            $accounts = $this->sortAccountsForTickets(safe_cache_remember('ticket_accounts', 300, fn () => $crm->getAccounts(100)));
+            if ($accounts->isEmpty()) {
+                Cache::forget('ticket_accounts');
+                $accounts = $this->getFallbackProductLines();
+            } else {
+                $accounts = $this->mergeFallbackProductLines($accounts);
+            }
+        } catch (\Throwable $e) {
+            $accounts = $this->getFallbackProductLines();
+        }
+        $users = safe_cache_remember('ticket_assign_users', 300, fn () => $crm->getActiveUsers());
+
+        return view('tickets.create', [
+            'clients' => $clients,
+            'accounts' => $accounts,
+            'users' => $users,
+            'presetContactId' => $contactId,
+            'presetContactDisplay' => $contactDisplay ?: $clientNameParam,
+            'presetPolicy' => $presetPolicy,
+            'presetOrganizationId' => $request->get('organization_id'),
+            'presetTitle' => $presetTitle,
+            'presetDescription' => $presetDescription,
+            'fromServeClient' => $fromServeClient,
+            'fromMailManager' => $fromMailManager,
+            'fromLead' => $fromLead,
+            'returnToLead' => $fromLead ? $leadId : null,
+            'returnToMailManager' => $request->filled('email_id'),
+            'emailId' => $request->filled('email_id') ? (int) $request->get('email_id') : null,
+            'canCloseTickets' => $this->sla->canUserCloseTickets($userRole),
+        ]);
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'solution' => 'nullable|string',
+            'status' => 'nullable|string|max:50',
+            'priority' => 'nullable|string|max:50',
+            'severity' => 'nullable|string|max:50',
+            'category' => 'nullable|string|max:100',
+            'contact_id' => 'required|integer',
+            'product_id' => 'nullable', // integer for vtiger, or "erp:Product Name" from ERP fallback
+            'organization_id' => 'nullable',
+            'hours' => 'nullable|string|max:20',
+            'days' => 'nullable|string|max:20',
+            'ticket_source' => 'nullable|string|max:50',
+            'assigned_to' => 'nullable|integer',
+            'policy_number' => 'nullable|string|max:100',
+            'return_to_mail_manager' => 'nullable',
+            'return_to_lead' => 'nullable|integer',
+            'email_id' => 'nullable|integer',
+            'send_email_to_client' => 'nullable|boolean',
+            'client_email_message' => 'nullable|string|max:2000',
+        ]);
+
+        if (($validated['status'] ?? '') === 'Closed') {
+            $authUser = \Illuminate\Support\Facades\Auth::guard('vtiger')->user();
+            $userRole = ($authUser && $authUser->primary_role) ? $authUser->primary_role->rolename : null;
+            if (!$this->sla->canUserCloseTickets($userRole)) {
+                return back()->withInput()->with('error', 'You do not have permission to create tickets with Closed status.');
+            }
+        }
+
+        $userId = \Illuminate\Support\Facades\Auth::guard('vtiger')->id() ?? 1;
+        $ownerId = $this->automation->resolveAssignee(
+            $validated['title'],
+            $validated['description'] ?? null
+        ) ?? $validated['assigned_to'] ?? $userId;
+
+        try {
+            $description = $validated['description'] ?? '';
+            $policyNumber = trim($validated['policy_number'] ?? '');
+            $contactId = (int) ($validated['contact_id'] ?? 0);
+            if ($policyNumber !== '' && $policyNumber !== (string) $contactId && ! looks_like_kra_pin($policyNumber) && ! looks_like_client_id($policyNumber)) {
+                $description = trim($description) . "\n\nRelated policy: " . $policyNumber;
+            }
+            $orgId = $validated['organization_id'] ?? null;
+            if (is_string($orgId) && str_starts_with($orgId, 'line:')) {
+                $lineName = substr($orgId, 5);
+                if ($lineName !== '' && ! str_contains($description, 'Product Line: ' . $lineName)) {
+                    $description = trim($description) . "\n\nProduct Line: " . $lineName;
+                }
+            }
+            $productId = null;
+            $productIdRaw = $validated['product_id'] ?? null;
+            if ($productIdRaw !== null && $productIdRaw !== '') {
+                if (is_string($productIdRaw) && str_starts_with((string) $productIdRaw, 'erp:')) {
+                    $erpProductName = substr((string) $productIdRaw, 4);
+                    if ($erpProductName !== '') {
+                        $description = trim($description) . "\n\nProduct: " . $erpProductName;
+                    }
+                } else {
+                    $productId = (int) $productIdRaw;
+                }
+            }
+
+            $solutionText = trim((string) ($validated['solution'] ?? ''));
+            $fullDescription = $solutionText !== '' ? trim($description . "\n\n--- Resolution ---\n" . $solutionText) : $description;
+
+            // Vtiger requires crmentity first (central entity table); ticketid = crmid
+            $id = (int) \DB::connection('vtiger')->table('vtiger_crmentity')->max('crmid') + 1;
+            $now = now()->format('Y-m-d H:i:s');
+            $parentId = $this->resolveOrganizationId($validated['organization_id'] ?? null);
+
+            \DB::connection('vtiger')->transaction(function () use ($validated, $userId, $ownerId, $fullDescription, $id, $now, $productId, $parentId) {
+                \DB::connection('vtiger')->table('vtiger_crmentity')->insert([
+                    'crmid' => $id,
+                    'smcreatorid' => $userId,
+                    'smownerid' => $ownerId,
+                    'modifiedby' => $userId,
+                    'setype' => 'HelpDesk',
+                    'description' => $fullDescription,
+                    'createdtime' => $now,
+                    'modifiedtime' => $now,
+                    'viewedtime' => null,
+                    'status' => 1,
+                    'version' => 0,
+                    'presence' => 1,
+                    'deleted' => 0,
+                    'smgroupid' => 0,
+                    'source' => $validated['ticket_source'] ?? 'CRM',
+                    'label' => $validated['title'],
+                ]);
+
+                \DB::connection('vtiger')->table('vtiger_troubletickets')->insert([
+                    'ticketid' => $id,
+                    'ticket_no' => 'TT' . $id,
+                    'title' => $validated['title'],
+                    'status' => $validated['status'] ?? 'Open',
+                    'priority' => $validated['priority'] ?? 'Normal',
+                    'severity' => $validated['severity'] ?? null,
+                    'category' => ! empty($validated['category'] ?? '') ? $validated['category'] : 'Other',
+                    'contact_id' => $validated['contact_id'],
+                    'product_id' => $productId,
+                    'parent_id' => $parentId,
+                    'hours' => $validated['hours'] ?? null,
+                    'days' => $validated['days'] ?? null,
+                ]);
+            });
+
+            $this->forgetTicketListCaches();
+            \App\Events\DashboardStatsUpdated::dispatch();
+
+            $notifyPolicy = trim($validated['policy_number'] ?? '');
+            $notifyPolicy = ($notifyPolicy !== '' && ! looks_like_kra_pin($notifyPolicy)) ? $notifyPolicy : null;
+            $notifyTitle = $validated['title'];
+            $notifyContactId = (int) $validated['contact_id'];
+            $notifySendClient = $request->boolean('send_email_to_client');
+            $notifyClientMsg = trim($validated['client_email_message'] ?? '') ?: null;
+            dispatch(function () use ($id, $notifyTitle, $ownerId, $notifyContactId, $notifyPolicy, $notifySendClient, $notifyClientMsg) {
+                try {
+                    app(\App\Services\TicketNotificationService::class)->sendTicketCreatedNotification(
+                        $id,
+                        'TT' . $id,
+                        $notifyTitle,
+                        $ownerId,
+                        $notifyContactId,
+                        $notifyPolicy,
+                        $notifySendClient,
+                        $notifyClientMsg
+                    );
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('Ticket creation notification failed', ['error' => $e->getMessage()]);
+                }
+            })->afterResponse();
+
+            if ($request->filled('return_to_mail_manager') && $request->filled('email_id')) {
+                \DB::connection('vtiger')->table('mail_manager_emails')->where('id', (int) $request->get('email_id'))->update(['ticket_id' => $id]);
+                return redirect()->route('tools.mail-manager', ['selected' => $request->get('email_id')])->with('success', 'Ticket created and linked to this email.');
+            }
+            if ($request->filled('return_to_serve_client')) {
+                return redirect()->route('support.serve-client')->with('success', 'Ticket created. You can create another or search for a different client.');
+            }
+            if ($request->filled('return_to_lead')) {
+                return redirect()->route('leads.show', (int) $request->get('return_to_lead'))->with('success', 'Ticket created.');
+            }
+            $returnToContact = $request->filled('return_to_contact') ? (int) $request->get('return_to_contact') : null;
+            if ($returnToContact) {
+                return redirect()->to(route('contacts.show', $returnToContact) . '?tab=tickets')->with('success', 'Ticket created.');
+            }
+            $returnToLead = $request->filled('return_to_lead') ? (int) $request->get('return_to_lead') : null;
+            if ($returnToLead) {
+                return redirect()->route('leads.show', $returnToLead)->with('success', 'Ticket created.');
+            }
+            return redirect()->route('tickets.index')->with('success', 'Ticket created.');
+        } catch (\Throwable $e) {
+            return back()->withInput()->with('error', 'Failed to create ticket: ' . $e->getMessage());
+        }
+    }
+
+    /** @return View|RedirectResponse */
+    public function show(int $id)
+    {
+        $ticket = $this->crm->getTicket($id);
+        if (!$ticket) {
+            return redirect()->route('tickets.index')->with('error', 'Ticket not found.');
+        }
+        if (!ticket_can_access($id)) {
+            return redirect()->route('tickets.index')->with('info', 'That ticket is assigned to someone else. Showing your tickets.');
+        }
+        $feedback = null;
+        if (class_exists(\App\Models\TicketFeedback::class)) {
+            try {
+                $feedback = \App\Models\TicketFeedback::where('ticket_id', $id)->first();
+            } catch (\Throwable $e) {
+                // Table may not exist yet
+            }
+        }
+        $comments = collect();
+        if (class_exists(\App\Models\TicketComment::class)) {
+            try {
+                $comments = \App\Models\TicketComment::where('ticket_id', $id)->orderByDesc('created_at')->get();
+            } catch (\Throwable $e) {
+                // Table may not exist yet
+            }
+        }
+        $reassignments = collect();
+        if (class_exists(\App\Models\TicketReassignment::class)) {
+            try {
+                $reassignments = \App\Models\TicketReassignment::where('ticket_id', $id)->orderBy('created_at')->get();
+            } catch (\Throwable $e) {
+                // Table may not exist yet
+            }
+        }
+        return view('tickets.show', [
+            'ticket' => $ticket,
+            'feedback' => $feedback,
+            'comments' => $comments,
+            'reassignments' => $reassignments,
+            'canCloseTickets' => $this->sla->canUserCloseThisTicket($id),
+        ]);
+    }
+
+    /** Store a comment on a ticket. */
+    public function storeComment(Request $request, int $ticket): RedirectResponse
+    {
+        $ticketObj = $this->crm->getTicket($ticket);
+        if (! $ticketObj) {
+            return redirect()->route('tickets.index')->with('error', 'Ticket not found.');
+        }
+        if (! ticket_can_access($ticket)) {
+            return redirect()->route('tickets.index')->with('info', 'That ticket is assigned to someone else.');
+        }
+        $validated = $request->validate([
+            'body' => 'required|string|max:10000',
+        ]);
+        $authUser = \Illuminate\Support\Facades\Auth::guard('vtiger')->user()
+            ?? \Illuminate\Support\Facades\Auth::user();
+        $authorName = 'Unknown';
+        $userId = null;
+        if ($authUser) {
+            $userId = (int) ($authUser->id ?? $authUser->getAuthIdentifier());
+            $authorName = trim(($authUser->first_name ?? '') . ' ' . ($authUser->last_name ?? ''))
+                ?: ($authUser->user_name ?? 'User');
+        }
+        try {
+            \App\Models\TicketComment::create([
+                'ticket_id' => $ticket,
+                'user_id' => $userId,
+                'author_name' => $authorName,
+                'body' => $validated['body'],
+            ]);
+            return redirect()->route('tickets.show', $ticket)->with('success', 'Comment added.');
+        } catch (\Throwable $e) {
+            return redirect()->route('tickets.show', $ticket)->with('error', 'Failed to add comment: ' . $e->getMessage());
+        }
+    }
+
+    /** @return View|RedirectResponse */
+    public function edit(Request $request, int $id)
+    {
+        $ticket = $this->crm->getTicket($id);
+        if (!$ticket) {
+            return redirect()->route('tickets.index')->with('error', 'Ticket not found.');
+        }
+        if (!ticket_can_access($id)) {
+            return redirect()->route('tickets.index')->with('info', 'That ticket is assigned to someone else. Showing your tickets.');
+        }
+        if ($request->get('refresh')) {
+            Cache::forget('ticket_accounts');
+            Cache::forget('ticket_create_clients');
+        }
+        $crm = app(CrmService::class);
+        $clients = safe_cache_remember('ticket_create_clients_' . (crm_owner_filter() ?? 'all'), 120, fn () => $crm->getCustomers(100, 0, null, crm_owner_filter(), 'name', true));
+        $contactDisplay = '';
+        if ($ticket->contact_id ?? null) {
+            $client = $clients->firstWhere('contactid', $ticket->contact_id);
+            if (!$client) {
+                $client = $crm->getContactById($ticket->contact_id);
+                if ($client) {
+                    $clients = $clients->prepend($client);
+                }
+            }
+            $contactDisplay = $client ? trim(($client->firstname ?? '') . ' ' . ($client->lastname ?? '')) : '';
+        }
+        $authUser = \Illuminate\Support\Facades\Auth::guard('vtiger')->user();
+        $userRole = ($authUser && $authUser->primary_role) ? $authUser->primary_role->rolename : null;
+        try {
+            $accounts = $this->sortAccountsForTickets(safe_cache_remember('ticket_accounts', 300, fn () => $crm->getAccounts(100)));
+            if ($accounts->isEmpty()) {
+                Cache::forget('ticket_accounts');
+                $accounts = $this->getFallbackProductLines();
+            } else {
+                $accounts = $this->mergeFallbackProductLines($accounts);
+            }
+        } catch (\Throwable $e) {
+            $accounts = $this->getFallbackProductLines();
+        }
+        $users = safe_cache_remember('ticket_assign_users', 300, fn () => $crm->getActiveUsers());
+        $effectiveOrgId = $ticket->parent_id;
+        if (! $effectiveOrgId && preg_match('/Product Line:\s*(.+?)(?:\n|$)/', (string) ($ticket->description ?? ''), $m)) {
+            $lineName = trim($m[1]);
+            $fallback = $this->getFallbackProductLines()->firstWhere('accountname', $lineName);
+            $effectiveOrgId = $fallback ? (string) $fallback->accountid : 'line:' . $lineName;
+        }
+        $editPolicy = null;
+        if ($ticket->contact_id ?? null) {
+            $editPolicy = $this->crm->getContactPolicyNumber((int) $ticket->contact_id);
+        }
+        if (! $editPolicy && ! empty($ticket->description ?? '') && preg_match('/Related policy:\s*([^\n]+)/i', (string) $ticket->description, $m)) {
+            $p = trim($m[1]);
+            $cid = (string) ($ticket->contact_id ?? '');
+            if ($p !== '' && $p !== $cid && ! looks_like_kra_pin($p) && ! looks_like_client_id($p)) {
+                $editPolicy = $p;
+            }
+        }
+        return view('tickets.edit', [
+            'ticket' => $ticket,
+            'clients' => $clients,
+            'contactDisplay' => $contactDisplay,
+            'accounts' => $accounts,
+            'users' => $users,
+            'presetOrganizationId' => $effectiveOrgId,
+            'editPolicy' => $editPolicy ?? '',
+            'canCloseTickets' => $this->sla->canUserCloseThisTicket($id),
+        ]);
+    }
+
+    /**
+     * Show minimal quick-close form (solution only).
+     */
+    public function showCloseForm(int $ticket): View|RedirectResponse
+    {
+        $ticketObj = $this->crm->getTicket($ticket);
+        if (! $ticketObj) {
+            return redirect()->route('tickets.index')->with('error', 'Ticket not found.');
+        }
+        if (!ticket_can_access($ticket)) {
+            return redirect()->route('tickets.index')->with('info', 'That ticket is assigned to someone else. Showing your tickets.');
+        }
+        if (($ticketObj->status ?? '') === 'Closed') {
+            return redirect()->route('tickets.show', $ticket)->with('info', 'Ticket is already closed.');
+        }
+        if (! $this->sla->canUserCloseThisTicket($ticket)) {
+            return redirect()->route('tickets.show', $ticket)->with('error', 'You do not have permission to close tickets.');
+        }
+        return view('tickets.close', ['ticket' => $ticketObj]);
+    }
+
+    /**
+     * Quick close a ticket — minimal form: just solution. Fast way to resolve.
+     */
+    public function quickClose(Request $request, int $ticket): RedirectResponse
+    {
+        $ticketObj = $this->crm->getTicket($ticket);
+        if (! $ticketObj) {
+            return redirect()->route('tickets.index')->with('error', 'Ticket not found.');
+        }
+        if (!ticket_can_access($ticket)) {
+            return redirect()->route('tickets.index')->with('info', 'That ticket is assigned to someone else. Showing your tickets.');
+        }
+        if (! $this->sla->canUserCloseThisTicket($ticket)) {
+            $redirect = $request->get('redirect');
+            $target = ($redirect && \Illuminate\Support\Str::startsWith($redirect, url('/')))
+                ? redirect($redirect) : redirect()->route('tickets.show', $ticket);
+            return $target->with('error', 'You do not have permission to close tickets.');
+        }
+        $solution = trim((string) $request->get('solution', ''));
+        if ($solution === '') {
+            $solution = 'Closed';
+        }
+        $authUser = \Illuminate\Support\Facades\Auth::guard('vtiger')->user()
+            ?? \Illuminate\Support\Facades\Auth::user();
+        try {
+            $userId = $authUser ? (int) ($authUser->id ?? $authUser->getAuthIdentifier()) : 1;
+            \DB::connection('vtiger')->table('vtiger_troubletickets')->where('ticketid', $ticket)->update(['status' => 'Closed']);
+            $existingDesc = \DB::connection('vtiger')->table('vtiger_crmentity')->where('crmid', $ticket)->value('description') ?? '';
+            $fullDesc = trim($existingDesc . "\n\n--- Resolution ---\n" . $solution);
+            \DB::connection('vtiger')->table('vtiger_crmentity')->where('crmid', $ticket)->update([
+                'description' => $fullDesc,
+                'modifiedtime' => now()->format('Y-m-d H:i:s'),
+                'modifiedby' => $userId,
+            ]);
+            $this->forgetTicketListCaches();
+            \App\Events\DashboardStatsUpdated::dispatch();
+
+            $contactId = (int) ($ticketObj->contact_id ?? 0);
+            if ($contactId) {
+                $ticketNo = $ticketObj->ticket_no ?? 'TT' . $ticket;
+                dispatch(function () use ($ticket, $ticketNo, $contactId) {
+                    try {
+                        app(\App\Services\TicketNotificationService::class)->sendFeedbackRequestEmail($ticket, $ticketNo, $contactId);
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning('Feedback request email failed', ['error' => $e->getMessage(), 'ticket' => $ticket]);
+                    }
+                })->afterResponse();
+            }
+
+            $redirect = $request->get('redirect');
+            if ($redirect && \Illuminate\Support\Str::startsWith($redirect, url('/'))) {
+                return redirect($redirect)->with('success', 'Ticket closed.');
+            }
+            return redirect()->route('tickets.show', $ticket)->with('success', 'Ticket closed.');
+        } catch (\Throwable $e) {
+            return redirect()->route('tickets.show', $ticket)->with('error', 'Failed to close: ' . $e->getMessage());
+        }
+    }
+
+    public function update(Request $request, int $id): RedirectResponse
+    {
+        $ticket = $this->crm->getTicket($id);
+        if (!$ticket) {
+            return redirect()->route('tickets.index')->with('error', 'Ticket not found.');
+        }
+        if (!ticket_can_access($id)) {
+            return redirect()->route('tickets.index')->with('info', 'That ticket is assigned to someone else. Showing your tickets.');
+        }
+
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'solution' => 'nullable|string',
+            'status' => 'nullable|string|max:50',
+            'priority' => 'nullable|string|max:50',
+            'severity' => 'nullable|string|max:50',
+            'category' => 'nullable|string|max:100',
+            'contact_id' => 'required|integer',
+            'product_id' => 'nullable', // integer for vtiger, or "erp:Product Name" from ERP fallback
+            'organization_id' => 'nullable',
+            'ticket_source' => 'nullable|string|max:50',
+            'assigned_to' => 'nullable|integer',
+            'hours' => 'nullable|string|max:20',
+            'days' => 'nullable|string|max:20',
+            'policy_number' => 'nullable|string|max:100',
+        ]);
+
+        $newStatus = $validated['status'] ?? $ticket->status;
+        if ($newStatus === 'Closed') {
+            if (!$this->sla->canUserCloseThisTicket($id)) {
+                return back()->withInput()->with('error', 'You do not have permission to close tickets.');
+            }
+            $solution = trim($validated['solution'] ?? $ticket->solution ?? '');
+            if ($solution === '') {
+                return back()->withInput()->with('error', 'Please add a Solution before closing the ticket.');
+            }
+        }
+
+        try {
+            $description = $validated['description'] ?? $ticket->description ?? '';
+            $policyNumber = trim($validated['policy_number'] ?? '');
+            $contactId = (int) ($validated['contact_id'] ?? 0);
+            if ($policyNumber !== '' && $policyNumber !== (string) $contactId && ! looks_like_kra_pin($policyNumber) && ! looks_like_client_id($policyNumber)) {
+                if (! preg_match('/Related policy:\s*' . preg_quote($policyNumber, '/') . '(?:\n|$)/i', $description ?? '')) {
+                    $desc = preg_replace('/\n*Related policy:\s*[^\n]+(\n|$)/i', '', $description ?? '');
+                    $description = trim($desc) . "\n\nRelated policy: " . $policyNumber;
+                }
+            }
+            $orgId = $validated['organization_id'] ?? null;
+            if (is_string($orgId) && str_starts_with($orgId, 'line:')) {
+                $lineName = substr($orgId, 5);
+                if ($lineName !== '' && ! str_contains($description, 'Product Line: ' . $lineName)) {
+                    $description = trim($description) . "\n\nProduct Line: " . $lineName;
+                }
+            }
+            $productId = $ticket->product_id;
+            $productIdRaw = $validated['product_id'] ?? null;
+            if ($productIdRaw !== null && $productIdRaw !== '') {
+                if (is_string($productIdRaw) && str_starts_with((string) $productIdRaw, 'erp:')) {
+                    $erpProductName = substr((string) $productIdRaw, 4);
+                    $productId = null;
+                    if ($erpProductName !== '' && ! str_contains($description, 'Product: ' . $erpProductName)) {
+                        $description = trim($description) . "\n\nProduct: " . $erpProductName;
+                    }
+                } else {
+                    $productId = (int) $productIdRaw;
+                }
+            } elseif (! $request->filled('product_id')) {
+                $productId = null;
+            }
+
+            $solutionText = trim((string) ($validated['solution'] ?? $ticket->solution ?? ''));
+            $fullDescription = $solutionText !== '' ? trim($description . "\n\n--- Resolution ---\n" . $solutionText) : $description;
+
+            \DB::connection('vtiger')->table('vtiger_troubletickets')->where('ticketid', $id)->update([
+                'title' => $validated['title'],
+                'status' => $validated['status'] ?? $ticket->status,
+                'priority' => $validated['priority'] ?? $ticket->priority,
+                'severity' => $validated['severity'] ?? $ticket->severity,
+                'category' => $validated['category'] ?? $ticket->category,
+                'contact_id' => $validated['contact_id'],
+                'product_id' => $productId,
+                'parent_id' => $this->resolveOrganizationId($validated['organization_id'] ?? null),
+                'hours' => $validated['hours'] ?? $ticket->hours,
+                'days' => $validated['days'] ?? $ticket->days,
+            ]);
+            $authUser = \Illuminate\Support\Facades\Auth::guard('vtiger')->user();
+            $userId = $authUser ? (int) $authUser->id : 1;
+            $crmentityUpdates = ['description' => $fullDescription, 'modifiedtime' => now()->format('Y-m-d H:i:s')];
+            if ($newStatus === 'Closed') {
+                $crmentityUpdates['modifiedby'] = $userId;
+            }
+            if (!empty($validated['ticket_source'] ?? '')) {
+                $crmentityUpdates['source'] = $validated['ticket_source'];
+            }
+            $newOwnerId = null;
+            if (!empty($validated['assigned_to'] ?? '')) {
+                $newOwnerId = (int) $validated['assigned_to'];
+                $crmentityUpdates['smownerid'] = $newOwnerId;
+            }
+            \DB::connection('vtiger')->table('vtiger_crmentity')->where('crmid', $id)->update($crmentityUpdates);
+            $this->forgetTicketListCaches();
+            \App\Events\DashboardStatsUpdated::dispatch();
+
+            // Notify new assignee when ticket is reassigned and log reassignment trail
+            $prevOwnerId = (int) ($ticket->smownerid ?? 0);
+            if ($newOwnerId !== null && $prevOwnerId !== $newOwnerId) {
+                $this->logTicketReassignment($id, $prevOwnerId, $newOwnerId, $userId);
+                $assignTicketNo = $ticket->ticket_no ?? 'TT' . $id;
+                $assignTitle = $validated['title'];
+                dispatch(function () use ($id, $assignTicketNo, $assignTitle, $newOwnerId) {
+                    try {
+                        app(\App\Services\TicketNotificationService::class)->sendTicketAssignedNotification(
+                            $id,
+                            $assignTicketNo,
+                            $assignTitle,
+                            $newOwnerId
+                        );
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning('Ticket reassignment notification failed', ['error' => $e->getMessage(), 'ticket' => $id]);
+                    }
+                })->afterResponse();
+            }
+
+            if ($newStatus === 'Closed') {
+                $contactId = (int) ($validated['contact_id'] ?? $ticket->contact_id ?? 0);
+                if ($contactId) {
+                    $ticketNo = $ticket->ticket_no ?? 'TT' . $id;
+                    dispatch(function () use ($id, $ticketNo, $contactId) {
+                        try {
+                            app(\App\Services\TicketNotificationService::class)->sendFeedbackRequestEmail($id, $ticketNo, $contactId);
+                        } catch (\Throwable $e) {
+                            \Illuminate\Support\Facades\Log::warning('Feedback request email failed', ['error' => $e->getMessage(), 'ticket' => $id]);
+                        }
+                    })->afterResponse();
+                }
+            }
+
+            return redirect()->route('tickets.show', $id)->with('success', 'Ticket updated.');
+        } catch (\Throwable $e) {
+            return back()->withInput()->with('error', 'Failed to update: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Quick reassign ticket (right-click menu). Updates smownerid only.
+     */
+    public function reassign(Request $request, int $ticket): RedirectResponse|JsonResponse
+    {
+        $ticketObj = $this->crm->getTicket($ticket);
+        if (! $ticketObj) {
+            return $request->wantsJson()
+                ? response()->json(['error' => 'Ticket not found.'], 404)
+                : redirect()->route('tickets.index')->with('error', 'Ticket not found.');
+        }
+        $assignedTo = (int) $request->get('assigned_to', 0);
+        if ($assignedTo <= 0) {
+            return $request->wantsJson()
+                ? response()->json(['error' => 'Invalid assignee.'], 422)
+                : back()->with('error', 'Please select a user to assign.');
+        }
+        try {
+            $fromOwnerId = (int) ($ticketObj->smownerid ?? 0);
+            $reassignedBy = (int) (\Illuminate\Support\Facades\Auth::guard('vtiger')->id() ?? \Illuminate\Support\Facades\Auth::id() ?? 1);
+            \DB::connection('vtiger')->table('vtiger_crmentity')->where('crmid', $ticket)->update([
+                'smownerid' => $assignedTo,
+                'modifiedtime' => now()->format('Y-m-d H:i:s'),
+                'modifiedby' => $reassignedBy,
+            ]);
+            if ($fromOwnerId !== $assignedTo) {
+                $this->logTicketReassignment($ticket, $fromOwnerId, $assignedTo, $reassignedBy);
+            }
+            $this->forgetTicketListCaches();
+            \App\Events\DashboardStatsUpdated::dispatch();
+            $assignTicketNo = $ticketObj->ticket_no ?? 'TT' . $ticket;
+            $assignTitle = $ticketObj->title ?? '';
+            dispatch(function () use ($ticket, $assignTicketNo, $assignTitle, $assignedTo) {
+                try {
+                    app(\App\Services\TicketNotificationService::class)->sendTicketAssignedNotification(
+                        $ticket,
+                        $assignTicketNo,
+                        $assignTitle,
+                        $assignedTo
+                    );
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('Ticket reassignment notification failed', ['error' => $e->getMessage()]);
+                }
+            })->afterResponse();
+            if ($request->wantsJson()) {
+                return response()->json(['success' => true, 'message' => 'Ticket reassigned.']);
+            }
+            return back()->with('success', 'Ticket reassigned.');
+        } catch (\Throwable $e) {
+            return $request->wantsJson()
+                ? response()->json(['error' => $e->getMessage()], 500)
+                : back()->with('error', 'Failed to reassign: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Log a ticket reassignment for the trail.
+     */
+    private function logTicketReassignment(int $ticketId, int $fromUserId, int $toUserId, int $reassignedByUserId): void
+    {
+        try {
+            $userIds = array_filter(array_unique([$fromUserId, $toUserId, $reassignedByUserId]));
+            $userNames = $userIds
+                ? \DB::connection('vtiger')->table('vtiger_users')->whereIn('id', $userIds)->get()->keyBy('id')
+                : collect();
+            $name = function ($id) use ($userNames) {
+                if (!$id) return '—';
+                $u = $userNames->get($id);
+                return $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->user_name ?? 'User ' . $id)) : ('User ' . $id);
+            };
+            \App\Models\TicketReassignment::create([
+                'ticket_id' => $ticketId,
+                'from_user_id' => $fromUserId ?: null,
+                'from_user_name' => $fromUserId ? $name($fromUserId) : 'Unassigned',
+                'to_user_id' => $toUserId,
+                'to_user_name' => $name($toUserId),
+                'reassigned_by_user_id' => $reassignedByUserId ?: null,
+                'reassigned_by_name' => $reassignedByUserId ? $name($reassignedByUserId) : null,
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Ticket reassignment log failed', ['error' => $e->getMessage(), 'ticket' => $ticketId]);
+        }
+    }
+
+    /**
+     * Resolve organization_id to vtiger parent_id. Returns null for "line:X" (Product Line fallback).
+     */
+    private function resolveOrganizationId($value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (is_string($value) && str_starts_with($value, 'line:')) {
+            return null;
+        }
+        return (int) $value;
+    }
+
+    /**
+     * Fetch ERP products for ticket dropdown when vtiger has none.
+     * Uses ERP_CLIENTS_HTTP_URL when set (regardless of CLIENTS_VIEW_SOURCE).
+     */
+    private function fetchErpProductsForTickets(): Collection
+    {
+        $url = rtrim((string) config('erp.clients_http_url'), '/');
+        if ($url === '') {
+            return collect();
+        }
+        try {
+            $sep = strpos($url, '?') !== false ? '&' : '?';
+            $response = \Illuminate\Support\Facades\Http::timeout(10)->get($url . $sep . 'products=1');
+            if (! $response->successful()) {
+                $response = \Illuminate\Support\Facades\Http::timeout(10)->get($url . '/products');
+            }
+            if (! $response->successful()) {
+                return collect();
+            }
+            $body = $response->json();
+            $names = $body['products'] ?? [];
+            if (! is_array($names) || empty($names)) {
+                return collect();
+            }
+            return collect($names)->map(fn ($n) => (object) ['productid' => 'erp:' . $n, 'productname' => $n]);
+        } catch (\Throwable $e) {
+            return collect();
+        }
+    }
+
+    /**
+     * Merge fallback product lines (Group Life, Individual Life, etc.) into accounts when vtiger has accounts.
+     */
+    private function mergeFallbackProductLines(Collection $accounts): Collection
+    {
+        $existingIds = $accounts->pluck('accountid')->map(fn ($v) => (string) $v)->toArray();
+        foreach ($this->getFallbackProductLines() as $line) {
+            $id = (string) $line->accountid;
+            if (! in_array($id, $existingIds, true)) {
+                $accounts = $accounts->push($line);
+                $existingIds[] = $id;
+            }
+        }
+        return $accounts;
+    }
+
+    /**
+     * Fallback Product Line options when vtiger has no accounts (e.g. Credit Life, Group Life).
+     */
+    private function getFallbackProductLines(): Collection
+    {
+        $lines = config('tickets.organization_sort', []);
+        if (empty($lines)) {
+            $lines = ['Individual Life', 'Group Life', 'Credit Life', 'Mortgage', 'Group Last Expense'];
+        }
+        return collect($lines)->map(fn ($n, $i) => (object) ['accountid' => 'line:' . $n, 'accountname' => $n]);
+    }
+
+    /**
+     * Sort accounts for Product Line dropdown: preferred order first, then alphabetical.
+     */
+    private function sortAccountsForTickets(Collection $accounts): Collection
+    {
+        if ($accounts->isEmpty()) {
+            return $accounts;
+        }
+        $first = $accounts->first();
+        if (is_string($first->accountid ?? null) && str_starts_with((string) $first->accountid, 'line:')) {
+            return $accounts;
+        }
+        $order = config('tickets.organization_sort', []);
+        if (empty($order)) {
+            return $accounts->sortBy('accountname', SORT_NATURAL | SORT_FLAG_CASE)->values();
+        }
+        $orderMap = array_flip(array_map('strtoupper', $order));
+        return $accounts->sort(function ($a, $b) use ($orderMap) {
+            $nameA = strtoupper($a->accountname ?? '');
+            $nameB = strtoupper($b->accountname ?? '');
+            $posA = $orderMap[$nameA] ?? 9999;
+            $posB = $orderMap[$nameB] ?? 9999;
+            if ($posA !== $posB) {
+                return $posA <=> $posB;
+            }
+            return strcasecmp($nameA, $nameB);
+        })->values();
+    }
+
+    /**
+     * AJAX contact search for ticket create/edit forms (lazy loading).
+     */
+    public function searchContacts(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->get('q', ''));
+        $limit = min(100, max(10, (int) $request->get('limit', 50)));
+        $browse = $request->boolean('browse') || $q === '';
+        $searchAll = config('tickets.contact_search_all', false);
+        $ownerFilter = $searchAll ? null : crm_owner_filter();
+        $ownerSuffix = $searchAll ? ':all' : (':u' . (crm_owner_filter() ?? ''));
+        $cacheKey = 'ticket_search_contacts:' . md5(($browse ? 'browse' : $q) . ':' . $limit . $ownerSuffix);
+        $data = Cache::remember($cacheKey, $browse ? 60 : 10, function () use ($q, $limit, $browse, $ownerFilter) {
+            $seen = [];
+            $results = [];
+            $searchTerm = $browse ? null : $q;
+            $fetchLimit = $browse ? min(100, $limit) : (int) ceil($limit / 2);
+
+            // CRM contacts (browse mode = first N by name; search mode = filtered)
+            $customers = $this->crm->getCustomers($fetchLimit, 0, $searchTerm, $ownerFilter, $browse ? 'name' : 'created', true);
+            foreach ($customers as $c) {
+                $id = (int) $c->contactid;
+                if (! isset($seen[$id])) {
+                    $seen[$id] = true;
+                    $results[] = [
+                        'id' => $id,
+                        'name' => trim(($c->firstname ?? '') . ' ' . ($c->lastname ?? '')) ?: 'Contact #' . $id,
+                        'policy_number' => $c->policy_number ?? null,
+                    ];
+                }
+            }
+
+            // ERP clients (Group Life + Individual) when configured
+            $source = config('erp.clients_view_source', 'crm');
+            $erpConfigured = $source === 'erp_http' ? ! empty(config('erp.clients_http_url')) : ($source === 'erp_sync');
+            if ($this->erp && $erpConfigured) {
+                try {
+                    $erpResult = $this->erp->searchClients($q, (int) ceil($limit / 2));
+                    $erpData = $erpResult['data'] ?? [];
+                    foreach (is_iterable($erpData) ? $erpData : [] as $r) {
+                        $row = is_array($r) ? $r : (array) $r;
+                        $policy = trim((string) ($row['policy_number'] ?? $row['policy_no'] ?? ''));
+                        if (! $policy) {
+                            continue;
+                        }
+                        $contact = $this->crm->findContactByPolicyNumber($policy);
+                        $contactId = $contact ? (int) $contact->contactid : $this->crm->createContactFromErpClient($row);
+                        if ($contactId && ! isset($seen[$contactId])) {
+                            $seen[$contactId] = true;
+                            $name = trim((string) ($row['life_assur'] ?? $row['client_name'] ?? $row['life_assured'] ?? ''));
+                            $label = $name ? "{$name} ({$policy})" : $policy;
+                            $lifeSystem = $row['life_system'] ?? ($this->erp ? $this->erp->getLifeSystemFromProduct($row['product'] ?? null) : null);
+                            if ($lifeSystem === 'group') {
+                                $label .= ' — Group Life';
+                            }
+                            $results[] = ['id' => $contactId, 'name' => $label, 'policy_number' => $policy];
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // Continue with CRM-only results
+                }
+            }
+
+            return array_slice(array_values($results), 0, $limit);
+        });
+        return response()->json($data);
+    }
+
+    /**
+     * Get policy number for a contact (for auto-fill when client is selected).
+     */
+    public function contactPolicy(int $contactId): JsonResponse
+    {
+        $policy = $this->crm->getContactPolicyNumber($contactId);
+
+        return response()->json(['policy_number' => $policy ?: '']);
+    }
+
+    /**
+     * AJAX product search for ticket create/edit (Product Name dropdown).
+     * Uses vtiger products first; falls back to ERP products (PROD_DESC) when vtiger is empty.
+     */
+    public function searchProducts(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->get('q', ''));
+        $limit = min(100, max(10, (int) $request->get('limit', 50)));
+        $products = $this->crm->getProducts($limit, $q ?: null);
+        $data = $products->map(fn ($p) => [
+            'value' => (string) $p->productid,
+            'text' => $p->productname ?? 'Product #' . $p->productid,
+        ])->values()->all();
+
+        // Fallback to ERP products when vtiger has none (use ERP when URL is configured)
+        if (empty($data) && config('erp.clients_http_url')) {
+            try {
+                $url = rtrim(config('erp.clients_http_url'), '/');
+                $sep = strpos($url, '?') !== false ? '&' : '?';
+                $response = \Illuminate\Support\Facades\Http::timeout(10)->get($url . $sep . 'products=1');
+                if (! $response->successful()) {
+                    $response = \Illuminate\Support\Facades\Http::timeout(10)->get($url . '/products');
+                }
+                if ($response->successful()) {
+                    $body = $response->json();
+                    $names = $body['products'] ?? [];
+                    if (is_array($names) && ! empty($names)) {
+                        $term = $q ? strtoupper($q) : '';
+                        $filtered = $term ? array_filter($names, fn ($n) => str_contains(strtoupper((string) $n), $term)) : $names;
+                        $filtered = array_slice(array_values($filtered), 0, $limit);
+                        $data = array_map(fn ($n) => ['value' => 'erp:' . $n, 'text' => $n], $filtered);
+                    }
+                }
+            } catch (\Throwable $e) {
+                // ignore; return empty
+            }
+        }
+        return response()->json($data);
+    }
+
+    /**
+     * AJAX account/search for Product Line dropdown.
+     */
+    public function searchAccounts(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->get('q', ''));
+        $limit = min(100, max(10, (int) $request->get('limit', 50)));
+        $accounts = $this->sortAccountsForTickets(
+            $this->crm->getAccounts($limit)
+        );
+        if (! $accounts->isEmpty()) {
+            $accounts = $this->mergeFallbackProductLines($accounts);
+        } else {
+            $accounts = $this->getFallbackProductLines();
+        }
+        $data = $accounts->map(fn ($a) => [
+            'value' => (string) $a->accountid,
+            'text' => $a->accountname ?? 'Account #' . $a->accountid,
+        ])->values()->all();
+
+        $term = $q ? strtoupper($q) : '';
+        if ($term) {
+            $data = array_values(array_filter($data, fn ($d) => str_contains(strtoupper((string) ($d['text'] ?? '')), $term)));
+        }
+        return response()->json($data);
+    }
+
+    public function inactivate(int $ticket): RedirectResponse
+    {
+        $ticketObj = $this->crm->getTicket($ticket);
+        if (! $ticketObj) {
+            return redirect()->route('tickets.index')->with('error', 'Ticket not found.');
+        }
+        if (!ticket_can_access($ticket)) {
+            return redirect()->route('tickets.index')->with('info', 'That ticket is assigned to someone else. Showing your tickets.');
+        }
+        $inactiveStatus = config('tickets.inactive_status', 'Inactive');
+        if (($ticketObj->status ?? '') === $inactiveStatus) {
+            return back()->with('info', 'Ticket is already inactive.');
+        }
+        try {
+            \DB::connection('vtiger')->table('vtiger_troubletickets')->where('ticketid', $ticket)->update(['status' => $inactiveStatus]);
+            $this->forgetTicketListCaches();
+            \App\Events\DashboardStatsUpdated::dispatch();
+            return redirect()->route('tickets.index')->with('success', 'Ticket inactivated.');
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Failed to inactivate: ' . $e->getMessage());
+        }
+    }
+
+    private function forgetTicketListCaches(): void
+    {
+        Cache::forget('agile_ticket_counts_by_status');
+        Cache::forget('agile_tickets_count');
+        Cache::forget('tickets_list_default');
+        foreach (['Open', 'In_Progress', 'Wait_For_Response', 'Closed', 'Inactive', 'Unassigned'] as $slug) {
+            Cache::forget('tickets_list_' . $slug);
+        }
+        Cache::forget('agile_dashboard_stats');
+    }
+}

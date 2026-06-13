@@ -1,0 +1,19 @@
+[Unit]
+Description=Geminia ERP Clients API (Python Flask)
+After=network.target httpd.service
+
+[Service]
+Type=simple
+User=apache
+Group=apache
+WorkingDirectory=/var/www/geminia-crm-laravel/erp-clients-api
+Environment="PATH=/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin"
+# Python 3.7+ required. CentOS 7: use SCL (yum install rh-python38) then:
+# ExecStart=/opt/rh/rh-python38/root/usr/bin/python3 app.py
+# Or if python3 is in PATH (e.g. from IUS python38): ExecStart=/usr/bin/python3 app.py
+ExecStart=/usr/bin/python3 app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
