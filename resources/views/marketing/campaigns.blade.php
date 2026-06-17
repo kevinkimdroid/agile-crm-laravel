@@ -63,7 +63,7 @@
                         <p class="campaigns-stat-label text-muted mb-0">Expected Revenue</p>
                         <h2 class="campaigns-stat-value mb-0" style="color:var(--agile-primary);font-size:1.15rem;">KES {{ number_format($totalExpectedRevenue ?? 0, 0) }}</h2>
                     </div>
-                    <div class="campaigns-stat-icon campaigns-stat-icon-primary"><i class="bi bi-currency-dollar"></i></div>
+                    <div class="campaigns-stat-icon campaigns-stat-icon-primary"><i class="bi bi-cash-stack"></i></div>
                 </div>
             </div>
         </div>

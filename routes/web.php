@@ -59,6 +59,7 @@ Route::redirect('/index.php', '/');
 Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index');
 Route::resource('contacts', ContactController::class)->except(['index']);
 Route::post('contacts/{contact}/followup', [ContactController::class, 'storeFollowup'])->name('contacts.followup.store');
+Route::post('contacts/{contact}/comments', [ContactController::class, 'storeComment'])->name('contacts.comments.store');
 Route::post('contacts/{contact}/campaigns', [ContactController::class, 'addToCampaign'])->name('contacts.campaigns.add');
 Route::delete('contacts/{contact}/campaigns/{campaign}', [ContactController::class, 'removeFromCampaign'])->name('contacts.campaigns.remove');
 Route::resource('leads', LeadController::class);

@@ -291,63 +291,12 @@
                         <i class="bi bi-house-door-fill"></i><span>Dashboard</span>
                     </a>
                     @endif
-                    @if($can('deals'))
-                    <a href="{{ route('deals.index') }}" class="app-nav-link {{ request()->routeIs('deals.*') ? 'active' : '' }}">
-                        <i class="bi bi-briefcase-fill"></i><span>Deals</span>
-                    </a>
-                    @endif
                     @if($can('contacts'))
                     <a href="{{ route('contacts.index') }}" class="app-nav-link {{ request()->routeIs('contacts.*') ? 'active' : '' }}">
                         <i class="bi bi-person-lines-fill"></i><span>Contacts</span>
                     </a>
                     @endif
-                    @if($can('finance.payments') || $can('finance.receipts'))
-                    <div class="app-nav-group">
-                        <div class="app-nav-label">Finance</div>
-                        @if($can('finance.payments'))
-                        <a href="{{ route('finance.payments.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('finance.payments.*') ? 'active' : '' }}">
-                            <i class="bi bi-cash-coin"></i><span>Finance cheques</span>
-                        </a>
-                        <a href="{{ route('finance.agency-advances.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('finance.agency-advances.*') ? 'active' : '' }}">
-                            <i class="bi bi-building"></i><span>Agency advances</span>
-                        </a>
-                        @endif
-                        @if($can('finance.receipts'))
-                        <a href="{{ route('finance.receipts.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('finance.receipts.*') ? 'active' : '' }}">
-                            <i class="bi bi-receipt"></i><span>Receipt reprint</span>
-                        </a>
-                        @endif
-                    </div>
-                    @endif
                 </div>
-                @if($can('leads') || $can('marketing'))
-                <div class="app-nav-group">
-                    <div class="app-nav-label">Sales</div>
-                    @if($can('leads'))
-                    <a href="{{ route('leads.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('leads.*') ? 'active' : '' }}">
-                        <i class="bi bi-people-fill"></i><span>Leads</span>
-                    </a>
-                    @endif
-                    @if($can('marketing.social-media'))
-                    <a href="{{ route('marketing.social-media') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.social-media') ? 'active' : '' }}">
-                        <i class="bi bi-facebook"></i><span>Social Media</span>
-                    </a>
-                    @endif
-                    @if($can('marketing.campaigns'))
-                    <a href="{{ route('marketing.campaigns.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.campaigns.*') ? 'active' : '' }}">
-                        <i class="bi bi-megaphone"></i><span>Campaigns</span>
-                    </a>
-                    @endif
-                    @if($can('marketing.campaigns') || $can('marketing.social-media') || $can('marketing.broadcast'))
-                    <a href="{{ route('marketing.broadcast') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.broadcast*') ? 'active' : '' }}">
-                        <i class="bi bi-broadcast"></i><span>Broadcast</span>
-                    </a>
-                    <a href="{{ route('marketing.credit-life-statements') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.credit-life-statements*') ? 'active' : '' }}">
-                        <i class="bi bi-file-earmark-text"></i><span>Credit Life Statements</span>
-                    </a>
-                    @endif
-                </div>
-                @endif
                 @if($can('tickets') || $can('support'))
                 <div class="app-nav-group">
                     <div class="app-nav-label">Support</div>
@@ -372,7 +321,6 @@
                     @endif
                     @if($can('support.customers') && ! ($can('leads') || $can('marketing')))
                     <a href="{{ route('marketing.broadcast') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.broadcast*') ? 'active' : '' }}"><i class="bi bi-broadcast"></i><span>Broadcast</span></a>
-                    <a href="{{ route('marketing.credit-life-statements') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.credit-life-statements*') ? 'active' : '' }}"><i class="bi bi-file-earmark-text"></i><span>Credit Life Statements</span></a>
                     @endif
                     @if($can('tickets'))
                     <a href="{{ route('support.maturities') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('support.maturities') ? 'active' : '' }}"><i class="bi bi-calendar-event"></i><span>Maturities</span></a>
@@ -381,6 +329,54 @@
                     @endif
                     @if($can('compliance.complaints'))
                     <a href="{{ route('compliance.complaints.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('compliance.complaints.*') ? 'active' : '' }}"><i class="bi bi-clipboard2-data"></i><span>Complaint Register</span></a>
+                    @endif
+                </div>
+                @endif
+                @if($can('leads') || $can('marketing'))
+                <div class="app-nav-group">
+                    <div class="app-nav-label">Sales</div>
+                    @if($can('leads'))
+                    <a href="{{ route('leads.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('leads.*') ? 'active' : '' }}">
+                        <i class="bi bi-people-fill"></i><span>Leads</span>
+                    </a>
+                    @endif
+                    @if($can('marketing.social-media'))
+                    <a href="{{ route('marketing.social-media') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.social-media') ? 'active' : '' }}">
+                        <i class="bi bi-facebook"></i><span>Social Media</span>
+                    </a>
+                    @endif
+                    @if($can('marketing.campaigns'))
+                    <a href="{{ route('marketing.campaigns.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.campaigns.*') ? 'active' : '' }}">
+                        <i class="bi bi-megaphone"></i><span>Campaigns</span>
+                    </a>
+                    @endif
+                    @if($can('marketing.campaigns') || $can('marketing.social-media') || $can('marketing.broadcast'))
+                    <a href="{{ route('marketing.broadcast') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.broadcast*') ? 'active' : '' }}">
+                        <i class="bi bi-broadcast"></i><span>Broadcast</span>
+                    </a>
+                    @endif
+                </div>
+                @endif
+                @if($can('finance.payments') || $can('finance.receipts') || $can('marketing.campaigns') || $can('marketing.social-media') || $can('marketing.broadcast'))
+                <div class="app-nav-group">
+                    <div class="app-nav-label">Finance</div>
+                    @if($can('finance.payments'))
+                    <a href="{{ route('finance.payments.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('finance.payments.*') ? 'active' : '' }}">
+                        <i class="bi bi-cash-coin"></i><span>Finance cheques</span>
+                    </a>
+                    <a href="{{ route('finance.agency-advances.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('finance.agency-advances.*') ? 'active' : '' }}">
+                        <i class="bi bi-building"></i><span>Agency advances</span>
+                    </a>
+                    @endif
+                    @if($can('finance.receipts'))
+                    <a href="{{ route('finance.receipts.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('finance.receipts.*') ? 'active' : '' }}">
+                        <i class="bi bi-receipt"></i><span>Receipt reprint</span>
+                    </a>
+                    @endif
+                    @if($can('marketing.campaigns') || $can('marketing.social-media') || $can('marketing.broadcast') || $can('finance.payments') || $can('finance.receipts'))
+                    <a href="{{ route('marketing.credit-life-statements') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.credit-life-statements*') ? 'active' : '' }}">
+                        <i class="bi bi-file-earmark-text"></i><span>Credit Life Statements</span>
+                    </a>
                     @endif
                 </div>
                 @endif
@@ -411,7 +407,6 @@
                     @endif
                     @if($can('tools.email-templates'))
                     <a href="{{ route('tools.email-templates') }}" class="app-nav-link app-nav-sublink"><i class="bi bi-envelope"></i><span>Email Templates</span></a>
-                    <a href="{{ route('marketing.credit-life-statements') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.credit-life-statements*') ? 'active' : '' }}"><i class="bi bi-file-earmark-text"></i><span>Credit Life Statements</span></a>
                     @endif
                     @if($can('tools.mail-manager'))
                     <a href="{{ route('tools.mail-manager') }}" class="app-nav-link app-nav-sublink"><i class="bi bi-envelope-at"></i><span>Mail Manager</span></a>
@@ -467,7 +462,7 @@
                             <li><a class="dropdown-item py-2" href="{{ route('support.serve-client') }}"><i class="bi bi-person-plus me-2"></i>Customer</a></li>
                             @endif
                             @if($can('deals'))
-                            <li><a class="dropdown-item py-2" href="{{ route('deals.create') }}"><i class="bi bi-currency-dollar me-2"></i>Opportunity</a></li>
+                            <li><a class="dropdown-item py-2" href="{{ route('deals.create') }}"><i class="bi bi-briefcase me-2"></i>Opportunity</a></li>
                             @endif
                             @if($can('tickets'))
                             <li><a class="dropdown-item py-2" href="{{ route('tickets.create') }}"><i class="bi bi-ticket-perforated me-2"></i>Ticket</a></li>

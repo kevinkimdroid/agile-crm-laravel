@@ -54,7 +54,7 @@
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
                     <li><a class="dropdown-item" href="{{ route('tickets.index') }}"><i class="bi bi-ticket-perforated me-2"></i>Tickets</a></li>
-                    <li><a class="dropdown-item" href="{{ route('reports') }}"><i class="bi bi-currency-dollar me-2"></i>Revenue</a></li>
+                    <li><a class="dropdown-item" href="{{ route('reports') }}"><i class="bi bi-bar-chart-line me-2"></i>Revenue</a></li>
                     <li><a class="dropdown-item" href="{{ route('activities.index') }}"><i class="bi bi-exclamation-triangle me-2"></i>Overdue</a></li>
                 </ul>
             </div>
@@ -67,7 +67,7 @@
     {{-- KPI strip --}}
     <section class="dashboard-kpis{{ (($clientsCountDeferred ?? false) || (isset($clientsCount) && $clientsCount !== null)) ? '' : ' dashboard-kpis-4' }}">
         <a href="{{ route('deals.index') }}" class="dashboard-kpi dashboard-kpi-featured">
-            <div class="dashboard-kpi-icon"><i class="bi bi-currency-dollar"></i></div>
+            <div class="dashboard-kpi-icon"><i class="bi bi-graph-up-arrow"></i></div>
             <div class="dashboard-kpi-content">
                 <span class="dashboard-kpi-label">Pipeline Value</span>
                 <span class="dashboard-kpi-value">KES {{ number_format($pipelineValue ?? 0, 0) }}</span>
@@ -119,7 +119,7 @@
             <a href="{{ route('tickets.create') }}" class="dashboard-action-btn"><i class="bi bi-ticket-perforated"></i> New Ticket</a>
             <a href="{{ route('leads.create') }}" class="dashboard-action-btn"><i class="bi bi-plus-circle"></i> Add Lead</a>
             <a href="{{ route('contacts.index') }}" class="dashboard-action-btn"><i class="bi bi-person"></i> Contacts</a>
-            <a href="{{ route('deals.index') }}" class="dashboard-action-btn"><i class="bi bi-currency-dollar"></i> Deals</a>
+            <a href="{{ route('deals.index') }}" class="dashboard-action-btn"><i class="bi bi-briefcase"></i> Deals</a>
         </div>
     </section>
 
@@ -220,11 +220,11 @@
 
     {{-- Section: Sales & Pipeline --}}
     <section class="dashboard-section">
-        <h2 class="dashboard-section-title"><i class="bi bi-currency-dollar"></i> Sales & Pipeline</h2>
+        <h2 class="dashboard-section-title"><i class="bi bi-graph-up"></i> Sales & Pipeline</h2>
         <div class="dashboard-section-grid dashboard-section-grid-3">
             <div class="dashboard-card">
                 <div class="dashboard-card-head">
-                    <h3 class="dashboard-card-title"><i class="bi bi-currency-dollar"></i> Revenue by Salesperson</h3>
+                    <h3 class="dashboard-card-title"><i class="bi bi-bar-chart-line"></i> Revenue by Salesperson</h3>
                     <a href="{{ route('reports') }}" class="dashboard-card-link">View</a>
                 </div>
                 @php $salesByPerson = $salesByPerson ?? collect(); @endphp
@@ -239,7 +239,7 @@
                     </div>
                 @else
                     <div class="dashboard-empty">
-                        <i class="bi bi-currency-dollar"></i>
+                        <i class="bi bi-bar-chart-line"></i>
                         <span>No opportunities matched</span>
                         <a href="{{ route('deals.index') }}" class="btn btn-sm btn-primary mt-2">View Deals</a>
                     </div>

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Campaign;
 use App\Models\Contact;
+use App\Models\ContactComment;
 use App\Models\ContactFollowup;
 use App\Services\CrmService;
 use Illuminate\Support\Facades\Cache;
@@ -15,6 +16,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
 class ContactController extends Controller
@@ -246,11 +248,15 @@ class ContactController extends Controller
         $adjacent = $this->crm->getAdjacentContactIds($id, $ownerId);
         $ticketsCount = $this->crm->getTicketsForContactCount($id, null, null, $ownerId);
 
-        $deals = $activities = $comments = collect();
+        $deals = $activities = $comments = $contactComments = collect();
         if ($tab === 'summary') {
             $deals = $this->crm->getContactDeals($id, 5);
             $activities = $this->crm->getContactActivities($id, 5);
             $comments = $this->crm->getContactComments($id, 5);
+            $contactComments = ContactComment::where('contact_id', $id)
+                ->orderByDesc('created_at')
+                ->limit(20)
+                ->get();
         }
 
         return view('contacts.show', [
@@ -258,6 +264,7 @@ class ContactController extends Controller
             'deals' => $deals,
             'activities' => $activities,
             'comments' => $comments,
+            'contactComments' => $contactComments,
             'activeTab' => $tab,
             'tickets' => $tickets,
             'ticketsPaginator' => $ticketsPaginator,
@@ -360,6 +367,51 @@ class ContactController extends Controller
         ]);
 
         return redirect()->route('contacts.show', $contact)->with('success', 'Follow-up logged.');
+    }
+
+    public function storeComment(Request $request, int $contact): RedirectResponse
+    {
+        $contactRecord = $this->crm->getContact($contact);
+        if (! $contactRecord) {
+            return redirect()->route('contacts.index')->with('error', 'Contact not found.');
+        }
+        if (! contact_can_access($contact)) {
+            return redirect()->route('contacts.index')->with('info', 'That contact is assigned to someone else.');
+        }
+
+        $validated = $request->validate([
+            'body' => 'required|string|max:10000',
+            'attachment' => 'nullable|file|max:10240|mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,txt,csv,jpg,jpeg,png,gif,webp',
+        ]);
+
+        $authUser = Auth::guard('vtiger')->user();
+        $authorName = 'Unknown';
+        $userId = null;
+        if ($authUser) {
+            $userId = (int) ($authUser->id ?? $authUser->getAuthIdentifier());
+            $authorName = trim(($authUser->first_name ?? '') . ' ' . ($authUser->last_name ?? ''))
+                ?: ($authUser->user_name ?? 'User');
+        }
+
+        $attachmentPath = null;
+        $attachmentName = null;
+        if ($request->hasFile('attachment')) {
+            $file = $request->file('attachment');
+            $attachmentName = $file->getClientOriginalName();
+            $attachmentPath = $file->store('contact-comments', 'public');
+        }
+
+        ContactComment::create([
+            'contact_id' => $contact,
+            'user_id' => $userId,
+            'author_name' => $authorName,
+            'body' => $validated['body'],
+            'attachment_path' => $attachmentPath,
+            'attachment_name' => $attachmentName,
+        ]);
+
+        return redirect()->route('contacts.show', ['contact' => $contact, 'tab' => 'summary'])
+            ->with('success', 'Comment posted.');
     }
 
     public function addToCampaign(Request $request, int $contact): RedirectResponse

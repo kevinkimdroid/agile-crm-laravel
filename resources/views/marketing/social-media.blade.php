@@ -613,7 +613,7 @@
             <div class="row g-3 mb-4">
                 <div class="col-md-4">
                     <div class="metric-card">
-                        <div class="metric-icon"><i class="bi bi-currency-dollar"></i></div>
+                        <div class="metric-icon"><i class="bi bi-cash-stack"></i></div>
                         <div>
                             <p class="metric-label">Total Spend</p>
                             <h3 class="metric-value">KES {{ number_format($metaCampaignsSummary['spend'] ?? 0, 0) }}</h3>

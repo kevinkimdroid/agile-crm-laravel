@@ -8,7 +8,9 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class DealController extends Controller
@@ -63,17 +65,52 @@ class DealController extends Controller
         ]);
 
         try {
-            $id = \DB::connection('vtiger')->table('vtiger_potential')->insertGetId([
-                'potentialname' => $validated['potentialname'],
-                'amount' => $validated['amount'] ?? 0,
-                'sales_stage' => $validated['sales_stage'] ?? 'Prospecting',
-                'closingdate' => $validated['closingdate'] ?? null,
-            ]);
+            $ownerId = Auth::guard('vtiger')->id() ?? 1;
+            $label = $validated['potentialname'];
+            $now = now()->format('Y-m-d H:i:s');
+            $id = null;
+
+            DB::connection('vtiger')->transaction(function () use ($validated, $ownerId, $label, $now, &$id) {
+                $id = (int) DB::connection('vtiger')->table('vtiger_crmentity')->max('crmid') + 1;
+
+                DB::connection('vtiger')->table('vtiger_crmentity')->insert([
+                    'crmid' => $id,
+                    'smcreatorid' => $ownerId,
+                    'smownerid' => $ownerId,
+                    'modifiedby' => $ownerId,
+                    'setype' => 'Potentials',
+                    'description' => '',
+                    'createdtime' => $now,
+                    'modifiedtime' => $now,
+                    'viewedtime' => null,
+                    'status' => '',
+                    'version' => 0,
+                    'presence' => 1,
+                    'deleted' => 0,
+                    'smgroupid' => 0,
+                    'source' => 'CRM',
+                    'label' => $label,
+                ]);
+
+                DB::connection('vtiger')->table('vtiger_potential')->insert([
+                    'potentialid' => $id,
+                    'potentialname' => $validated['potentialname'],
+                    'potential_no' => 'POT' . $id,
+                    'amount' => $validated['amount'] ?? 0,
+                    'sales_stage' => $validated['sales_stage'] ?? 'Prospecting',
+                    'closingdate' => $validated['closingdate'] ?? null,
+                ]);
+            });
+
             Cache::forget('agile_pipeline_value');
+            if ($ownerId) {
+                Cache::forget('agile_pipeline_value_' . $ownerId);
+            }
             Cache::forget('agile_deals_count');
             Cache::forget('agile_reports_index');
             Cache::forget('agile_dashboard_stats');
             \App\Events\DashboardStatsUpdated::dispatch();
+
             return redirect()->route('deals.show', $id)->with('success', 'Deal created.');
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Failed to create deal: ' . $e->getMessage());
@@ -129,6 +166,10 @@ class DealController extends Controller
                 'amount' => $validated['amount'] ?? 0,
                 'sales_stage' => $validated['sales_stage'] ?? $deal->sales_stage,
                 'closingdate' => $validated['closingdate'] ?? $deal->closingdate,
+            ]);
+            DB::connection('vtiger')->table('vtiger_crmentity')->where('crmid', $id)->update([
+                'label' => $validated['potentialname'],
+                'modifiedtime' => now()->format('Y-m-d H:i:s'),
             ]);
             Cache::forget('agile_pipeline_value');
             Cache::forget('agile_deals_count');
