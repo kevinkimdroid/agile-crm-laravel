@@ -118,12 +118,16 @@ class AutoTicketFromWhatsAppService
             return null;
         }
 
+        $hasTicketColumn = Schema::connection(config('database.default'))->hasColumn('social_interactions', 'ticket_id');
+
         $row = SocialInteraction::query()
             ->where('platform', 'whatsapp')
             ->where('author_phone', $phone)
-            ->where(function ($q) {
-                $q->whereNotNull('ticket_id')
-                    ->orWhereNotNull('metadata->ticket_id');
+            ->where(function ($q) use ($hasTicketColumn) {
+                if ($hasTicketColumn) {
+                    $q->whereNotNull('ticket_id');
+                }
+                $q->orWhereNotNull('metadata->ticket_id');
             })
             ->orderByDesc('interaction_at')
             ->first();
@@ -132,7 +136,7 @@ class AutoTicketFromWhatsAppService
             return null;
         }
 
-        $id = $row->ticket_id ?: data_get($row->metadata, 'ticket_id');
+        $id = ($hasTicketColumn ? $row->ticket_id : null) ?: data_get($row->metadata, 'ticket_id');
 
         return $id ? (int) $id : null;
     }
@@ -174,7 +178,11 @@ class AutoTicketFromWhatsAppService
 
     protected function interactionTicketId(SocialInteraction $interaction): ?int
     {
-        $id = $interaction->ticket_id ?: data_get($interaction->metadata, 'ticket_id');
+        $id = null;
+        if (Schema::connection(config('database.default'))->hasColumn('social_interactions', 'ticket_id')) {
+            $id = $interaction->ticket_id;
+        }
+        $id = $id ?: data_get($interaction->metadata, 'ticket_id');
 
         return $id ? (int) $id : null;
     }
