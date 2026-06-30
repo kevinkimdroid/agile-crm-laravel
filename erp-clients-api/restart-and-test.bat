@@ -22,4 +22,10 @@ echo [5] SMS routes (should list /messages/sms and /api/messages/sms):
 curl -s -m 5 "http://localhost:5000/routes" 2>nul | findstr /i "messages"
 if errorlevel 1 echo    No messages routes - deploy latest app.py and restart this API.
 echo.
+echo [6] Investment maturities (must NOT be 404):
+curl -s -m 15 "http://localhost:5000/api/clients/investment-maturities?from=2026-06-01&to=2026-06-30&limit=2" 2>nul
+echo.
+curl -s -m 5 "http://localhost:5000/routes" 2>nul | findstr /i "investment-maturities"
+if errorlevel 1 echo    No investment-maturities route - git pull erp-clients-api/app.py and restart python app.py
+echo.
 pause
