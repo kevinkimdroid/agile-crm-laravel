@@ -138,6 +138,9 @@ class SocialMediaService
                     case 'tiktok':
                         $platformPosts = $this->getTikTokPosts($account);
                         break;
+                    case 'facebook':
+                        $platformPosts = $this->getFacebookPosts($account);
+                        break;
                     default:
                         $platformPosts = [];
                 }
@@ -376,21 +379,94 @@ class SocialMediaService
             return null;
         }
 
-        $response = Http::withToken($account->access_token)
-            ->get('https://graph.facebook.com/v18.0/me', [
-                'fields' => 'id,name',
-            ]);
+        $pageId = $account->metadata['page_id'] ?? null;
+        $pageToken = $account->metadata['page_access_token'] ?? $account->access_token;
+
+        if (!$pageId || !$pageToken) {
+            return null;
+        }
+
+        $response = Http::timeout(10)->get("https://graph.facebook.com/v18.0/{$pageId}", [
+            'fields' => 'fan_count,name,followers_count',
+            'access_token' => $pageToken,
+        ]);
 
         if (!$response->successful()) {
             return null;
         }
 
+        $data = $response->json();
+        $fans = (int) ($data['followers_count'] ?? $data['fan_count'] ?? 0);
+
+        $postsResponse = Http::timeout(10)->get("https://graph.facebook.com/v18.0/{$pageId}/posts", [
+            'fields' => 'id',
+            'limit' => 100,
+            'access_token' => $pageToken,
+        ]);
+
+        $postCount = $postsResponse->successful() ? count($postsResponse->json('data') ?? []) : 0;
+
+        $engagement = 0;
+        if ($postsResponse->successful()) {
+            foreach (array_slice($postsResponse->json('data') ?? [], 0, 10) as $post) {
+                $insights = Http::timeout(5)->get("https://graph.facebook.com/v18.0/{$post['id']}", [
+                    'fields' => 'shares,comments.summary(true),reactions.summary(true)',
+                    'access_token' => $pageToken,
+                ]);
+                if ($insights->successful()) {
+                    $j = $insights->json();
+                    $engagement += (int) data_get($j, 'reactions.summary.total_count', 0);
+                    $engagement += (int) data_get($j, 'comments.summary.total_count', 0);
+                    $engagement += (int) ($j['shares']['count'] ?? 0);
+                }
+            }
+        }
+
         return [
-            'audience' => 0,
+            'audience' => $fans,
             'mentions' => 0,
-            'engagement' => 0,
-            'posts' => 0,
+            'engagement' => $engagement,
+            'posts' => $postCount,
         ];
+    }
+
+    private function getFacebookPosts(SocialAccount $account): array
+    {
+        $pageId = $account->metadata['page_id'] ?? null;
+        $pageToken = $account->metadata['page_access_token'] ?? $account->access_token;
+
+        if (!$pageId || !$pageToken) {
+            return [];
+        }
+
+        $response = Http::timeout(15)->get("https://graph.facebook.com/v18.0/{$pageId}/posts", [
+            'fields' => 'message,created_time,permalink_url,shares,comments.summary(true),reactions.summary(true)',
+            'limit' => 5,
+            'access_token' => $pageToken,
+        ]);
+
+        if (!$response->successful()) {
+            return [];
+        }
+
+        $posts = $response->json('data') ?? [];
+        $pageName = $account->metadata['page_name'] ?? $account->account_name;
+
+        return array_map(function ($post) use ($account, $pageName) {
+            $engagementRaw = (int) data_get($post, 'reactions.summary.total_count', 0)
+                + (int) data_get($post, 'comments.summary.total_count', 0)
+                + (int) ($post['shares']['count'] ?? 0);
+
+            return [
+                'platform' => 'facebook',
+                'account_name' => $pageName ?? 'Facebook',
+                'content' => $post['message'] ?? '(No text)',
+                'url' => $post['permalink_url'] ?? null,
+                'created_at' => $post['created_time'] ?? null,
+                'engagement' => $engagementRaw > 0 ? $this->formatNumber($engagementRaw) : null,
+                'engagement_raw' => $engagementRaw,
+            ];
+        }, $posts);
     }
 
     private function getInstagramMetrics(SocialAccount $account): ?array

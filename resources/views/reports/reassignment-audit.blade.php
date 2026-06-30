@@ -28,12 +28,11 @@
                 </select>
                 <button type="submit" class="btn btn-outline-secondary btn-sm">Apply</button>
             </form>
-            <a href="{{ route('reports.export.reassignment-audit', ['limit' => $limit, 'ticket' => $ticket ?? '', 'format' => 'xlsx']) }}" class="btn btn-primary btn-sm">
-                <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel
-            </a>
-            <a href="{{ route('reports.export.reassignment-audit', ['limit' => $limit, 'ticket' => $ticket ?? '']) }}" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-download me-1"></i>Export CSV
-            </a>
+            @include('partials.report-export-buttons', [
+                'route' => 'reports.export.reassignment-audit',
+                'params' => ['limit' => $limit, 'ticket' => $ticket ?? ''],
+                'csvWithoutFormat' => true,
+            ])
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()" title="Print report">
                 <i class="bi bi-printer me-1"></i>Print
             </button>

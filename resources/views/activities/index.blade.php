@@ -1,17 +1,39 @@
 @extends('layouts.app')
 
-@section('title', 'Calendar & Activities')
+@section('title', ($overdueOnly ?? false) ? 'Overdue Activities' : 'Calendar & Activities')
 
 @section('content')
 <div class="page-header d-flex flex-wrap justify-content-between align-items-start gap-3">
     <div>
+        @if($overdueOnly ?? false)
+        <h1 class="page-title"><i class="bi bi-exclamation-triangle text-danger me-2"></i>Overdue Activities</h1>
+        <p class="page-subtitle mb-0">
+            Tasks past their due date{{ ($overdueScope ?? 'mine') === 'all' ? ' for the whole team' : ' assigned to you' }}.
+        </p>
+        @else
         <h1 class="page-title">Calendar & Activities</h1>
         <p class="page-subtitle mb-0">Schedule meetings, events, and tasks.</p>
         @if($canFilterActivitiesByAssignee ?? false)
         <p class="page-subtitle small text-muted mt-1 mb-0">Use the team filter and Work by assignee to see how activities are spread across people.</p>
         @endif
+        @endif
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
+        @if($overdueOnly ?? false)
+            <div class="btn-group btn-group-sm">
+                <a href="{{ route('activities.index', ['overdue' => 1, 'scope' => 'mine']) }}"
+                   class="btn {{ ($overdueScope ?? 'mine') === 'mine' ? 'btn-primary' : 'btn-outline-secondary' }}">Mine</a>
+                @if($canViewAllOverdue ?? false)
+                <a href="{{ route('activities.index', ['overdue' => 1, 'scope' => 'all']) }}"
+                   class="btn {{ ($overdueScope ?? 'mine') === 'all' ? 'btn-primary' : 'btn-outline-secondary' }}">Everyone</a>
+                @endif
+            </div>
+            <a href="{{ route('activities.index') }}" class="btn btn-outline-secondary btn-sm">All activities</a>
+        @else
+        <a href="{{ route('activities.index', ['overdue' => 1, 'scope' => 'mine']) }}" class="btn btn-outline-danger btn-sm">
+            <i class="bi bi-exclamation-triangle me-1"></i> Overdue
+        </a>
+        @endif
         <a href="{{ route('activities.create', ['type' => 'Event']) }}" class="btn btn-outline-secondary">
             <i class="bi bi-plus-lg me-1"></i> Add Event
         </a>
@@ -47,10 +69,23 @@
                 <div class="col"><span class="d-inline-flex align-items-center">Repeat <i class="bi bi-arrow-down-up ms-1"></i></span></div>
                 <div class="col"><span class="d-inline-flex align-items-center">Assigned To <i class="bi bi-arrow-down-up ms-1"></i></span></div>
                 <div class="col"><span class="d-inline-flex align-items-center">Last updated <i class="bi bi-arrow-down-up ms-1"></i></span></div>
+                @if(!($overdueOnly ?? false))
+                <div class="col text-end">Actions</div>
+                @endif
             </div>
         </div>
         <form action="{{ route('activities.index') }}" method="GET" class="p-3 border-bottom bg-light" id="activitiesFilterForm">
+            @if($overdueOnly ?? false)
+                <input type="hidden" name="overdue" value="1">
+                <input type="hidden" name="scope" value="{{ $overdueScope ?? 'mine' }}">
+            @endif
             <div class="row g-2 align-items-end mb-2">
+                @if($overdueOnly ?? false)
+                <div class="col-md-4">
+                    <label class="form-label small fw-semibold mb-1">Subject</label>
+                    <input type="text" name="search" class="form-control form-control-sm" placeholder="Search subject" value="{{ $search ?? '' }}">
+                </div>
+                @else
                 <div class="col-md-3">
                     <label class="form-label small fw-semibold mb-1">Client</label>
                     <select name="contact_id" class="form-select form-select-sm" id="filterContactId">
@@ -91,8 +126,9 @@
                     <label class="form-label small fw-semibold mb-1">Subject</label>
                     <input type="text" name="search" class="form-control form-control-sm" placeholder="Subject" value="{{ $search ?? '' }}">
                 </div>
+                @endif
             </div>
-            @if($canFilterActivitiesByAssignee ?? false)
+            @if(($canFilterActivitiesByAssignee ?? false) && !($overdueOnly ?? false))
             <div class="row g-2 align-items-end mb-2">
                 <div class="col-md-4 col-lg-3">
                     <label class="form-label small fw-semibold mb-1">Team member</label>
@@ -109,7 +145,11 @@
                 <div class="col-auto">
                     <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-search me-1"></i> Filter</button>
                 </div>
-                @if($contactId || $ticketId || (($canFilterActivitiesByAssignee ?? false) && ($assignedToFilter ?? null)))
+                @if($overdueOnly ?? false)
+                <div class="col-auto">
+                    <a href="{{ route('activities.index', ['overdue' => 1, 'scope' => $overdueScope ?? 'mine']) }}" class="btn btn-outline-secondary btn-sm">Clear</a>
+                </div>
+                @elseif($contactId || $ticketId || (($canFilterActivitiesByAssignee ?? false) && ($assignedToFilter ?? null)))
                 <div class="col-auto">
                     <a href="{{ route('activities.index') }}" class="btn btn-outline-secondary btn-sm">Clear</a>
                 </div>
@@ -163,14 +203,20 @@
                         <td class="activities-td"><span class="badge bg-secondary">{{ $act->activitytype ?? 'Task' }}</span></td>
                         <td class="activities-td fw-semibold">{{ $act->subject ?? 'Untitled' }}</td>
                         <td class="activities-td">
-                            @if(!empty(trim($act->related_to_name ?? '')))
+                            @if(!empty($act->related_ticket_id))
+                                <a href="{{ route('tickets.show', $act->related_ticket_id) }}">{{ $act->related_ticket_no ?? ('Ticket #' . $act->related_ticket_id) }}</a>
+                            @elseif(!empty(trim($act->related_to_name ?? '')))
                                 <a href="{{ route('contacts.show', $act->related_to_id) }}">{{ trim($act->related_to_name) }}</a>
                             @else
                                 <span class="text-muted">—</span>
                             @endif
                         </td>
                         <td class="activities-td text-nowrap">{{ $act->date_start ? date('d M Y', strtotime($act->date_start)) . ($act->time_start ? ' ' . $act->time_start : '') : '—' }}</td>
-                        <td class="activities-td text-nowrap">{{ $act->due_date ? date('d M Y', strtotime($act->due_date)) : '—' }}</td>
+                        <td class="activities-td text-nowrap">{{ $act->due_date ? date('d M Y', strtotime($act->due_date)) : '—' }}
+                            @if(($overdueOnly ?? false) && !empty($act->due_date))
+                                <span class="badge bg-danger-subtle text-danger ms-1">{{ \Carbon\Carbon::parse($act->due_date)->diffForHumans() }}</span>
+                            @endif
+                        </td>
                         <td class="activities-td">{{ $act->recurringtype ?: '—' }}</td>
                         <td class="activities-td">{{ trim($act->assigned_to_name ?? '') ?: '—' }}</td>
                         <td class="activities-td text-muted small text-nowrap">
@@ -180,13 +226,27 @@
                                 —
                             @endif
                         </td>
+                        @if(!($overdueOnly ?? false))
+                        <td class="activities-td text-end text-nowrap">
+                            @php
+                                $editParams = ['activity' => $act->activityid, 'return_to' => request()->fullUrl()];
+                                if ($contactId ?? null) {
+                                    $editParams['lock_related'] = 1;
+                                }
+                            @endphp
+                            <a href="{{ route('activities.edit', $editParams) }}" class="btn btn-sm btn-outline-primary" title="Edit"><i class="bi bi-pencil"></i></a>
+                        </td>
+                        @endif
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="9" class="text-center py-5">
+                        <td colspan="{{ ($overdueOnly ?? false) ? 9 : 10 }}" class="text-center py-5">
                             <div class="activities-empty-state">
                                 <div class="activities-empty-icon"><i class="bi bi-calendar3"></i></div>
-                                @if(!$contactId && !$ticketId)
+                                @if($overdueOnly ?? false)
+                                <h6 class="mt-3 mb-2">No overdue activities</h6>
+                                <p class="text-muted mb-0">You are up to date{{ ($overdueScope ?? 'mine') === 'all' ? ' across the team' : '' }}.</p>
+                                @elseif(!$contactId && !$ticketId)
                                 <h6 class="mt-3 mb-2">Select a client to view activities</h6>
                                 <p class="text-muted mb-3">Choose a client (and optionally a ticket) above to see their calendar activities.</p>
                                 @else
@@ -204,6 +264,23 @@
                 </tbody>
             </table>
         </div>
+        @if(($overdueOnly ?? false) && ($overdueTotal ?? 0) > ($perPage ?? 25))
+        @php
+            $totalPages = (int) ceil(($overdueTotal ?? 0) / ($perPage ?? 25));
+            $currentPage = $page ?? 1;
+        @endphp
+        <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top bg-light">
+            <span class="small text-muted">{{ number_format($overdueTotal ?? 0) }} overdue task(s)</span>
+            <div class="btn-group btn-group-sm">
+                @if($currentPage > 1)
+                <a href="{{ route('activities.index', array_filter(['overdue' => 1, 'scope' => $overdueScope ?? 'mine', 'search' => $search, 'page' => $currentPage - 1], fn ($v) => $v !== null && $v !== '')) }}" class="btn btn-outline-secondary">Previous</a>
+                @endif
+                @if($currentPage < $totalPages)
+                <a href="{{ route('activities.index', array_filter(['overdue' => 1, 'scope' => $overdueScope ?? 'mine', 'search' => $search, 'page' => $currentPage + 1], fn ($v) => $v !== null && $v !== '')) }}" class="btn btn-outline-secondary">Next</a>
+                @endif
+            </div>
+        </div>
+        @endif
         {{-- Quick create bar below table --}}
         <div class="quick-create-footer d-flex flex-wrap align-items-center gap-2 p-3 border-top bg-light">
             <span class="text-muted small me-2">Quick add:</span>

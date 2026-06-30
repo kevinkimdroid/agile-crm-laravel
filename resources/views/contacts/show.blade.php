@@ -1,15 +1,15 @@
 @extends('layouts.app')
 
-@section('title', $contact->full_name . ' — Contact')
+@section('title', $contact->full_name . ' — Prospect')
 
 @section('content')
 <div class="contact-detail-header">
-    <nav class="mb-2">
-        <a href="{{ route('support.customers') }}" class="text-muted small">Clients</a>
-        <span class="text-muted mx-1">/</span>
-        <a href="{{ route('contacts.index') }}" class="text-muted small">All</a>
-        <span class="text-muted mx-1">/</span>
-        <span class="text-dark">{{ Str::limit($contact->full_name, 25) }}</span>
+    <nav class="mb-2 text-uppercase small">
+        <a href="{{ route('contacts.index') }}" class="text-muted">Prospects</a>
+        <span class="text-muted mx-1">&gt;</span>
+        <a href="{{ route('contacts.index') }}" class="text-muted">All</a>
+        <span class="text-muted mx-1">&gt;</span>
+        <span class="text-dark">{{ Str::limit($contact->full_name, 40) }}</span>
     </nav>
     <div class="d-flex flex-wrap align-items-start gap-4">
         <div class="contact-avatar-lg">
@@ -17,6 +17,17 @@
         </div>
         <div class="flex-grow-1">
             <h1 class="page-title mb-2">{{ $contact->full_name }}</h1>
+            @php
+                $displayPhone = trim($contact->mobile ?? '') ?: trim($contact->phone ?? '');
+            @endphp
+            @if($displayPhone)
+            <p class="mb-2">
+                <i class="bi bi-telephone me-1 text-muted"></i>
+                <a href="tel:{{ tel_href($displayPhone) }}" class="text-decoration-none">{{ $displayPhone }}</a>
+                <span class="text-muted mx-2">·</span>
+                <a href="https://www.google.com/maps/search/?api=1&query={{ urlencode(trim($contact->full_name . ' ' . $displayPhone)) }}" target="_blank" rel="noopener" class="text-primary small">Show Map</a>
+            </p>
+            @endif
             <div class="d-flex flex-wrap gap-2 align-items-center">
                 <a href="{{ route('contacts.edit', $contact->contactid) }}" class="btn btn-sm btn-primary-custom">Edit</a>
                 <a href="mailto:{{ $contact->email }}" class="btn btn-sm btn-outline-secondary">Send Email</a>
@@ -26,7 +37,7 @@
                         <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#followupModal"><i class="bi bi-calendar-check me-2"></i>Log Follow-up</a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li>
-                            <form action="{{ route('contacts.destroy', $contact->contactid) }}" method="POST" onsubmit="return confirm('Delete this contact?');">
+                            <form action="{{ route('contacts.destroy', $contact->contactid) }}" method="POST" onsubmit="return confirm('Delete this prospect?');">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="dropdown-item text-danger">Delete</button>
@@ -37,12 +48,12 @@
                 @if(($prevContactId ?? null) || ($nextContactId ?? null))
                 <div class="btn-group ms-1">
                     @if($prevContactId ?? null)
-                    <a href="{{ route('contacts.show', $prevContactId) }}{{ in_array($activeTab ?? '', ['tickets','policies','calls','sms','emails','campaigns']) ? '?tab=' . $activeTab : '' }}" class="btn btn-sm btn-outline-secondary" title="Previous client">
+                    <a href="{{ route('contacts.show', $prevContactId) }}{{ in_array($activeTab ?? '', ['tickets','policies','calls','sms','emails','campaigns','calendar','details','updates']) ? '?tab=' . $activeTab : '' }}" class="btn btn-sm btn-outline-secondary" title="Previous client">
                         <i class="bi bi-chevron-left"></i>
                     </a>
                     @endif
                     @if($nextContactId ?? null)
-                    <a href="{{ route('contacts.show', $nextContactId) }}{{ in_array($activeTab ?? '', ['tickets','policies','calls','sms','emails','campaigns']) ? '?tab=' . $activeTab : '' }}" class="btn btn-sm btn-outline-secondary" title="Next client">
+                    <a href="{{ route('contacts.show', $nextContactId) }}{{ in_array($activeTab ?? '', ['tickets','policies','calls','sms','emails','campaigns','calendar','details','updates']) ? '?tab=' . $activeTab : '' }}" class="btn btn-sm btn-outline-secondary" title="Next client">
                         <i class="bi bi-chevron-right"></i>
                     </a>
                     @endif
@@ -69,10 +80,12 @@
         <a class="nav-link {{ ($activeTab ?? '') === 'details' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=details">Details</a>
     </li>
     <li class="nav-item">
-        <a class="nav-link {{ ($activeTab ?? '') === 'updates' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=updates">Updates</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link" href="{{ route('activities.index', ['contact_id' => $contact->contactid]) }}" title="Activities"><i class="bi bi-calendar3"></i></a>
+        <a class="nav-link {{ ($activeTab ?? '') === 'updates' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=updates">
+            Updates
+            @if((($activitiesCount ?? 0) + ($commentsCount ?? 0)) > 0)
+            <span class="badge bg-primary ms-1">{{ ($activitiesCount ?? 0) + ($commentsCount ?? 0) }}</span>
+            @endif
+        </a>
     </li>
     <li class="nav-item">
         <a class="nav-link {{ ($activeTab ?? '') === 'tickets' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=tickets" title="Tickets">
@@ -115,12 +128,13 @@
     </li>
 </ul>
 
+@php $tab = $activeTab ?? 'summary'; @endphp
+
+@if($tab === 'summary')
 <div class="row g-4">
-    {{-- Left: Key Fields (Summary: 3 fields only; Details: full list) --}}
     <div class="col-lg-8">
         <div class="card contact-detail-card mb-4">
             <div class="card-body p-4">
-                @if(($activeTab ?? 'summary') === 'summary')
                 <h6 class="text-uppercase small fw-bold text-muted mb-3">Key Fields</h6>
                 <dl class="row mb-0">
                     <dt class="col-sm-4 text-muted small">Last Name</dt>
@@ -130,78 +144,6 @@
                     <dt class="col-sm-4 text-muted small">Primary Email</dt>
                     <dd class="col-sm-8 mb-0">{{ $contact->email ?: '—' }}</dd>
                 </dl>
-                @elseif(($activeTab ?? '') === 'details')
-                @php
-                    $detailFields = [
-                        ['Last Name', $contact->lastname ?? null],
-                        ['First Name', $contact->firstname ?? null],
-                        ['Id Number', $contact->idNumber ?? null],
-                        ['Policy Number', $contact->policy_number ?? null],
-                        ['Contact Id', $contact->contact_no ?? null],
-                        ['PIN', $contact->pin ?? null],
-                        ['Office Phone', $contact->phone ?? null],
-                        ['Mobile Phone', $contact->mobile ?? null],
-                        ['Primary Email', $contact->email ?? null],
-                        ['Secondary Email', $contact->secondaryemail ?? $contact->otheremail ?? null],
-                        ['Title', $contact->title ?? null],
-                        ['Department', $contact->department ?? null],
-                        ['Fax', $contact->fax ?? null],
-                        ['Date of Birth', null],
-                        ['Organization Name', null],
-                        ['Lead Source', null],
-                        ['Reports To', $contact->reportsto ?? null],
-                        ['Assistant', null],
-                        ['Assistant Phone', null],
-                        ['Do Not Call', isset($contact->donotcall) ? ($contact->donotcall ? 'Yes' : 'No') : null],
-                        ['Email Opt Out', isset($contact->emailoptout) ? ($contact->emailoptout ? 'Yes' : 'No') : null],
-                        ['Reference', isset($contact->reference) ? ($contact->reference ? 'Yes' : 'No') : null],
-                        ['Assigned To', $contact->assigned_to_name ?? null],
-                        ['Notify Owner', isset($contact->notify_owner) ? ($contact->notify_owner ? 'Yes' : 'No') : null],
-                        ['Is Converted From Lead', isset($contact->isconvertedfromlead) ? ($contact->isconvertedfromlead ? 'Yes' : 'No') : null],
-                        ['Created Time', $contact->createdtime ? date('d-m-Y H:i', strtotime($contact->createdtime)) : null],
-                        ['Modified Time', $contact->modifiedtime ? date('d-m-Y H:i', strtotime($contact->modifiedtime)) : null],
-                        ['Source', $contact->source ?? null],
-                    ];
-                    $filledDetails = array_filter($detailFields, fn($f) => $f[1] !== null && $f[1] !== '');
-                    $left = array_slice($filledDetails, 0, (int) ceil(count($filledDetails) / 2));
-                    $right = array_slice($filledDetails, (int) ceil(count($filledDetails) / 2));
-                @endphp
-                <h6 class="text-uppercase small fw-bold text-muted mb-3">Basic Information</h6>
-                @if(count($filledDetails) > 0)
-                <div class="row">
-                    <div class="col-md-6">
-                        <dl class="row mb-0">
-                            @foreach($left as $f)
-                            <dt class="col-sm-5 text-muted small">{{ $f[0] }}</dt>
-                            <dd class="col-sm-7 mb-2">{{ $f[1] }}</dd>
-                            @endforeach
-                        </dl>
-                    </div>
-                    <div class="col-md-6">
-                        <dl class="row mb-0">
-                            @foreach($right as $f)
-                            <dt class="col-sm-5 text-muted small">{{ $f[0] }}</dt>
-                            <dd class="col-sm-7 mb-2">{{ $f[1] }}</dd>
-                            @endforeach
-                        </dl>
-                    </div>
-                </div>
-                @else
-                <p class="text-muted mb-0">No details available.</p>
-                @endif
-                @elseif(($activeTab ?? '') === 'updates')
-                <p class="text-muted mb-0">Activity and update history coming soon.</p>
-                @else
-                <h6 class="text-uppercase small fw-bold text-muted mb-3">Key Fields</h6>
-                <dl class="row mb-0">
-                    <dt class="col-sm-4 text-muted small">Last Name</dt>
-                    <dd class="col-sm-8 mb-2">{{ $contact->lastname ?? '—' }}</dd>
-                    <dt class="col-sm-4 text-muted small">First Name</dt>
-                    <dd class="col-sm-8 mb-2">{{ $contact->firstname ?? '—' }}</dd>
-                    <dt class="col-sm-4 text-muted small">Primary Email</dt>
-                    <dd class="col-sm-8 mb-0">{{ $contact->email ?: '—' }}</dd>
-                </dl>
-                @endif
             </div>
         </div>
 
@@ -222,9 +164,16 @@
         @endif
     </div>
 
-    {{-- Tickets tab content (full width) --}}
-    @if(($activeTab ?? '') === 'tickets')
-    <div class="col-12 mb-4">
+    @include('contacts.partials.summary-sidebar')
+</div>
+@elseif($tab === 'details')
+@include('contacts.partials.details-tab')
+@elseif($tab === 'updates')
+@include('contacts.partials.contact-comments')
+@include('contacts.partials.activities-related-list', ['activitiesTab' => 'updates'])
+@else
+    @if($tab === 'tickets')
+    <div class="mb-4">
         <div class="card contact-detail-card">
             <div class="card-body p-0">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 p-3 border-bottom bg-light">
@@ -337,8 +286,8 @@
     @endif
 
     {{-- Policies tab content (from ERP) --}}
-    @if(($activeTab ?? '') === 'policies')
-    <div class="col-12 mb-4">
+    @if($tab === 'policies')
+    <div class="mb-4">
         <div class="card contact-detail-card">
             <div class="card-body p-0">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 p-3 border-bottom bg-light">
@@ -453,8 +402,8 @@
     @endif
 
     {{-- Calls tab content (PBX call history) --}}
-    @if(($activeTab ?? '') === 'calls')
-    <div class="col-12 mb-4">
+    @if($tab === 'calls')
+    <div class="mb-4">
         <div class="card contact-detail-card">
             <div class="card-body p-0">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 p-3 border-bottom bg-light">
@@ -580,8 +529,8 @@
     @endif
 
     {{-- Emails tab content (sent to client via life@geminialife.co.ke) --}}
-    @if(($activeTab ?? '') === 'emails')
-    <div class="col-12 mb-4">
+    @if($tab === 'emails')
+    <div class="mb-4">
         <div class="card contact-detail-card">
             <div class="card-body p-0">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 p-3 border-bottom bg-light">
@@ -654,8 +603,8 @@
     @endif
 
     {{-- Campaigns tab content --}}
-    @if(($activeTab ?? '') === 'campaigns')
-    <div class="col-12 mb-4">
+    @if($tab === 'campaigns')
+    <div class="mb-4">
         <div class="card contact-detail-card">
             <div class="card-body p-0">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 p-3 border-bottom bg-light">
@@ -729,8 +678,8 @@
     @endif
 
     {{-- SMS tab content --}}
-    @if(($activeTab ?? '') === 'sms')
-    <div class="col-12 mb-4">
+    @if($tab === 'sms')
+    <div class="mb-4">
         <div class="card contact-detail-card">
             <div class="card-body p-0">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 p-3 border-bottom bg-light">
@@ -787,127 +736,7 @@
         </div>
     </div>
     @endif
-
-    {{-- Right: Activities first, then Comments, then Recent Comments (per Summary layout) --}}
-    <div class="col-lg-4">
-        <div class="card contact-detail-card mb-4">
-            <div class="card-body p-4">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="text-uppercase small fw-bold text-muted mb-0">Activities</h6>
-                    <div class="d-flex gap-1">
-                        <a href="{{ route('activities.create', ['type' => 'Task', 'related_to' => $contact->contactid]) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-plus-lg me-1"></i>Add Task</a>
-                        <a href="{{ route('activities.create', ['type' => 'Event', 'related_to' => $contact->contactid]) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-plus-lg me-1"></i>Add Event</a>
-                    </div>
-                </div>
-                @if($activities->isNotEmpty())
-                    <ul class="list-unstyled mb-0">
-                        @foreach($activities as $act)
-                        <li class="py-2 border-bottom">
-                            <strong>{{ $act->subject ?? 'Untitled' }}</strong>
-                            <span class="badge bg-secondary ms-1">{{ $act->activitytype ?? 'Task' }}</span>
-                            <p class="text-muted small mb-0">{{ $act->date_start ?? '' }}</p>
-                        </li>
-                        @endforeach
-                    </ul>
-                @else
-                    <div class="summary-empty-box py-4 text-center text-muted">No pending activities</div>
-                @endif
-            </div>
-        </div>
-
-        <div class="card contact-detail-card mb-4">
-            <div class="card-body p-4">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="text-uppercase small fw-bold text-muted mb-0">Follow-ups</h6>
-                    <a href="#" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#followupModal"><i class="bi bi-plus-lg me-1"></i>Log Follow-up</a>
-                </div>
-                @if(($followups ?? collect())->isNotEmpty())
-                <ul class="list-unstyled mb-0">
-                    @foreach($followups as $fu)
-                    <li class="py-2 border-bottom">
-                        <p class="mb-0 small">{{ Str::limit($fu->note, 100) }}</p>
-                        <small class="text-muted">{{ $fu->followup_date ? $fu->followup_date->format('d M Y') : optional($fu->created_at)->format('d M Y') }} · {{ $fu->status }}</small>
-                    </li>
-                    @endforeach
-                </ul>
-                @else
-                <div class="summary-empty-box py-4 text-center text-muted">
-                    <i class="bi bi-calendar-check opacity-50 d-block mb-2"></i>
-                    No follow-ups yet. Use "Log Follow-up" to track client outreach.
-                </div>
-                @endif
-            </div>
-        </div>
-
-        <div class="card contact-detail-card mb-4" id="comments">
-            <div class="card-body p-4">
-                <h6 class="text-uppercase small fw-bold text-muted mb-3">Comments</h6>
-                <form method="POST" action="{{ route('contacts.comments.store', $contact->contactid) }}" enctype="multipart/form-data">
-                    @csrf
-                    <textarea name="body" class="form-control mb-2 @error('body') is-invalid @enderror" rows="3" placeholder="Post your comment here" required>{{ old('body') }}</textarea>
-                    @error('body')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
-                    @error('attachment')<div class="text-danger small mb-2">{{ $message }}</div>@enderror
-                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <div class="d-flex align-items-center gap-2">
-                            <input type="file" name="attachment" id="contactCommentAttachment" class="d-none" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.webp">
-                            <label for="contactCommentAttachment" class="btn btn-sm btn-outline-primary mb-0">
-                                <i class="bi bi-paperclip me-1"></i>Attach Files
-                            </label>
-                            <span class="small text-muted" id="contactCommentFileName"></span>
-                            <i class="bi bi-info-circle text-muted" title="Attach files to your comment"></i>
-                        </div>
-                        <button type="submit" class="btn btn-sm btn-success">Post</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <div class="card contact-detail-card mb-4">
-            <div class="card-body p-4">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="text-uppercase small fw-bold text-muted mb-0">Recent Comments</h6>
-                    <div class="d-flex align-items-center gap-2">
-                        <span class="small text-muted">Roll up</span>
-                        <i class="bi bi-info-circle text-muted" title="Roll up comments"></i>
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" id="rollupComments" disabled>
-                            <label class="form-check-label small text-muted" for="rollupComments">OFF</label>
-                        </div>
-                    </div>
-                </div>
-                @if(($contactComments ?? collect())->isNotEmpty())
-                    <ul class="list-unstyled mb-0">
-                        @foreach($contactComments as $c)
-                        <li class="py-2 border-bottom">
-                            <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
-                                <span class="fw-semibold small">{{ $c->author_display }}</span>
-                                <span class="text-muted small">{{ $c->created_at?->format('d M Y, H:i') ?? '' }}</span>
-                            </div>
-                            <p class="mb-1">{{ nl2br(e($c->body)) }}</p>
-                            @if($c->attachment_url)
-                            <a href="{{ $c->attachment_url }}" class="small" target="_blank" rel="noopener">
-                                <i class="bi bi-paperclip me-1"></i>{{ $c->attachment_name ?? 'Attachment' }}
-                            </a>
-                            @endif
-                        </li>
-                        @endforeach
-                    </ul>
-                @elseif($comments->isNotEmpty())
-                    <ul class="list-unstyled mb-0">
-                        @foreach($comments as $c)
-                        <li class="py-2 border-bottom">
-                            <p class="mb-0">{{ $c->commentcontent ?? $c->comments ?? '' }}</p>
-                            <small class="text-muted">{{ $c->createdtime ?? '' }}</small>
-                        </li>
-                        @endforeach
-                    </ul>
-                @else
-                    <div class="summary-empty-box py-4 text-center text-muted">No comments</div>
-                @endif
-            </div>
-        </div>
-    </div>
-</div>
+@endif
 
 {{-- Follow-up modal --}}
 <div class="modal fade" id="followupModal" tabindex="-1">
@@ -958,7 +787,7 @@
 .tickets-badge-closed, .tickets-badge-Closed { background: rgba(5, 150, 105, 0.15); color: #059669; }
 .tickets-badge-wait-for-response, .tickets-badge-Wait-For-Response { background: rgba(56, 189, 248, 0.2); color: #0ea5e9; }
 </style>
-@if(($activeTab ?? '') === 'policies' && !empty($policies ?? []))
+@if($tab === 'policies' && !empty($policies ?? []))
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const modal = document.getElementById('policyDetailModal');
@@ -1031,7 +860,7 @@ document.addEventListener('DOMContentLoaded', function() {
 (function() {
     const prevId = @json($prevContactId ?? null);
     const nextId = @json($nextContactId ?? null);
-    const tab = {{ in_array($activeTab ?? '', ['tickets','policies','calls','sms','emails','campaigns']) ? "'?tab=" . ($activeTab ?? '') . "'" : "''" }};
+    const tab = {{ in_array($activeTab ?? '', ['tickets','policies','calls','sms','emails','campaigns','calendar','details','updates']) ? "'?tab=" . ($activeTab ?? '') . "'" : "''" }};
     document.addEventListener('keydown', function(e) {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
         if (e.key === 'ArrowLeft' && prevId) {
@@ -1047,6 +876,14 @@ document.addEventListener('DOMContentLoaded', function() {
 @endif
 <script>
 (function () {
+    var hash = window.location.hash;
+    if (hash === '#contact-comments') {
+        var target = document.querySelector(hash);
+        if (target) {
+            setTimeout(function () { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+        }
+    }
+
     var input = document.getElementById('contactCommentAttachment');
     var label = document.getElementById('contactCommentFileName');
     if (!input || !label) return;

@@ -71,6 +71,20 @@
                 </a>
             </div>
             @endif
+            @if($can('marketing.whatsapp') || $can('marketing.social-media'))
+            <div class="col-md-6 col-lg-4">
+                <a href="{{ route('marketing.whatsapp') }}" class="card p-4 h-100 text-decoration-none" style="border-radius:16px;border:1px solid rgba(37,211,102,0.35);color:inherit;">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="rounded-3 d-flex align-items-center justify-content-center text-white" style="width:56px;height:56px;font-size:1.5rem;background:#25d366;"><i class="bi bi-whatsapp"></i></div>
+                        <div>
+                            <h6 class="fw-bold mb-1">Kenya Orient WhatsApp</h6>
+                            <p class="text-muted small mb-0">Chat with customers from Kenya Orient WhatsApp.</p>
+                        </div>
+                        <i class="bi bi-chevron-right ms-auto text-muted"></i>
+                    </div>
+                </a>
+            </div>
+            @endif
             @if($can('marketing.social-media'))
             <div class="col-md-6 col-lg-4">
                 <a href="{{ route('marketing.social-media') }}" class="card p-4 h-100 text-decoration-none" style="border-radius:16px;border:1px solid var(--card-border, rgba(14,67,133,0.12));color:inherit;">

@@ -14,7 +14,7 @@ class SocialMediaWebhookController extends Controller
     ) {}
 
     /**
-     * Meta (Facebook Page + Instagram) — same URL in developer console for both products.
+     * Meta (Facebook Page + Instagram + WhatsApp) — same URL in developer console.
      * GET: webhook verification. POST: event delivery (signed with X-Hub-Signature-256).
      */
     public function meta(Request $request): Response|\Illuminate\Http\JsonResponse|string

@@ -7,7 +7,9 @@ use App\Models\SocialInteraction;
 use App\Models\ScheduledSocialPost;
 use App\Models\SocialAccount;
 use App\Services\CrmService;
+use App\Services\FacebookPublisherService;
 use App\Services\SocialMediaService;
+use App\Services\WhatsAppService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,8 +21,11 @@ class SocialMediaController extends Controller
     /** @var SocialMediaService */
     protected $socialMedia;
 
-    public function __construct(SocialMediaService $socialMedia)
-    {
+    public function __construct(
+        SocialMediaService $socialMedia,
+        private FacebookPublisherService $facebookPublisher,
+        private WhatsAppService $whatsapp,
+    ) {
         $this->socialMedia = $socialMedia;
     }
 
@@ -56,6 +61,10 @@ class SocialMediaController extends Controller
 
         $hasConnectedAccounts = $socialAccounts->isNotEmpty();
 
+        $whatsappConfigured = $this->whatsapp->isConfigured();
+        $whatsappConsultation = $this->whatsapp->getConsultation();
+        $whatsappMessages = $this->socialMedia->getInteractions('whatsapp', SocialInteraction::TYPE_DM, 'date_desc', 30);
+
         return view('marketing.social-media', [
             'socialAccounts' => $socialAccounts,
             'metrics' => $metrics,
@@ -75,6 +84,10 @@ class SocialMediaController extends Controller
             'metaCampaigns' => $metaCampaignsData['campaigns'] ?? [],
             'metaCampaignsSummary' => $metaCampaignsData['summary'] ?? ['spend' => 0, 'impressions' => 0, 'clicks' => 0],
             'metaCampaignsError' => $metaCampaignsData['error'] ?? null,
+            'whatsappConfigured' => $whatsappConfigured,
+            'whatsappConsultation' => $whatsappConsultation,
+            'whatsappMessages' => $whatsappMessages,
+            'whatsappSetupInstructions' => $this->whatsapp->setupInstructions(),
         ]);
     }
 
@@ -156,5 +169,42 @@ class SocialMediaController extends Controller
 
         return redirect()->route('marketing.social-media')
             ->with('success', 'Scheduled post cancelled.');
+    }
+
+    public function publishNow(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'social_account_id' => ['required', Rule::exists('social_accounts', 'id')],
+            'content' => ['required', 'string', 'max:10000'],
+            'campaign_id' => ['nullable', 'integer', Rule::exists('campaigns', 'id')],
+        ]);
+
+        $account = SocialAccount::findOrFail($validated['social_account_id']);
+
+        if ($account->platform !== 'facebook') {
+            return redirect()->route('marketing.social-media', ['tab' => 'scheduling'])
+                ->with('error', 'Immediate publishing is supported for Facebook Page only. Other platforms can be scheduled.');
+        }
+
+        $result = $this->facebookPublisher->publishPost($account, $validated['content']);
+
+        if (!$result['success']) {
+            return redirect()->route('marketing.social-media', ['tab' => 'scheduling'])
+                ->with('error', $result['error'] ?? 'Failed to publish.');
+        }
+
+        ScheduledSocialPost::create([
+            'social_account_id' => $account->id,
+            'platform' => $account->platform,
+            'campaign_id' => $validated['campaign_id'] ?? null,
+            'content' => $validated['content'],
+            'scheduled_at' => now(),
+            'status' => ScheduledSocialPost::STATUS_PUBLISHED,
+            'external_id' => $result['post_id'],
+            'published_at' => now(),
+        ]);
+
+        return redirect()->route('marketing.social-media', ['tab' => 'scheduling'])
+            ->with('success', 'Post published to Facebook Page.');
     }
 }

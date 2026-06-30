@@ -1,12 +1,12 @@
 @extends('layouts.app')
 
-@section('title', 'Add Contact')
+@section('title', 'Add Prospect')
 
 @section('content')
 <div class="page-header">
-    <nav class="mb-2"><a href="{{ route('contacts.index') }}" class="text-muted small">Contacts</a> / Add</nav>
-    <h1 class="page-title">Add Contact</h1>
-    <p class="page-subtitle">Create a new contact.</p>
+    <nav class="mb-2"><a href="{{ route('contacts.index') }}" class="text-muted small">Prospects</a> / Add</nav>
+    <h1 class="page-title">Add Prospect</h1>
+    <p class="page-subtitle">Create a new prospect.</p>
 </div>
 
 @if (session('error'))
@@ -38,7 +38,7 @@
             <label class="form-label">Mobile</label>
             <input type="text" name="mobile" class="form-control" value="{{ old('mobile') }}">
         </div>
-        <button type="submit" class="btn btn-primary-custom">Create Contact</button>
+        <button type="submit" class="btn btn-primary-custom">Create Prospect</button>
         <a href="{{ route('contacts.index') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
     </form>
 </div>

@@ -18,6 +18,7 @@ return [
         'finance.receipts' => null,
         'marketing' => 'Campaigns',
         'marketing.social-media' => null, // Custom module - always visible (not in standard Vtiger profiles)
+        'marketing.whatsapp' => null, // Company WhatsApp chat — visible like social-media
         'marketing.campaigns' => 'Campaigns',
         'marketing.broadcast' => null,
         'support' => 'HelpDesk',
@@ -53,7 +54,7 @@ return [
         'main' => [
             ['key' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'bi-house-door-fill', 'route' => 'dashboard'],
             ['key' => 'deals', 'label' => 'Deals', 'icon' => 'bi-briefcase-fill', 'route' => 'deals.index'],
-            ['key' => 'contacts', 'label' => 'Contacts', 'icon' => 'bi-person-lines-fill', 'route' => 'contacts.index'],
+            ['key' => 'contacts', 'label' => 'Prospects', 'icon' => 'bi-person-lines-fill', 'route' => 'contacts.index'],
             ['key' => 'finance.payments', 'label' => 'Finance Payments', 'icon' => 'bi-cash-coin', 'route' => 'finance.payments.index'],
         ],
         'modules' => [
@@ -63,6 +64,7 @@ return [
                 'icon' => 'bi-megaphone-fill',
                 'children' => [
                     ['key' => 'marketing.social-media', 'label' => 'Social Media', 'icon' => 'bi-facebook', 'route' => 'marketing.social-media'],
+                    ['key' => 'marketing.whatsapp', 'label' => 'WhatsApp', 'icon' => 'bi-whatsapp', 'route' => 'marketing.whatsapp'],
                     ['key' => 'marketing.campaigns', 'label' => 'Campaigns', 'icon' => 'bi-megaphone', 'route' => 'marketing.campaigns.index'],
                     ['key' => 'marketing.broadcast', 'label' => 'Email & SMS broadcast', 'icon' => 'bi-broadcast', 'route' => 'marketing.broadcast'],
                     ['key' => 'leads', 'label' => 'Leads', 'icon' => 'bi-table', 'route' => 'leads.index'],

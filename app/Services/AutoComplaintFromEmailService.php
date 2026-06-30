@@ -9,17 +9,17 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Auto-create complaint in Complaint Register from inbound email (IRA compliance).
- * Runs independently of ticket creation - creates complaints for client emails even
- * when contact resolution fails or ticket auto-creation is disabled.
+ * Uses content classification so general inquiries and automated mail are not registered.
  */
 class AutoComplaintFromEmailService
 {
     public function __construct(
-        protected CrmService $crm
+        protected CrmService $crm,
+        protected ComplaintClassificationService $classifier,
     ) {}
 
     /**
-     * Process a stored inbound email: create complaint if from external client.
+     * Process a stored inbound email: create complaint if from external client and content qualifies.
      *
      * @return \App\Models\Complaint|null
      */
@@ -44,11 +44,21 @@ class AutoComplaintFromEmailService
             return null;
         }
 
-        if (! $this->isAllowedSenderDomain($fromAddress)) {
-            return null; // Only Gmail, Yahoo, Hotmail
+        if ($this->emailAlreadyHasComplaint($emailId)) {
+            return null;
         }
 
-        if ($this->emailAlreadyHasComplaint($emailId)) {
+        $subject = trim($email->subject ?? '');
+        $body = static::extractClearComplaintText($email->body_text ?? '');
+        $assessment = $this->classifier->assess($subject, $body, 'Email', $fromAddress);
+
+        if (! $assessment['is_complaint']) {
+            Log::debug('AutoComplaintFromEmailService: skipped non-complaint email', [
+                'email_id' => $emailId,
+                'score' => $assessment['score'],
+                'reason' => $assessment['reason'],
+            ]);
+
             return null;
         }
 
@@ -68,6 +78,8 @@ class AutoComplaintFromEmailService
                 $description = trim($description) . "\n\nRelated policy: " . trim($policyNumber);
             }
 
+            $nature = $assessment['suggested_nature'] ?? ($config['nature'] ?? 'Other');
+
             $complaint = Complaint::create([
                 'complaint_ref' => Complaint::generateRef(),
                 'date_received' => now()->toDateString(),
@@ -76,10 +88,13 @@ class AutoComplaintFromEmailService
                 'complainant_email' => $fromAddress,
                 'contact_id' => $contactId,
                 'policy_number' => $policyNumber,
-                'nature' => $config['nature'] ?? 'Other',
+                'nature' => $nature,
                 'description' => $description,
                 'source' => 'Email',
                 'status' => 'Received',
+                'register_status' => $assessment['register_status'],
+                'classification_score' => $assessment['score'],
+                'classification_reason' => $assessment['reason'],
                 'priority' => $config['priority'] ?? 'Medium',
             ]);
 
@@ -89,11 +104,17 @@ class AutoComplaintFromEmailService
                     ->update(['complaint_id' => $complaint->id]);
             }
 
-            Log::info('AutoComplaintFromEmailService: created complaint', ['complaint_id' => $complaint->id, 'email_id' => $emailId]);
+            Log::info('AutoComplaintFromEmailService: created complaint', [
+                'complaint_id' => $complaint->id,
+                'email_id' => $emailId,
+                'register_status' => $assessment['register_status'],
+                'score' => $assessment['score'],
+            ]);
 
             return $complaint;
         } catch (\Throwable $e) {
             Log::error('AutoComplaintFromEmailService: failed', ['email_id' => $emailId, 'error' => $e->getMessage()]);
+
             return null;
         }
     }
@@ -118,6 +139,7 @@ class AutoComplaintFromEmailService
                 return true;
             }
         }
+
         return false;
     }
 
@@ -127,6 +149,7 @@ class AutoComplaintFromEmailService
             return false;
         }
         $email = DB::connection('vtiger')->table('mail_manager_emails')->where('id', $emailId)->first();
+
         return $email && $email->complaint_id !== null;
     }
 
@@ -142,6 +165,7 @@ class AutoComplaintFromEmailService
                 $policyNumber = $fullContact && ! empty($fullContact->policy_number ?? '')
                     ? trim((string) $fullContact->policy_number)
                     : null;
+
                 return ['contact_id' => (int) $contact->contactid, 'policy_number' => $policyNumber];
             }
 
@@ -158,12 +182,14 @@ class AutoComplaintFromEmailService
 
             if ($contactId && app()->bound(ErpClientService::class)) {
                 $policyNumber = $this->getPolicyFromErp($email);
+
                 return ['contact_id' => $contactId, 'policy_number' => $policyNumber];
             }
 
             return $contactId ? ['contact_id' => $contactId, 'policy_number' => null] : null;
         } catch (\Throwable $e) {
             Log::debug('AutoComplaintFromEmailService: contact resolve failed', ['email' => $email, 'error' => $e->getMessage()]);
+
             return null;
         }
     }
@@ -177,6 +203,7 @@ class AutoComplaintFromEmailService
                 return $v;
             }
         }
+
         return null;
     }
 
@@ -244,6 +271,7 @@ class AutoComplaintFromEmailService
 
         $result = implode("\n", $clear);
         $result = preg_replace("/\n{3,}/", "\n\n", $result);
+
         return \Illuminate\Support\Str::limit(trim($result), 5000);
     }
 
@@ -267,6 +295,7 @@ class AutoComplaintFromEmailService
             }
             $cleanBody = static::extractClearComplaintText($body);
             $lines = array_filter([$subject, '', $cleanBody]);
+
             return trim(implode("\n", $lines));
         }
 

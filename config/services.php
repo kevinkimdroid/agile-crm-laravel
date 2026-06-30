@@ -70,11 +70,12 @@ return [
     |--------------------------------------------------------------------------
     | Social Media Webhook URLs (for platform developer consoles)
     |--------------------------------------------------------------------------
-    | Meta: use the same /webhooks/social/meta URL for Facebook Page + Instagram.
+    | Meta: use the same /webhooks/social/meta URL for Facebook Page + Instagram + WhatsApp.
     */
     'social_webhooks' => [
         'facebook' => env('SOCIAL_WEBHOOK_FACEBOOK', rtrim((string) env('APP_URL', 'http://localhost'), '/') . '/webhooks/social/meta'),
         'instagram' => env('SOCIAL_WEBHOOK_INSTAGRAM', rtrim((string) env('APP_URL', 'http://localhost'), '/') . '/webhooks/social/meta'),
+        'whatsapp' => env('SOCIAL_WEBHOOK_WHATSAPP', rtrim((string) env('APP_URL', 'http://localhost'), '/') . '/webhooks/social/meta'),
         'tiktok' => env('SOCIAL_WEBHOOK_TIKTOK', rtrim((string) env('APP_URL', 'http://localhost'), '/') . '/webhooks/social/ingest'),
         'twitter' => env('SOCIAL_WEBHOOK_TWITTER', rtrim((string) env('APP_URL', 'http://localhost'), '/') . '/webhooks/social/ingest'),
         'google' => env('SOCIAL_WEBHOOK_GOOGLE', rtrim((string) env('APP_URL', 'http://localhost'), '/') . '/webhooks/social/ingest'),

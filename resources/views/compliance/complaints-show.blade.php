@@ -32,7 +32,7 @@
         <div class="app-card mb-4">
             <div class="p-4">
                 <h6 class="text-uppercase small fw-bold mb-3" style="color:var(--agile-primary);letter-spacing:0.08em">Complaint Details</h6>
-                <p class="mb-0" style="white-space:pre-wrap;">{{ e($complaint->description) }}</p>
+                <p class="mb-0" style="white-space:pre-wrap;">{{ e($cleanDescription ?? \App\Services\AutoComplaintFromEmailService::cleanDescriptionForExport($complaint->description)) }}</p>
             </div>
         </div>
         @if($complaint->resolution_notes)
@@ -61,10 +61,32 @@
                     <tr><td class="text-muted py-1">Status</td><td><span class="badge bg-{{ in_array($complaint->status, ['Resolved','Closed']) ? 'success' : 'warning' }}">{{ $complaint->status }}</span></td></tr>
                     <tr><td class="text-muted py-1">Priority</td><td>{{ $complaint->priority ?: '—' }}</td></tr>
                     <tr><td class="text-muted py-1">Assigned To</td><td>{{ $complaint->assigned_to ?: '—' }}</td></tr>
+                    @if($complaint->register_status ?? null)
+                    <tr><td class="text-muted py-1">Register type</td><td>{{ \App\Models\Complaint::REGISTER_STATUSES[$complaint->register_status] ?? $complaint->register_status }}</td></tr>
+                    @endif
+                    @if($complaint->classification_score)
+                    <tr><td class="text-muted py-1">Detection score</td><td>{{ $complaint->classification_score }}% <span class="text-muted small">{{ $complaint->classification_reason }}</span></td></tr>
+                    @endif
                 </table>
+                @if(($complaint->register_status ?? 'active') !== 'active')
+                <div class="d-flex flex-wrap gap-2 mt-3 pt-3 border-top">
+                    <form method="POST" action="{{ route('compliance.complaints.register-status', $complaint) }}">
+                        @csrf
+                        <input type="hidden" name="register_status" value="active">
+                        <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-check2 me-1"></i>Confirm as complaint</button>
+                    </form>
+                    @if(($complaint->register_status ?? '') !== 'excluded')
+                    <form method="POST" action="{{ route('compliance.complaints.register-status', $complaint) }}" onsubmit="return confirm('Remove from complaint register?')">
+                        @csrf
+                        <input type="hidden" name="register_status" value="excluded">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-lg me-1"></i>Not a complaint</button>
+                    </form>
+                    @endif
+                </div>
+                @endif
                 @if($complaint->contact_id && ($contact ?? null))
                     <div class="mt-3 pt-3 border-top">
-                        <a href="{{ route('contacts.show', $complaint->contact_id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-person me-1"></i>View Contact</a>
+                        <a href="{{ route('contacts.show', $complaint->contact_id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-person me-1"></i>View Prospect</a>
                     </div>
                 @endif
             </div>

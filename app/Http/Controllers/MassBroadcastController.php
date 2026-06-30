@@ -8,6 +8,7 @@ use App\Services\BroadcastSendHistoryService;
 use App\Services\CrmService;
 use App\Services\ErpClientService;
 use App\Services\MassBroadcastService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -536,6 +537,53 @@ class MassBroadcastController extends Controller
         ]);
     }
 
+    public function storeTemplate(Request $request): JsonResponse
+    {
+        $channel = (string) $request->input('channel', 'email');
+
+        if ($channel === 'sms') {
+            $validated = $request->validate([
+                'template_name' => 'required|string|max:255',
+                'description' => 'nullable|string|max:500',
+                'body' => 'required|string|max:1600',
+            ]);
+            $template = EmailTemplate::create([
+                'template_name' => $validated['template_name'],
+                'subject' => $validated['template_name'],
+                'description' => $validated['description'] ?? null,
+                'module_name' => 'Broadcast SMS',
+                'body' => $validated['body'],
+            ]);
+        } else {
+            $validated = $request->validate([
+                'template_name' => 'required|string|max:255',
+                'subject' => 'required|string|max:255',
+                'description' => 'nullable|string|max:500',
+                'body' => 'nullable|string|max:65535',
+                'module_name' => 'nullable|in:Broadcast,Marketing',
+            ]);
+            $template = EmailTemplate::create([
+                'template_name' => $validated['template_name'],
+                'subject' => $validated['subject'],
+                'description' => $validated['description'] ?? null,
+                'module_name' => $validated['module_name'] ?? 'Broadcast',
+                'body' => $validated['body'] ?? '',
+            ]);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'template' => [
+                'id' => $template->id,
+                'template_name' => $template->template_name,
+                'subject' => (string) ($template->subject ?? ''),
+                'body' => (string) ($template->body ?? ''),
+                'description' => (string) ($template->description ?? ''),
+                'module_name' => (string) ($template->module_name ?? ''),
+            ],
+        ]);
+    }
+
     public function send(
         Request $request,
         MassBroadcastService $broadcast,
@@ -641,7 +689,7 @@ class MassBroadcastController extends Controller
                 return redirect()
                     ->route('marketing.broadcast', $back)
                     ->withInput()
-                    ->with('error', 'No contacts match the selected client type filter (or all rows from the file were excluded).');
+                    ->with('error', 'No prospects match the selected client type filter (or all rows from the file were excluded).');
             }
         }
 

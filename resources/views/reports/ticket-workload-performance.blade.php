@@ -115,6 +115,7 @@
                 <div class="col-6 col-md-4 d-flex flex-wrap gap-2">
                     <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Apply</button>
                     <a href="{{ route('reports.export.ticket-workload-performance', ['date_from' => $dateFrom, 'date_to' => $dateTo, 'target' => $target, 'format' => 'xlsx']) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Excel</a>
+                    <a href="{{ route('reports.export.ticket-workload-performance', ['date_from' => $dateFrom, 'date_to' => $dateTo, 'target' => $target, 'format' => 'pdf']) }}" class="btn btn-outline-danger btn-sm"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</a>
                     <a href="{{ route('reports.export.ticket-workload-performance', ['date_from' => $dateFrom, 'date_to' => $dateTo, 'target' => $target, 'format' => 'csv']) }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-filetype-csv me-1"></i>CSV</a>
                 </div>
             </form>

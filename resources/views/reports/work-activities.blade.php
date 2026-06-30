@@ -19,8 +19,14 @@
             <a href="{{ route('reports.export.work-activities', array_merge(request()->query(), ['scope' => 'summary', 'format' => 'xlsx'])) }}" class="btn btn-success btn-sm">
                 <i class="bi bi-file-earmark-excel me-1"></i>Summary (Excel)
             </a>
+            <a href="{{ route('reports.export.work-activities', array_merge(request()->query(), ['scope' => 'summary', 'format' => 'pdf'])) }}" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-file-earmark-pdf me-1"></i>Summary (PDF)
+            </a>
             <a href="{{ route('reports.export.work-activities', array_merge(request()->query(), ['scope' => 'detail', 'format' => 'xlsx'])) }}" class="btn btn-primary btn-sm">
                 <i class="bi bi-file-earmark-spreadsheet me-1"></i>Detail (Excel)
+            </a>
+            <a href="{{ route('reports.export.work-activities', array_merge(request()->query(), ['scope' => 'detail', 'format' => 'pdf'])) }}" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-file-earmark-pdf me-1"></i>Detail (PDF)
             </a>
             <a href="{{ route('reports.export.work-activities', array_merge(request()->query(), ['scope' => 'detail', 'format' => 'csv'])) }}" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-download me-1"></i>Detail (CSV)
@@ -182,6 +188,9 @@
             <a href="{{ route('reports.export.work-activities', array_merge(request()->query(), ['scope' => 'detail', 'format' => 'xlsx'])) }}" class="btn btn-success btn-sm">
                 <i class="bi bi-file-earmark-excel me-1"></i>Export to Excel
             </a>
+            <a href="{{ route('reports.export.work-activities', array_merge(request()->query(), ['scope' => 'detail', 'format' => 'pdf'])) }}" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-file-earmark-pdf me-1"></i>Export to PDF
+            </a>
             <a href="{{ route('reports.export.work-activities', array_merge(request()->query(), ['scope' => 'detail', 'format' => 'csv'])) }}" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-download me-1"></i>CSV
             </a>
@@ -204,7 +213,7 @@
                         <th>Source</th>
                         <th>Type</th>
                         <th>Subject / update</th>
-                        <th>Contact</th>
+                        <th>Prospect</th>
                         <th>Ticket</th>
                         <th>Status</th>
                         <th>When</th>

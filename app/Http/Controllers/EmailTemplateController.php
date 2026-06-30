@@ -48,11 +48,16 @@ class EmailTemplateController extends Controller
         ]);
     }
 
-    public function create()
+    public function create(Request $request)
     {
+        $module = (string) $request->query('module', '');
+        $prefillModule = in_array($module, $this->modules, true) ? $module : null;
+
         return view('tools.email-templates-form', [
             'template' => null,
             'modules' => $this->modules,
+            'prefillModule' => $prefillModule,
+            'returnTo' => $request->query('return') === 'broadcast' ? route('marketing.broadcast') : null,
         ]);
     }
 
@@ -60,16 +65,31 @@ class EmailTemplateController extends Controller
     {
         $validated = $request->validate([
             'template_name' => 'required|string|max:255',
-            'subject' => 'required|string|max:255',
+            'subject' => 'nullable|string|max:255',
             'description' => 'nullable|string|max:500',
             'module_name' => 'nullable|string|max:128',
             'body' => 'nullable|string',
+            'return_to' => 'nullable|url',
         ]);
 
+        $isSms = ($validated['module_name'] ?? '') === 'Broadcast SMS';
+        if (! $isSms && empty(trim((string) ($validated['subject'] ?? '')))) {
+            return back()->withInput()->withErrors(['subject' => 'Subject is required for email templates.']);
+        }
+        if ($isSms && empty(trim((string) ($validated['subject'] ?? '')))) {
+            $validated['subject'] = $validated['template_name'];
+        }
+
+        unset($validated['return_to']);
         EmailTemplate::create($validated);
 
+        $returnTo = $request->input('return_to');
+        if (is_string($returnTo) && $returnTo !== '' && str_starts_with($returnTo, url('/'))) {
+            return redirect()->to($returnTo)->with('success', ($isSms ? 'SMS' : 'Email') . ' template created — select it in Step 2.');
+        }
+
         return redirect()->route('tools.email-templates')
-            ->with('success', 'Email template created successfully.');
+            ->with('success', 'Template created successfully.');
     }
 
     public function edit(EmailTemplate $emailTemplate)

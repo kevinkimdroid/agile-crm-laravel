@@ -72,7 +72,7 @@
                     @endif
                 </div>
                 <div class="col-md-6 position-relative" id="contactSearchWrapper">
-                    <label class="form-label fw-semibold">Client / Contact <span class="text-danger">*</span></label>
+                    <label class="form-label fw-semibold">Prospect / Client <span class="text-danger">*</span></label>
                     <div class="input-group contact-search-input-group">
                         <span class="input-group-text bg-white border-end-0"><i class="bi bi-person-fill text-muted"></i></span>
                         <input type="text" id="contactSearch" class="form-control" placeholder="Type name or policy number to search" autocomplete="off" value="{{ old('contact_display', $contactDisplay ?? '') }}" aria-autocomplete="list" aria-expanded="false" aria-controls="contactDropdown" role="combobox">
@@ -218,7 +218,7 @@
             dropdown.innerHTML = '<div class="list-group-item text-muted py-3 text-center"><span class="spinner-border spinner-border-sm me-2"></span>Searching...</div>';
             dropdown.style.display = 'block';
         } else if (noResults || (currentItems.length === 0 && (searchInput.value || '').trim().length >= 1)) {
-            dropdown.innerHTML = '<div class="list-group-item text-muted py-3 text-center">No contacts found. Try a different search or <a href="{{ route("contacts.create") }}">add a new client</a>.</div>';
+            dropdown.innerHTML = '<div class="list-group-item text-muted py-3 text-center">No prospects found. Try a different search or <a href="{{ route("contacts.create") }}">add a new prospect</a>.</div>';
             dropdown.style.display = 'block';
         } else if (currentItems.length) {
             dropdown.innerHTML = currentItems.slice(0, 60).map((c, i) => {

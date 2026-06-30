@@ -1,13 +1,13 @@
 @extends('layouts.app')
 
-@section('title', ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Contacts' : 'Clients')
+@section('title', ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Prospects' : 'Clients')
 
 @section('content')
 <nav class="breadcrumb-nav mb-3">
     @if(($listRoute ?? 'support.customers') === 'contacts.index')
     <a href="{{ route('dashboard') }}" class="text-muted small text-decoration-none">Home</a>
     <span class="text-muted mx-2">/</span>
-    <span class="text-dark small fw-semibold">Contacts</span>
+    <span class="text-dark small fw-semibold">Prospects</span>
     @else
     <a href="{{ route('support') }}" class="text-muted small text-decoration-none">Support</a>
     <span class="text-muted mx-2">/</span>
@@ -16,13 +16,30 @@
 </nav>
 <div class="page-header d-flex flex-wrap justify-content-between align-items-start gap-3">
     <div>
-        <h1 class="page-title">{{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Contacts' : 'Clients' }}</h1>
-        <p class="page-subtitle">{{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Manage your customer and prospect contacts.' : 'Manage your clients and policy assignments.' }}</p>
+        <h1 class="page-title">{{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Prospects' : 'Clients' }}</h1>
+        <p class="page-subtitle">{{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Manage sales prospects before they become clients.' : 'Manage your clients and policy assignments.' }}</p>
     </div>
     <a href="{{ route('contacts.create') }}" class="btn btn-primary-custom">
-        <i class="bi bi-plus-lg me-2"></i>Add {{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Contact' : 'Client' }}
+        <i class="bi bi-plus-lg me-2"></i>Add {{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Prospect' : 'Client' }}
     </a>
 </div>
+
+@if (session('error'))
+<div class="alert alert-danger alert-dismissible fade show d-flex align-items-center" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <div>{{ session('error') }}</div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+@endif
+
+@if (user_is_limited_to_assigned_clients() && ($total ?? 0) === 0 && !($clientsError ?? null))
+<div class="alert alert-info alert-dismissible fade show" role="alert">
+    <i class="bi bi-info-circle-fill me-2"></i>
+    Your profile is limited to assigned clients only. An administrator must assign policy numbers to you under
+    <strong>Settings → Client Access</strong>.
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+@endif
 
 @if ($clientsError ?? null)
 @php
@@ -69,61 +86,77 @@
 @endif
 
 @if(in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http']))
-{{-- Life System filter pills --}}
-@php $erpClientSvc = app(\App\Services\ErpClientService::class); @endphp
+@php
+    $erpClientSvc = app(\App\Services\ErpClientService::class);
+    $allowedClientSegments = $allowedClientSegments ?? allowed_client_segments();
+    $segmentLabels = config('clients_ui.tab_labels', []);
+    $showAllClientsPill = count($allowedClientSegments) > 1;
+@endphp
+@if(!empty($allowedClientSegments))
 <div class="clients-system-pills mb-3">
-    <a href="{{ route($listRoute ?? 'support.customers', collect(request()->query())->except('system')->all()) }}" class="clients-system-pill {{ !($system ?? '') ? 'active' : '' }}">All</a>
-    <a href="{{ route($listRoute ?? 'support.customers', array_merge(request()->query(), ['system' => 'group'])) }}" class="clients-system-pill clients-system-group {{ ($system ?? '') === 'group' ? 'active' : '' }}"><i class="bi bi-people-fill me-1"></i>{{ config('clients_ui.tab_labels.group') }}</a>
-    <a href="{{ route($listRoute ?? 'support.customers', array_merge(request()->query(), ['system' => 'individual'])) }}" class="clients-system-pill clients-system-individual {{ ($system ?? '') === 'individual' ? 'active' : '' }}"><i class="bi bi-person-fill me-1"></i>{{ config('clients_ui.tab_labels.individual') }}</a>
-    <a href="{{ route($listRoute ?? 'support.customers', array_merge(request()->query(), ['system' => 'mortgage'])) }}" class="clients-system-pill clients-system-mortgage {{ ($system ?? '') === 'mortgage' ? 'active' : '' }}"><i class="bi bi-house-fill me-1"></i>{{ config('clients_ui.tab_labels.mortgage') }}</a>
-    <a href="{{ route($listRoute ?? 'support.customers', array_merge(request()->query(), ['system' => 'group_pension'])) }}" class="clients-system-pill clients-system-group-pension {{ ($system ?? '') === 'group_pension' ? 'active' : '' }}"><i class="bi bi-piggy-bank-fill me-1"></i>{{ config('clients_ui.tab_labels.group_pension') }}</a>
+    @if($showAllClientsPill)
+    <a href="{{ route($listRoute ?? 'support.customers', array_merge(collect(request()->query())->except('system')->all(), ['all' => 1])) }}" class="clients-system-pill {{ !($system ?? '') && request()->boolean('all') ? 'active' : '' }}">All</a>
+    @endif
+    @if(in_array('group', $allowedClientSegments, true))
+    <a href="{{ route($listRoute ?? 'support.customers', array_merge(collect(request()->query())->except('all')->all(), ['system' => 'group'])) }}" class="clients-system-pill clients-system-group {{ ($system ?? '') === 'group' ? 'active' : '' }}"><i class="bi bi-people-fill me-1"></i>{{ $segmentLabels['group'] ?? config('clients_ui.tab_labels.group') }}</a>
+    @endif
+    @if(in_array('individual', $allowedClientSegments, true))
+    <a href="{{ route($listRoute ?? 'support.customers', array_merge(collect(request()->query())->except('all')->all(), ['system' => 'individual'])) }}" class="clients-system-pill clients-system-individual {{ ($system ?? '') === 'individual' ? 'active' : '' }}"><i class="bi bi-person-fill me-1"></i>{{ $segmentLabels['individual'] ?? config('clients_ui.tab_labels.individual') }}</a>
+    @endif
+    @if(in_array('mortgage', $allowedClientSegments, true))
+    <a href="{{ route($listRoute ?? 'support.customers', array_merge(collect(request()->query())->except('all')->all(), ['system' => 'mortgage'])) }}" class="clients-system-pill clients-system-mortgage {{ ($system ?? '') === 'mortgage' ? 'active' : '' }}"><i class="bi bi-house-fill me-1"></i>{{ $segmentLabels['mortgage'] ?? config('clients_ui.tab_labels.mortgage') }}</a>
+    @endif
+    @if(in_array('group_pension', $allowedClientSegments, true))
+    <a href="{{ route($listRoute ?? 'support.customers', array_merge(collect(request()->query())->except('all')->all(), ['system' => 'group_pension'])) }}" class="clients-system-pill clients-system-group-pension {{ ($system ?? '') === 'group_pension' ? 'active' : '' }}"><i class="bi bi-piggy-bank-fill me-1"></i>{{ $segmentLabels['group_pension'] ?? config('clients_ui.tab_labels.group_pension') }}</a>
+    @endif
 </div>
 @endif
+@endif
 
-{{-- Search & Stats --}}
-<div class="row g-4 mb-4">
-    <div class="col-lg-8">
-        <form method="GET" action="{{ route($listRoute ?? 'support.customers') }}" class="clients-search-form" id="customersSearchForm">
-            @if($system ?? '')<input type="hidden" name="system" value="{{ $system }}">@endif
-            <div class="input-group clients-search-input-group">
-                <span class="input-group-text"><i class="bi bi-search text-muted"></i></span>
-                <input type="text" name="search" id="customersSearchInput" class="form-control" placeholder="{{ ($system ?? '') === 'group' && in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http']) ? 'Search by policy number (e.g. GEMPPP0334)...' : (in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http']) ? 'Search by policy number, ID number, phone, life assured...' : 'Search by name, email, or mobile...') }}" value="{{ $search ?? '' }}" autocomplete="off">
-                <button type="submit" class="btn btn-primary-custom">Search</button>
-            </div>
-        </form>
-    </div>
-    <div class="col-lg-4">
-        <div class="clients-stat-card">
-            @php
-                $clientsStatTotal = ($clientsGrandTotal !== null && ! ($system ?? '') && ($clientsSource ?? '') === 'erp_http')
-                    ? (int) $clientsGrandTotal
-                    : (int) ($total ?? 0);
-            @endphp
-            <span class="clients-stat-value" id="clientsTotalValue">{{ number_format($clientsStatTotal) }}</span>
-            <span class="clients-stat-label">
-                @if(($system ?? '') === 'group')
-                    Total {{ config('clients_ui.tab_labels.group') }} Clients
-                @elseif(($system ?? '') === 'individual')
-                    Total {{ config('clients_ui.tab_labels.individual') }} Clients
-                @elseif(($system ?? '') === 'mortgage')
-                    Total {{ config('clients_ui.tab_labels.mortgage') }} Clients
-                @elseif(($system ?? '') === 'group_pension')
-                    Total {{ config('clients_ui.tab_labels.group_pension') }} Clients
-                @else
-                    Total {{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Contacts' : 'Clients' }}
-                @endif
-            </span>
-        </div>
-    </div>
-</div>
+@php
+    $isErpList = in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http']);
+    $columnFilters = $columnFilters ?? [
+        'policy' => request('f_policy', ''),
+        'prepared' => request('f_prepared', ''),
+        'intermediary' => request('f_intermediary', ''),
+        'name' => request('f_name', request('search', '')),
+        'product' => request('f_product', ''),
+        'status' => request('f_status', ''),
+    ];
+    $clientsStatTotal = ($clientsGrandTotal !== null && ! ($system ?? '') && ($clientsSource ?? '') === 'erp_http')
+        ? (int) $clientsGrandTotal
+        : (int) ($clientsGrandTotal ?? $total ?? 0);
+    $tableColspan = $isErpList ? 8 : (in_array($clientsSource ?? 'crm', ['erp']) ? 6 : 5);
+@endphp
 
 {{-- Clients Table --}}
 <div class="clients-table-card">
+    <div class="clients-table-toolbar">
+        <span class="clients-table-filter-status" id="clientsFilterStatus">Filter by column — type at least 2 characters</span>
+        <div class="clients-table-toolbar-meta">
+            <span class="clients-toolbar-stat">
+                <span class="clients-toolbar-stat-value" id="clientsTotalValue">{{ number_format($clientsStatTotal) }}</span>
+                <span class="clients-toolbar-stat-label">
+                    @if(($system ?? '') === 'group')
+                        {{ config('clients_ui.tab_labels.group') }}
+                    @elseif(($system ?? '') === 'individual')
+                        {{ config('clients_ui.tab_labels.individual') }}
+                    @elseif(($system ?? '') === 'mortgage')
+                        {{ config('clients_ui.tab_labels.mortgage') }}
+                    @elseif(($system ?? '') === 'group_pension')
+                        {{ config('clients_ui.tab_labels.group_pension') }}
+                    @else
+                        {{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Prospects' : 'Clients' }}
+                    @endif
+                </span>
+            </span>
+        </div>
+    </div>
     <div class="clients-table-wrapper">
         <table class="clients-table">
             <thead>
-                <tr>
-                    @if(in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http']))
+                @if($isErpList)
+                <tr class="clients-table-head-labels">
                     <th>Policy Number</th>
                     <th>Who Prepared Policy</th>
                     <th>Intermediary (Agent)</th>
@@ -132,7 +165,23 @@
                     <th>System</th>
                     <th>Policy Status</th>
                     <th class="text-end">Actions</th>
-                    @else
+                </tr>
+                <tr class="clients-table-head-filters">
+                    <th><input type="search" class="clients-col-filter" data-col-filter="policy" placeholder="Policy…" value="{{ $columnFilters['policy'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="prepared" placeholder="Prepared by…" value="{{ $columnFilters['prepared'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="intermediary" placeholder="Agent…" value="{{ $columnFilters['intermediary'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="name" placeholder="Name…" value="{{ $columnFilters['name'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="product" placeholder="Product…" value="{{ $columnFilters['product'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
+                    <th><span class="clients-col-filter-spacer" aria-hidden="true"></span></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="status" placeholder="Status…" value="{{ $columnFilters['status'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
+                    <th class="text-end">
+                        <button type="button" class="clients-clear-filters" id="clearColumnFilters" title="Clear all filters">
+                            <i class="bi bi-x-circle"></i>
+                        </button>
+                    </th>
+                </tr>
+                @else
+                <tr class="clients-table-head-labels">
                     <th>Name</th>
                     <th>Email</th>
                     <th>Mobile</th>
@@ -141,13 +190,27 @@
                     @endif
                     <th>Assigned To</th>
                     <th class="text-end">Actions</th>
-                    @endif
                 </tr>
+                <tr class="clients-table-head-filters">
+                    <th><input type="search" class="clients-col-filter" data-col-filter="name" placeholder="Name…" value="{{ $columnFilters['name'] ?? '' }}" autocomplete="off"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="email" placeholder="Email…" value="{{ request('f_email', '') }}" autocomplete="off"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="mobile" placeholder="Mobile…" value="{{ request('f_mobile', '') }}" autocomplete="off"></th>
+                    @if(in_array($clientsSource ?? 'crm', ['erp']))
+                    <th><input type="search" class="clients-col-filter" data-col-filter="product" placeholder="Product…" value="{{ $columnFilters['product'] ?? '' }}" autocomplete="off"></th>
+                    @endif
+                    <th><span class="clients-col-filter-spacer" aria-hidden="true"></span></th>
+                    <th class="text-end">
+                        <button type="button" class="clients-clear-filters" id="clearColumnFilters" title="Clear all filters">
+                            <i class="bi bi-x-circle"></i>
+                        </button>
+                    </th>
+                </tr>
+                @endif
             </thead>
             <tbody id="clientsTableBody">
                 @if($clientsLazyLoad ?? false)
                 <tr id="clientsLoadingRow">
-                    <td colspan="{{ in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http']) ? 8 : 7 }}" class="text-center py-5">
+                    <td colspan="{{ $tableColspan }}" class="text-center py-5">
                         <div class="clients-empty">
                             <div class="spinner-border text-primary mb-2" role="status"></div>
                             <p class="text-muted mb-0">Loading clients...</p>
@@ -160,17 +223,19 @@
                         $rowPolicy = $customer->policy_no ?? $customer->policy_number ?? $customer->ipol_policy_no ?? $customer->pol_policy_no ?? (is_array($customer) ? ($customer['policy_no'] ?? $customer['policy_number'] ?? $customer['ipol_policy_no'] ?? $customer['pol_policy_no'] ?? '') : '');
                         $rowIdentifier = trim((string) $rowPolicy);
                     @endphp
-                    <tr>
+                    <tr @if($rowIdentifier && ($customer->_erp_source ?? false) && in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http'])) class="clients-row-open" data-client-open="{{ route('support.clients.show', array_filter(['policy' => $rowIdentifier, 'system' => $system ?? null])) }}" @endif>
                         @if(($customer->_erp_source ?? false) && in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http']))
                         <td>
-                            <a href="{{ route('support.serve-client', ['search' => $rowIdentifier]) }}" class="clients-policy-link">
+                            <a href="{{ route('support.clients.show', array_filter(['policy' => $rowIdentifier, 'system' => $system ?? null])) }}" class="clients-policy-link">
                                 {{ $rowPolicy ?: '—' }}
                             </a>
                         </td>
                         <td>{{ $customer->pol_prepared_by ?? '—' }}</td>
                         <td>{{ Str::limit($customer->intermediary ?? '—', 25) }}</td>
                         <td>
-                            <span class="clients-name">{{ $customer->life_assur ?? $customer->client_name ?? '—' }}</span>
+                            <a href="{{ route('support.clients.show', array_filter(['policy' => $rowIdentifier, 'system' => $system ?? null])) }}" class="clients-name-link text-decoration-none">
+                                <span class="clients-name">{{ $customer->life_assur ?? $customer->client_name ?? '—' }}</span>
+                            </a>
                         </td>
                         <td class="clients-product">{{ Str::limit($customer->product ?? '—', 40) }}</td>
                         <td>
@@ -210,7 +275,7 @@
                                 @if(($customer->_erp_source ?? false))
                                 <span class="clients-name">{{ trim(($customer->firstname ?? '') . ' ' . ($customer->lastname ?? '')) ?: ($rowPolicy ?: '—') }}</span>
                                 @else
-                                <a href="{{ route('contacts.show', $customer->contactid) }}" class="clients-name-link">{{ trim(($customer->firstname ?? '') . ' ' . ($customer->lastname ?? '')) ?: '—' }}</a>
+                                <a href="{{ route('contacts.show', ['contact' => $customer->contactid, 'tab' => 'summary']) }}" class="clients-name-link">{{ trim(($customer->firstname ?? '') . ' ' . ($customer->lastname ?? '')) ?: '—' }}</a>
                                 @endif
                             </div>
                         </td>
@@ -235,19 +300,20 @@
                         <td><span class="text-muted small">{{ trim(($customer->owner_first ?? '') . ' ' . ($customer->owner_last ?? '')) ?: ($customer->owner_username ?? '—') ?: '—' }}</span></td>
                         <td class="text-end">
                             @if(($customer->_erp_source ?? false))
-                            <a href="{{ route('support.serve-client', ['search' => $rowPolicy]) }}" class="btn btn-sm clients-btn-serve"><i class="bi bi-person-plus"></i></a>
+                            <a href="{{ route('support.clients.show', array_filter(['policy' => $rowPolicy, 'system' => $system ?? null])) }}" class="btn btn-sm clients-btn-view" title="View full details"><i class="bi bi-eye"></i></a>
+                            <a href="{{ route('support.serve-client', ['search' => $rowPolicy]) }}" class="btn btn-sm clients-btn-serve" title="Serve client"><i class="bi bi-person-plus"></i></a>
                             @else
-                            <a href="{{ route('contacts.show', $customer->contactid) }}" class="btn btn-sm clients-btn-view"><i class="bi bi-eye"></i></a>
+                            <a href="{{ route('contacts.show', ['contact' => $customer->contactid, 'tab' => 'summary']) }}" class="btn btn-sm clients-btn-view"><i class="bi bi-eye"></i></a>
                             @endif
                         </td>
                         @endif
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="{{ in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http']) ? 8 : (in_array($clientsSource ?? 'crm', ['erp']) ? 6 : 5) }}" class="text-center py-5">
+                        <td colspan="{{ $tableColspan }}" class="text-center py-5">
                             <div class="clients-empty">
                                 <div class="clients-empty-icon"><i class="bi bi-people"></i></div>
-                                <h6 class="mt-3 mb-2">No {{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'contacts' : 'clients' }} found</h6>
+                                <h6 class="mt-3 mb-2">No {{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'prospects' : 'clients' }} found</h6>
                                 <p class="text-muted mb-3">
                                     @if($search ?? '')
                                     Try a different search or <a href="{{ route($listRoute ?? 'support.customers') }}">view all</a>.
@@ -255,7 +321,7 @@
                                     <br><a href="{{ route('support.clients.debug-api', ['policy' => $search, 'search' => $search, 'system' => 'group', 'debug' => '1']) }}" target="_blank" class="small">Debug API response</a>
                                     @endif
                                     @else
-                                    Get started by adding your first {{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'contact' : 'client' }}.
+                                    Get started by adding your first {{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'prospect' : 'client' }}.
                                     @if(in_array($clientsSource ?? 'crm', ['erp_http', 'erp_sync']) && in_array(($system ?? ''), ['group', 'mortgage', 'group_pension'], true))
                                     <br><span class="small text-muted">ERP list empty: confirm <code>erp-clients-api</code> is running and <code>ERP_CLIENTS_…_VIEW</code> matches Oracle.</span>
                                     <br><a href="{{ route('support.clients.debug-api', array_filter(['system' => $system ?? null])) }}" target="_blank" rel="noopener" class="small">Debug ERP API response</a>
@@ -263,7 +329,7 @@
                                     @endif
                                 </p>
                                 @if(!($search ?? ''))
-                                <a href="{{ route('contacts.create') }}" class="btn btn-primary-custom"><i class="bi bi-plus-lg me-1"></i>Add {{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Contact' : 'Client' }}</a>
+                                <a href="{{ route('contacts.create') }}" class="btn btn-primary-custom"><i class="bi bi-plus-lg me-1"></i>Add {{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Prospect' : 'Client' }}</a>
                                 @endif
                             </div>
                         </td>
@@ -278,6 +344,21 @@
         <span class="clients-pagination-info" id="clientsPaginationInfo">—</span>
         <nav id="clientsPaginationNav" aria-label="Clients pagination"></nav>
     </div>
+    @elseif ($isErpList)
+    <div class="clients-table-footer" id="clientsTableFooter" style="{{ ($customers->hasPages() || ($search ?? '')) ? '' : 'display:none' }}">
+        <span class="clients-pagination-info" id="clientsPaginationInfo">
+            @if ($customers->total() > 0)
+                Showing {{ $customers->firstItem() ?? 0 }}–{{ $customers->lastItem() ?? 0 }} of {{ number_format($customers->total()) }}
+            @else
+                —
+            @endif
+        </span>
+        <nav id="clientsPaginationNav" aria-label="Clients pagination">
+            @if ($customers->hasPages())
+                {{ $customers->withQueryString()->links('pagination::bootstrap-5') }}
+            @endif
+        </nav>
+    </div>
     @elseif ($customers->hasPages())
     <div class="clients-table-footer">
         <span class="clients-pagination-info">Showing {{ $customers->firstItem() ?? 0 }}–{{ $customers->lastItem() ?? 0 }} of {{ number_format($customers->total()) }}</span>
@@ -288,11 +369,35 @@
 
 <style>
 /* Clients page - modern, fast, presentable */
-.clients-search-input-group { border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(26, 70, 138, 0.08); border: 1px solid var(--agile-border); }
-.clients-search-input-group .input-group-text { background: #fff; border: none; padding: 0.75rem 1rem; }
-.clients-search-input-group .form-control { border: none; padding: 0.75rem 1rem; }
-.clients-search-input-group .form-control:focus { box-shadow: none; }
-.clients-search-input-group .btn { padding: 0.75rem 1.25rem; border-radius: 0 10px 10px 0; }
+.clients-table-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1.25rem;
+    background: #fff;
+    border-bottom: 1px solid var(--agile-border);
+}
+.clients-table-filter-status {
+    font-size: 0.82rem;
+    color: var(--agile-text-muted);
+}
+.clients-table-toolbar-meta { flex-shrink: 0; }
+.clients-toolbar-stat {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    padding: 0.45rem 0.85rem;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--agile-primary) 0%, var(--agile-primary-dark) 100%);
+    color: #fff;
+    min-width: 7rem;
+    text-align: right;
+    box-shadow: 0 4px 14px rgba(26, 70, 138, 0.18);
+}
+.clients-toolbar-stat-value { font-size: 1.25rem; font-weight: 700; line-height: 1.1; }
+.clients-toolbar-stat-label { font-size: 0.68rem; opacity: 0.92; text-transform: uppercase; letter-spacing: 0.04em; }
 
 .clients-stat-card {
     background: linear-gradient(135deg, var(--agile-primary) 0%, var(--agile-primary-dark) 100%);
@@ -310,6 +415,63 @@
     width: 100%; border-collapse: collapse; font-size: 0.9rem;
 }
 .clients-table thead { background: linear-gradient(180deg, #1e3a5f 0%, #1A468A 100%); color: #fff; }
+.clients-table-head-labels th {
+    padding: 0.85rem 0.75rem 0.45rem;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: none;
+    white-space: nowrap;
+}
+.clients-table-head-filters th {
+    padding: 0 0.75rem 0.85rem;
+    vertical-align: top;
+    border-bottom: 2px solid rgba(255,255,255,0.12);
+    background: linear-gradient(180deg, #1A468A 0%, #163a72 100%);
+}
+.clients-col-filter {
+    width: 100%;
+    min-width: 4.5rem;
+    max-width: 100%;
+    border: 1px solid rgba(255,255,255,0.22);
+    background: rgba(255,255,255,0.96);
+    border-radius: 8px;
+    padding: 0.38rem 0.55rem;
+    font-size: 0.78rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    color: #1e293b;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.clients-col-filter::placeholder { color: #94a3b8; font-size: 0.76rem; }
+.clients-col-filter:focus {
+    outline: none;
+    border-color: #fff;
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.45);
+}
+.clients-col-filter-active {
+    border-color: #bfdbfe;
+    background: #fff;
+}
+.clients-col-filter-spacer { display: block; height: 2rem; }
+.clients-clear-filters {
+    border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.15s;
+}
+.clients-clear-filters:hover { background: rgba(255,255,255,0.22); color: #fff; }
 .clients-table th {
     padding: 1rem 1.25rem; text-align: left; font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
 }
@@ -361,6 +523,8 @@
 .clients-avatar { width: 36px; height: 36px; border-radius: 10px; background: var(--agile-primary); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; flex-shrink: 0; }
 .clients-name-link { color: var(--agile-text); text-decoration: none; font-weight: 500; }
 .clients-name-link:hover { color: var(--agile-primary); }
+.clients-row-open { cursor: pointer; }
+.clients-row-open:hover { background: rgba(26, 70, 138, 0.04); }
 
 .clients-table-footer {
     padding: 1rem 1.25rem; background: #f8fafc; border-top: 1px solid var(--agile-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;
@@ -379,142 +543,410 @@
 .clients-detail-value { font-size: 0.95rem; color: var(--agile-text); font-weight: 500; }
 .clients-search-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.85); display: flex; align-items: center; justify-content: center; z-index: 10; border-radius: inherit; }
 .clients-search-overlay-inner { text-align: center; color: var(--agile-text-muted); font-size: 0.9rem; }
+.clients-table-card.is-filter-loading tbody { opacity: 0.55; transition: opacity 0.15s; }
 .clients-ajax-page { padding: 0.35rem 0.75rem; border-radius: 6px; text-decoration: none; color: var(--agile-primary); font-weight: 500; }
 .clients-ajax-page:hover { background: var(--agile-primary-muted); color: var(--agile-primary-dark); }
 </style>
 
 <script>
 (function() {
-    const form = document.getElementById('customersSearchForm');
-    const input = document.getElementById('customersSearchInput');
-    const tableCard = document.querySelector('.clients-table-card');
-    const submitBtn = form?.querySelector('button[type="submit"]');
-    if (form && input) {
-        let debounceTimer;
-        form.addEventListener('submit', function() {
-            if (tableCard) {
-                const existing = document.getElementById('clientsSearchOverlay');
-                if (existing) existing.remove();
-                const overlay = document.createElement('div');
-                overlay.className = 'clients-search-overlay';
-                overlay.innerHTML = '<div class="clients-search-overlay-inner"><div class="spinner-border text-primary mb-2" role="status"></div><div>Searching clients...</div></div>';
-                overlay.id = 'clientsSearchOverlay';
-                tableCard.appendChild(overlay);
-                if (submitBtn) {
-                    submitBtn.disabled = true;
-                    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Searching...';
-                }
-            }
-        });
-        input.addEventListener('input', function() {
-            clearTimeout(debounceTimer);
-            var val = (input.value || '').trim();
-            if (val.length >= 2) {
-                debounceTimer = setTimeout(function() { form.submit(); }, 800);
-            }
+    var apiUrl = @json(route('api.support.clients'));
+    var listUrl = @json(route($listRoute ?? 'support.customers'));
+    var serveUrl = @json(route('support.serve-client'));
+    var showUrl = @json(route('support.clients.show'));
+    var ticketUrl = @json(route('support.clients.create-ticket'));
+    var isErpList = @json($isErpList);
+    var tableColspan = @json($tableColspan);
+    var system = @json($system ?? '');
+    var showAllClients = @json(request()->boolean('all'));
+    var initialPage = {{ (int) ($page ?? 1) }};
+    var lazyLoad = @json($clientsLazyLoad ?? false);
+    var systemLabels = @json(config('clients_ui.tab_labels'));
+    var grandTotalOnAll = @json(($clientsGrandTotal !== null && ! ($system ?? '') && ($clientsSource ?? '') === 'erp_http'));
+    var filterKeys = isErpList
+        ? ['policy', 'prepared', 'intermediary', 'name', 'product', 'status']
+        : ['name', 'email', 'mobile', 'product'];
+
+    var statusEl = document.getElementById('clientsFilterStatus');
+    var tableCard = document.querySelector('.clients-table-card');
+    var tbody = document.getElementById('clientsTableBody');
+    var footer = document.getElementById('clientsTableFooter');
+    var paginationInfo = document.getElementById('clientsPaginationInfo');
+    var paginationNav = document.getElementById('clientsPaginationNav');
+    var totalEl = document.getElementById('clientsTotalValue');
+    var clearAllBtn = document.getElementById('clearColumnFilters');
+    var filterInputs = Array.prototype.slice.call(document.querySelectorAll('[data-col-filter]'));
+
+    var currentPage = initialPage;
+    var debounceTimer = null;
+    var localFilterTimer = null;
+    var fetchController = null;
+    var localBatch = [];
+    var batchFetchKey = '';
+    var perPage = 25;
+    var erpFilterKeys = ['policy', 'name', 'prepared', 'intermediary'];
+    var minFilterChars = 2;
+    var fetchDebounceMs = 600;
+    var localFilterDebounceMs = 150;
+
+    function erpQueryFromFilters(filters) {
+        var i, v;
+        for (i = 0; i < erpFilterKeys.length; i++) {
+            v = (filters[erpFilterKeys[i]] || '').trim();
+            if (v.length >= minFilterChars) return v;
+        }
+        return '';
+    }
+
+    function getBatchFetchKey(filters) {
+        return (system || '') + '|' + erpQueryFromFilters(filters).toLowerCase();
+    }
+
+    function filtersNeedMinChars(filters) {
+        return filterKeys.some(function(key) {
+            var v = (filters[key] || '').trim();
+            return v.length > 0 && v.length < minFilterChars;
         });
     }
-})();
-</script>
-@if($clientsLazyLoad ?? false)
-<script>
-(function() {
-    var apiUrl = '{{ route("api.support.clients") }}';
-    var serveUrl = '{{ route("support.serve-client") }}';
-    var showUrl = '{{ route("support.clients.show") }}';
-    var ticketUrl = '{{ route("support.clients.create-ticket") }}';
-    var search = @json($search ?? '');
-    var system = @json($system ?? '');
-    var initialPage = {{ (int) ($page ?? 1) }};
-    var listRoute = '{{ $listRoute ?? "support.customers" }}';
-    var systemLabels = @json(config('clients_ui.tab_labels'));
 
-    function esc(s) { var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
-    function loadClients(page) {
+    function rowMatchesFilters(row, filters) {
+        var map = {
+            policy: (row.policy_no || row.policy || '').toString(),
+            prepared: (row.pol_prepared_by || '').toString(),
+            intermediary: (row.intermediary || '').toString(),
+            name: (row.life_assur || '').toString(),
+            product: (row.product || '').toString(),
+            status: (row.status || '').toString()
+        };
+        var key, term, hay;
+        for (key in filters) {
+            if (!Object.prototype.hasOwnProperty.call(filters, key)) continue;
+            term = (filters[key] || '').trim();
+            if (!term) continue;
+            hay = (map[key] || '').toLowerCase();
+            if (hay.indexOf(term.toLowerCase()) === -1) return false;
+        }
+        return true;
+    }
+
+    function setLoading(loading) {
+        if (tableCard) tableCard.classList.toggle('is-filter-loading', !!loading);
+    }
+
+    function esc(s) {
+        var d = document.createElement('div');
+        d.textContent = s == null ? '' : String(s);
+        return d.innerHTML;
+    }
+
+    function parseApiResponse(r) {
+        return r.json().then(function(d) {
+            if (!r.ok) {
+                var msg = (d && d.error) ? d.error : ('Request failed (' + r.status + ')');
+                return Promise.reject({ message: msg, status: r.status, data: d });
+            }
+            return d;
+        });
+    }
+
+    function showLoadError(message) {
+        setLoading(false);
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="' + tableColspan + '" class="text-center py-4 text-warning">' + esc(message) + '</td></tr>';
+        }
+        setStatus('Could not load clients');
+    }
+
+    function getFilters() {
+        var filters = {};
+        filterKeys.forEach(function(key) {
+            var el = document.querySelector('[data-col-filter="' + key + '"]');
+            filters[key] = el ? el.value.trim() : '';
+        });
+        return filters;
+    }
+
+    function hasActiveFilters(filters) {
+        return filterKeys.some(function(key) { return (filters[key] || '').length > 0; });
+    }
+
+    function syncFilterStyles(filters) {
+        filterInputs.forEach(function(el) {
+            var active = (el.value || '').trim().length > 0;
+            el.classList.toggle('clients-col-filter-active', active);
+        });
+    }
+
+    function setStatus(text) {
+        if (statusEl) statusEl.textContent = text;
+    }
+
+    function updateUrl(filters, page) {
+        var params = new URLSearchParams();
+        if (system) params.set('system', system);
+        else if (showAllClients) params.set('all', '1');
+        if (page && page > 1) params.set('page', String(page));
+        filterKeys.forEach(function(key) {
+            if (filters[key]) params.set('f_' + key, filters[key]);
+        });
+        var qs = params.toString();
+        window.history.replaceState({}, '', listUrl + (qs ? '?' + qs : ''));
+    }
+
+    function buildApiUrl(page, filters, batchAll) {
+        var url = apiUrl + '?page=' + (page || 1);
+        if (system) url += '&system=' + encodeURIComponent(system);
+        else if (showAllClients) url += '&all=1';
+        if (batchAll) url += '&batch_all=1';
+        filterKeys.forEach(function(key) {
+            if (filters[key]) url += '&f_' + key + '=' + encodeURIComponent(filters[key]);
+        });
+        return url;
+    }
+
+    function renderErpRow(c) {
+        var policy = (c.policy_no || c.policy_number || c.policy || '').toString().trim();
+        var statusClass = (c.status === 'A') ? 'active' : ((c.status === 'FL') ? 'lapsed' : 'other');
+        var ls = c.life_system || 'individual';
+        var systemLabel = systemLabels[ls] || systemLabels.individual || 'Individual Life';
+        var sysQ = system ? '&system=' + encodeURIComponent(system) : '';
+        var showLink = showUrl + '?policy=' + encodeURIComponent(policy) + sysQ;
+        return '<tr class="clients-row-open" data-client-open="' + esc(showLink) + '">' +
+            '<td><a href="' + esc(showLink) + '" class="clients-policy-link">' + esc(policy || '—') + '</a></td>' +
+            '<td>' + esc(c.pol_prepared_by || '—') + '</td>' +
+            '<td>' + esc((c.intermediary || '—').substring(0, 25)) + '</td>' +
+            '<td><a href="' + esc(showLink) + '" class="clients-name-link text-decoration-none"><span class="clients-name">' + esc(c.life_assur || '—') + '</span></a></td>' +
+            '<td class="clients-product">' + esc((c.product || '—').substring(0, 40)) + '</td>' +
+            '<td><span class="clients-system-badge clients-system-' + esc(ls) + '">' + esc(systemLabel) + '</span></td>' +
+            '<td><span class="clients-status-badge clients-status-' + statusClass + '">' + esc(c.status || '—') + '</span></td>' +
+            '<td class="text-end"><div class="clients-actions">' +
+            (policy ? (
+                '<a href="' + ticketUrl + '?policy=' + encodeURIComponent(policy) + '" class="btn btn-sm btn-success" title="Create ticket"><i class="bi bi-ticket-perforated"></i> Ticket</a> ' +
+                '<a href="' + esc(showLink) + '" class="btn btn-sm clients-btn-view" title="View full details"><i class="bi bi-eye"></i> View</a> ' +
+                '<a href="' + serveUrl + '?search=' + encodeURIComponent(policy) + '" class="btn btn-sm clients-btn-serve" title="Serve client"><i class="bi bi-person-plus"></i> Serve</a>'
+            ) : '<span class="text-muted small">—</span>') +
+            '</div></td></tr>';
+    }
+
+    function renderEmptyRow() {
+        return '<tr><td colspan="' + tableColspan + '" class="text-center py-5">' +
+            '<div class="clients-empty"><div class="clients-empty-icon"><i class="bi bi-funnel"></i></div>' +
+            '<h6 class="mt-3 mb-2">No clients match your filters</h6>' +
+            '<p class="text-muted mb-0">Try adjusting the column filters above.</p></div></td></tr>';
+    }
+
+    function renderPagination(page, lastPage, onPage) {
+        if (!paginationNav || lastPage <= 1) {
+            if (paginationNav) paginationNav.innerHTML = '';
+            return;
+        }
+        var html = '';
+        if (page > 1) html += '<button type="button" class="page-link clients-ajax-page border-0 bg-transparent" data-page="' + (page - 1) + '">Previous</button> ';
+        html += '<span class="mx-2">Page ' + page + ' of ' + lastPage + '</span> ';
+        if (page < lastPage) html += '<button type="button" class="page-link clients-ajax-page border-0 bg-transparent" data-page="' + (page + 1) + '">Next</button>';
+        paginationNav.innerHTML = html;
+        paginationNav.querySelectorAll('.clients-ajax-page').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                onPage(parseInt(btn.dataset.page, 10));
+            });
+        });
+    }
+
+    function paintTable(rows, filters, page, total, options) {
+        options = options || {};
+        if (!tbody) return;
+        tbody.innerHTML = rows.length ? rows.map(renderErpRow).join('') : renderEmptyRow();
+
+        if (totalEl) {
+            var statTotal = options.grandTotal != null ? options.grandTotal : total;
+            totalEl.textContent = Number(statTotal).toLocaleString();
+        }
+
+        var pg = page || 1;
+        var first = total ? ((pg - 1) * perPage + 1) : 0;
+        var last = Math.min(pg * perPage, total);
+        if (paginationInfo) paginationInfo.textContent = 'Showing ' + first + '–' + last + ' of ' + Number(total).toLocaleString();
+        if (footer) footer.style.display = (total > 0 || hasActiveFilters(filters)) ? 'flex' : footer.style.display;
+
+        if (hasActiveFilters(filters)) {
+            setStatus(total ? (Number(total).toLocaleString() + ' match' + (total === 1 ? '' : 'es')) : 'No rows match filters');
+        } else {
+            setStatus('Filter by column — type at least 2 characters');
+        }
+        syncFilterStyles(filters);
+    }
+
+    function renderLocalPage(page, filters) {
         page = page || 1;
-        var url = apiUrl + '?page=' + page + (search ? '&search=' + encodeURIComponent(search) : '') + (system ? '&system=' + encodeURIComponent(system) : '');
-        fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
+        currentPage = page;
+        var filtered = localBatch.filter(function(row) { return rowMatchesFilters(row, filters); });
+        var total = filtered.length;
+        var pageRows = filtered.slice((page - 1) * perPage, page * perPage);
+        paintTable(pageRows, filters, page, total, {});
+        renderPagination(page, Math.ceil(total / perPage) || 1, function(p) {
+            renderLocalPage(p, filters);
+            updateUrl(filters, p);
+        });
+        updateUrl(filters, page);
+    }
+
+    function applyResponse(d, page, filters) {
+        setLoading(false);
+        if (!tbody) return;
+
+        if (d.error && !(d.customers || []).length) {
+            showLoadError(d.error);
+            return;
+        }
+
+        if (d.batch_mode) {
+            localBatch = d.customers || [];
+            batchFetchKey = getBatchFetchKey(filters);
+            renderLocalPage(1, filters);
+            return;
+        }
+
+        localBatch = [];
+        batchFetchKey = '';
+        var rows = d.customers || [];
+        var grand = null;
+        if (!hasActiveFilters(filters)) {
+            if (!system && grandTotalOnAll && d.grand_total != null) {
+                grand = d.grand_total;
+            } else if (system) {
+                grand = d.grand_total != null ? d.grand_total : (d.total || null);
+            }
+        }
+        paintTable(rows, filters, d.page || page || 1, d.total || 0, { grandTotal: grand });
+        renderPagination(d.page || page || 1, Math.ceil((d.total || 0) / perPage) || 1, function(p) {
+            loadClients(p, filters, false);
+        });
+    }
+
+    function fetchBatch(filters, key) {
+        if (fetchController) fetchController.abort();
+        fetchController = new AbortController();
+        setLoading(true);
+        setStatus('Loading matches…');
+
+        fetch(buildApiUrl(1, filters, true), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin', signal: fetchController.signal })
+            .then(parseApiResponse)
             .then(function(d) {
-                var tbody = document.getElementById('clientsTableBody');
-                var loadingRow = document.getElementById('clientsLoadingRow');
-                var footer = document.getElementById('clientsTableFooter');
-                var totalEl = document.getElementById('clientsTotalValue');
-                var paginationInfo = document.getElementById('clientsPaginationInfo');
-                var paginationNav = document.getElementById('clientsPaginationNav');
-
-                if (loadingRow) loadingRow.remove();
-                if (totalEl) {
-                    var statTotal = (!system && d.grand_total != null && String(d.source || '') === 'erp_http')
-                        ? d.grand_total
-                        : (d.total || 0);
-                    totalEl.textContent = Number(statTotal).toLocaleString();
-                }
-
-                var rows = (d.customers || []).map(function(c) {
-                    var policy = (c.policy_no || c.policy_number || c.policy || c.pol_policy_no || '').toString().trim();
-                    var identifier = policy;
-                    var statusClass = (c.status === 'A') ? 'active' : ((c.status === 'FL') ? 'lapsed' : 'other');
-                    var ls = c.life_system || 'individual';
-                    var systemLabel = systemLabels[ls] || systemLabels.individual || 'Individual Life';
-                    return '<tr><td><a href="' + serveUrl + '?search=' + encodeURIComponent(identifier) + '" class="clients-policy-link">' + esc(policy || '—') + '</a></td>' +
-                        '<td>' + esc(c.pol_prepared_by || '—') + '</td>' +
-                        '<td>' + esc((c.intermediary || '—').substring(0, 25)) + '</td>' +
-                        '<td><span class="clients-name">' + esc(c.life_assur || '—') + '</span></td>' +
-                        '<td class="clients-product">' + esc((c.product || '—').substring(0, 40)) + '</td>' +
-                        '<td><span class="clients-system-badge clients-system-' + ls + '">' + esc(systemLabel) + '</span></td>' +
-                        '<td><span class="clients-status-badge clients-status-' + statusClass + '">' + esc(c.status || '—') + '</span></td>' +
-                        '<td class="text-end"><div class="clients-actions">' +
-                        (identifier ? ('<a href="' + ticketUrl + '?policy=' + encodeURIComponent(identifier) + '" class="btn btn-sm btn-success" title="Create ticket"><i class="bi bi-ticket-perforated"></i> Ticket</a> ' +
-                        '<a href="' + showUrl + '?policy=' + encodeURIComponent(identifier) + (system ? '&system=' + encodeURIComponent(system) : '') + '" class="btn btn-sm clients-btn-view" title="View full details"><i class="bi bi-eye"></i> View</a> ' +
-                        '<a href="' + serveUrl + '?search=' + encodeURIComponent(identifier) + '" class="btn btn-sm clients-btn-serve" title="Serve client"><i class="bi bi-person-plus"></i> Serve</a>') : '<span class="text-muted small">—</span>') +
-                        '</div></td></tr>';
-                }).join('');
-
-                if (rows) {
-                    tbody.insertAdjacentHTML('beforeend', rows);
-                } else if (d.error) {
-                    tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="8" class="text-center py-4 text-warning">' + esc(d.error) + '</td></tr>');
-                } else {
-                    tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="8" class="text-center py-5"><div class="clients-empty"><div class="clients-empty-icon"><i class="bi bi-people"></i></div><h6 class="mt-3 mb-2">No clients found</h6></div></td></tr>');
-                }
-
-                var perPage = d.per_page || 25;
-                // Pagination follows list scope (Group+Individual merge); stat card uses grand_total when present
-                var total = d.total || 0;
-                var first = total ? ((d.page - 1) * perPage + 1) : 0;
-                var last = Math.min(d.page * perPage, total);
-                if (paginationInfo) paginationInfo.textContent = 'Showing ' + first + '–' + last + ' of ' + (total).toLocaleString();
-                if (footer) footer.style.display = 'flex';
-
-                var lastPage = Math.ceil(total / perPage) || 1;
-                var pg = d.page || 1;
-                var pagHtml = '';
-                if (lastPage > 1) {
-                    var base = '{{ route("support.customers") }}?' + (search ? 'search=' + encodeURIComponent(search) + '&' : '') + (system ? 'system=' + encodeURIComponent(system) + '&' : '');
-                    if (pg > 1) pagHtml += '<a href="' + base + 'page=' + (pg-1) + '" class="page-link clients-ajax-page" data-page="' + (pg-1) + '">Previous</a> ';
-                    pagHtml += '<span class="mx-2">Page ' + pg + ' of ' + lastPage + '</span> ';
-                    if (pg < lastPage) pagHtml += '<a href="' + base + 'page=' + (pg+1) + '" class="page-link clients-ajax-page" data-page="' + (pg+1) + '">Next</a>';
-                }
-                if (paginationNav) paginationNav.innerHTML = pagHtml;
-
-                paginationNav.querySelectorAll('.clients-ajax-page').forEach(function(a) {
-                    a.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        tbody.innerHTML = '<tr id="clientsLoadingRow"><td colspan="7" class="text-center py-5"><div class="spinner-border text-primary"></div><p class="text-muted mt-2">Loading...</p></td></tr>';
-                        loadClients(parseInt(a.dataset.page, 10));
-                    });
-                });
+                batchFetchKey = key;
+                applyResponse(d, 1, filters);
             })
-            .catch(function() {
-                var loadingRow = document.getElementById('clientsLoadingRow');
-                var tbody = document.getElementById('clientsTableBody');
-                if (loadingRow) loadingRow.remove();
-                if (tbody) tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="8" class="text-center py-4 text-danger">Failed to load clients. <a href="">Refresh</a></td></tr>');
+            .catch(function(err) {
+                if (err && err.name === 'AbortError') return;
+                showLoadError((err && err.message) ? err.message : 'Filter failed — try again');
             });
     }
-    loadClients(initialPage);
+
+    function loadClients(page, filters, batchMode) {
+        page = page || 1;
+        filters = filters || getFilters();
+        currentPage = page;
+
+        if (!isErpList) {
+            debounceTimer = setTimeout(function() {
+                updateUrl(filters, page);
+                window.location.href = listUrl + (window.location.search || '');
+            }, fetchDebounceMs);
+            return;
+        }
+
+        if (hasActiveFilters(filters)) {
+            var key = getBatchFetchKey(filters);
+            if (localBatch.length && key === batchFetchKey) {
+                renderLocalPage(page, filters);
+                return;
+            }
+            fetchBatch(filters, key);
+            return;
+        }
+
+        localBatch = [];
+        batchFetchKey = '';
+
+        if (fetchController) fetchController.abort();
+        fetchController = new AbortController();
+        setLoading(true);
+        setStatus('Loading clients…');
+
+        fetch(buildApiUrl(page, filters, false), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin', signal: fetchController.signal })
+            .then(parseApiResponse)
+            .then(function(d) {
+                applyResponse(d, page, filters);
+                updateUrl(filters, page);
+            })
+            .catch(function(err) {
+                if (err && err.name === 'AbortError') return;
+                showLoadError((err && err.message) ? err.message : 'Failed to load clients. Please try again.');
+            });
+    }
+
+    function scheduleFilter() {
+        var filters = getFilters();
+        syncFilterStyles(filters);
+
+        clearTimeout(debounceTimer);
+        clearTimeout(localFilterTimer);
+
+        if (!hasActiveFilters(filters)) {
+            localBatch = [];
+            batchFetchKey = '';
+            debounceTimer = setTimeout(function() { loadClients(1, filters, false); }, 400);
+            return;
+        }
+
+        if (filtersNeedMinChars(filters)) {
+            setStatus('Type at least ' + minFilterChars + ' characters to filter');
+            return;
+        }
+
+        var key = getBatchFetchKey(filters);
+        if (localBatch.length && key === batchFetchKey) {
+            localFilterTimer = setTimeout(function() { renderLocalPage(1, filters); }, localFilterDebounceMs);
+            return;
+        }
+
+        debounceTimer = setTimeout(function() {
+            fetchBatch(filters, key);
+        }, fetchDebounceMs);
+    }
+
+    filterInputs.forEach(function(el) {
+        el.addEventListener('input', scheduleFilter);
+        el.addEventListener('search', function() {
+            if (!(el.value || '').trim()) scheduleFilter();
+        });
+    });
+
+    if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', function() {
+            filterInputs.forEach(function(el) { el.value = ''; });
+            localBatch = [];
+            batchFetchKey = '';
+            syncFilterStyles(getFilters());
+            loadClients(1, getFilters(), false);
+        });
+    }
+
+    document.addEventListener('click', function(e) {
+        var row = e.target.closest('tr.clients-row-open[data-client-open]');
+        if (!row || e.target.closest('a, button, .clients-actions')) return;
+        window.location.href = row.getAttribute('data-client-open');
+    });
+
+    syncFilterStyles(getFilters());
+
+    function hasServerRenderedRows() {
+        if (!tbody) return false;
+        return !!tbody.querySelector('tr.clients-row-open, a.clients-policy-link');
+    }
+
+    if (lazyLoad || (isErpList && (!hasServerRenderedRows() || hasActiveFilters(getFilters())))) {
+        loadClients(initialPage, getFilters(), hasActiveFilters(getFilters()));
+    }
 })();
 </script>
-@endif
 @endsection

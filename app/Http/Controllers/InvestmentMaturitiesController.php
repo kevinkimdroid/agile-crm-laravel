@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Services\InvestmentMaturityService;
+use App\Services\MaturityClientNotificationService;
 use App\Services\MicrosoftGraphMailService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\View\View;
@@ -17,27 +20,156 @@ class InvestmentMaturitiesController extends Controller
     public function index(Request $request): View
     {
         $days = max(1, min(30, (int) $request->get('days', 14)));
+        $search = trim((string) $request->get('search', ''));
+        $product = trim((string) $request->get('product', ''));
+        $notifyStatus = trim((string) $request->get('notify_status', ''));
+        $sort = trim((string) $request->get('sort', 'maturity'));
+        $dir = strtolower((string) $request->get('dir', 'asc')) === 'desc' ? 'desc' : 'asc';
+        $perPage = in_array((int) $request->get('per_page', 25), [25, 50, 100], true)
+            ? (int) $request->get('per_page', 25)
+            : 25;
         $to = (string) config('maturities.investment_notifications.to', 'douglas.nyakwara@geminialife.co.ke');
         $cc = $this->ccRecipients();
+        $notifyService = app(MaturityClientNotificationService::class);
 
         $error = null;
         $rows = collect();
+        $products = collect();
+        $stats = ['total' => 0, 'today' => 0, 'this_week' => 0, 'pending_notify' => 0];
+        $paginator = new LengthAwarePaginator([], 0, $perPage, 1, [
+            'path' => route('support.investment-maturities'),
+            'query' => $request->query(),
+        ]);
+
         try {
             $rows = $this->service->dueWithinDays($days);
             $rows = $this->service->withNotificationStatus($rows, $to);
+            $rows = $notifyService->enrichContactsFromClientDetails($rows, 'pol_policy_no');
+            $rows = $notifyService->annotateRows($rows, 'investment', 'pol_policy_no', 'pol_maturity_date');
+
+            $products = $rows
+                ->map(fn ($row) => trim((string) ($row->product ?? '')))
+                ->filter(fn ($p) => $p !== '')
+                ->unique()
+                ->sort()
+                ->values();
+
+            $rows = $notifyService->filterBySearch($rows, $search);
+            $rows = $this->applyProductFilter($rows, $product);
+            $rows = $this->applyNotifyFilter($rows, $notifyStatus);
+            $stats = $this->buildStats($rows);
+            $rows = $this->sortRows($rows, $sort, $dir);
+
+            $page = max(1, (int) $request->get('page', 1));
+            $paginator = new LengthAwarePaginator(
+                $rows->forPage($page, $perPage)->values(),
+                $rows->count(),
+                $perPage,
+                $page,
+                ['path' => route('support.investment-maturities'), 'query' => $request->query()]
+            );
         } catch (\Throwable $e) {
             $error = $e->getMessage();
             Log::error('Investment maturities load failed', ['error' => $e->getMessage()]);
         }
 
         return view('support.investment-maturities', [
-            'rows' => $rows,
+            'rows' => $paginator,
+            'stats' => $stats,
             'days' => $days,
+            'search' => $search,
+            'product' => $product,
+            'notifyStatus' => $notifyStatus,
+            'sort' => $sort,
+            'dir' => $dir,
+            'perPage' => $perPage,
             'to' => $to,
             'cc' => $cc,
             'error' => $error,
             'trackingEnabled' => $this->service->notificationsTableExists(),
+            'notifyService' => $notifyService,
+            'smsConfigured' => app(\App\Services\AdvantaSmsService::class)->isConfigured(),
+            'productCodes' => config('maturities.investment_notifications.product_codes', []),
+            'products' => $products,
         ]);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     * @return array{total: int, today: int, this_week: int, pending_notify: int}
+     */
+    protected function buildStats($rows): array
+    {
+        $stats = [
+            'total' => $rows->count(),
+            'today' => 0,
+            'this_week' => 0,
+            'pending_notify' => 0,
+        ];
+
+        $today = now()->startOfDay();
+        $weekEnd = now()->addDays(7)->startOfDay();
+
+        foreach ($rows as $row) {
+            try {
+                $maturity = \Carbon\Carbon::parse($row->pol_maturity_date ?? '')->startOfDay();
+            } catch (\Throwable) {
+                continue;
+            }
+
+            if ($maturity->isSameDay($today)) {
+                $stats['today']++;
+            }
+            if ($maturity->gte($today) && $maturity->lte($weekEnd)) {
+                $stats['this_week']++;
+            }
+            if (empty($row->client_notified_email) && empty($row->client_notified_sms)) {
+                $stats['pending_notify']++;
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     */
+    protected function applyProductFilter($rows, string $product): Collection
+    {
+        if ($product === '') {
+            return $rows;
+        }
+
+        return $rows->filter(fn ($row) => trim((string) ($row->product ?? '')) === $product)->values();
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     */
+    protected function applyNotifyFilter($rows, string $status): Collection
+    {
+        return match ($status) {
+            'pending' => $rows->filter(fn ($row) => empty($row->client_notified_email) && empty($row->client_notified_sms))->values(),
+            'notified' => $rows->filter(fn ($row) => ! empty($row->client_notified_email) || ! empty($row->client_notified_sms))->values(),
+            default => $rows,
+        };
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     */
+    protected function sortRows($rows, string $sort, string $dir): Collection
+    {
+        $getter = match ($sort) {
+            'policy' => fn ($row) => strtolower(trim((string) ($row->pol_policy_no ?? ''))),
+            'client' => fn ($row) => strtolower(trim((string) ($row->full_name ?? ''))),
+            'product' => fn ($row) => strtolower(trim((string) ($row->product ?? ''))),
+            default => fn ($row) => (string) ($row->pol_maturity_date ?? ''),
+        };
+
+        return $dir === 'desc'
+            ? $rows->sortByDesc($getter)->values()
+            : $rows->sortBy($getter)->values();
     }
 
     public function send(Request $request): RedirectResponse
@@ -164,4 +296,3 @@ class InvestmentMaturitiesController extends Controller
         return false;
     }
 }
-

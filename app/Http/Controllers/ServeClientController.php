@@ -40,44 +40,20 @@ class ServeClientController extends Controller
         }
 
         $searchTerm = trim($request->get('search', ''));
-        $erpClients = [];
-        $crmContacts = [];
-        $searchError = null;
 
         if (strlen($searchTerm) >= 2) {
-            $cacheKey = 'serve_client_index:' . md5($searchTerm);
-            $cached = Cache::get($cacheKey);
-            if ($cached !== null) {
-                $erpClients = $cached['erp'] ?? [];
-                $crmContacts = $cached['crm'] ?? [];
-                $searchError = $cached['error'] ?? null;
-            } else {
-                $erpResult = $this->erp->searchClients($searchTerm, 20);
-                $erpClients = $erpResult['data'] ?? [];
-                $searchError = $erpResult['error'] ?? null;
-
-                try {
-                    $customers = $this->crm->getCustomers(20, 0, $searchTerm, crm_owner_filter());
-                    foreach ($customers as $c) {
-                        $crmContacts[] = [
-                            'contactid' => $c->contactid,
-                            'name' => trim(($c->firstname ?? '') . ' ' . ($c->lastname ?? '')),
-                            'email' => personal_email_only($c->email ?? null) ?? '',
-                            'phone' => $c->mobile ?? $c->phone ?? '',
-                        ];
-                    }
-                } catch (\Throwable $e) {
-                    // ignore
-                }
-                Cache::put($cacheKey, ['erp' => $erpClients, 'crm' => $crmContacts, 'error' => $searchError], 90);
+            $redirect = $this->resolveServeClientRedirect($searchTerm);
+            if ($redirect) {
+                return redirect($redirect);
             }
         }
 
+        // Results load via AJAX (serve-client.search) so this page renders immediately.
         return view('support.serve-client', [
             'initialSearch' => $searchTerm,
-            'initialErp' => $erpClients,
-            'initialCrm' => $crmContacts,
-            'initialError' => $searchError,
+            'initialErp' => [],
+            'initialCrm' => [],
+            'initialError' => null,
         ]);
     }
 
@@ -115,6 +91,14 @@ class ServeClientController extends Controller
             $erpResult = $this->erp->searchClients($term, 20);
             $erpClients = $erpResult['data'] ?? [];
             $erpError = $erpResult['error'] ?? null;
+
+            if (empty($erpClients) && $this->looksLikePolicyNumber($term)) {
+                $details = $this->erp->getPolicyDetails($term);
+                if ($details) {
+                    $erpClients = [is_array($details) ? $details : (array) $details];
+                    $erpError = null;
+                }
+            }
         }
 
         if ($fetchCrm) {
@@ -138,8 +122,9 @@ class ServeClientController extends Controller
             'erp' => $erpClients,
             'crm' => $crmContacts,
             'error' => $erpError,
+            'redirect' => $this->resolveServeClientRedirect($term, $erpClients, $crmContacts),
         ];
-        Cache::put($cacheKey, $payload, 90);
+        Cache::put($cacheKey, $payload, (int) config('performance.cache_ttl.serve_client_search', 180));
 
         return response()->json($payload);
     }
@@ -330,5 +315,66 @@ class ServeClientController extends Controller
         return $contactName === $erpClientName
             || (strpos($erpClientName, $contactName) !== false)
             || (strpos($contactName, $erpClientName) !== false);
+    }
+
+    /**
+     * When Serve Client finds a definitive match, send the user to the full detail view (not the search page).
+     */
+    private function resolveServeClientRedirect(string $term, ?array $erpClients = null, ?array $crmContacts = null): ?string
+    {
+        $term = trim($term);
+        if ($term === '') {
+            return null;
+        }
+
+        if ($this->looksLikePolicyNumber($term)) {
+            $details = $this->erp->getPolicyDetails($term);
+            if ($details) {
+                return route('support.clients.show', [
+                    'policy' => $term,
+                    'from' => 'serve-client',
+                ]);
+            }
+            $contact = $this->crm->findContactByPolicyNumber($term);
+            if ($contact) {
+                return route('contacts.show', ['contact' => $contact->contactid, 'tab' => 'summary']);
+            }
+        }
+
+        $erpClients = $erpClients ?? [];
+        $crmContacts = $crmContacts ?? [];
+
+        if (count($erpClients) === 1 && count($crmContacts) === 0) {
+            $policy = trim((string) ($erpClients[0]['policy_no'] ?? $erpClients[0]['policy_number'] ?? ''));
+            if ($policy !== '') {
+                return route('support.clients.show', [
+                    'policy' => $policy,
+                    'from' => 'serve-client',
+                ]);
+            }
+        }
+
+        if (count($crmContacts) === 1 && count($erpClients) === 0) {
+            $contactId = (int) ($crmContacts[0]['contactid'] ?? 0);
+            if ($contactId > 0) {
+                return route('contacts.show', ['contact' => $contactId, 'tab' => 'summary']);
+            }
+        }
+
+        return null;
+    }
+
+    private function looksLikePolicyNumber(string $term): bool
+    {
+        $t = strtoupper(trim($term));
+        if ($t === '' || strlen($t) < 4) {
+            return false;
+        }
+
+        if (preg_match('/^GEMPPP/i', $t)) {
+            return true;
+        }
+
+        return (bool) preg_match('/^[A-Z]{2,}[A-Z0-9\-\/]+$/', $t);
     }
 }

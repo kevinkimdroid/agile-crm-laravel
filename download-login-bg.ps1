@@ -1,5 +1,6 @@
-# Download the official login background from CRM and save to public/images
-$url = "http://10.1.1.64/layouts/v7/resources/Images/login-background.jpg"
+# Download a neutral corporate login background (Unsplash) to public/images/login-hero.jpg
+# Photo: modern office towers — brand-neutral, not tied to a specific insurer.
+$url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1920&q=85"
 $out = Join-Path $PSScriptRoot "public\images\login-hero.jpg"
 
 try {

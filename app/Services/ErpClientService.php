@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Database\LostConnectionException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -360,26 +361,44 @@ class ErpClientService
             return ['data' => $data, 'total' => $result['total'], 'error' => $result['error']];
         }
 
-        // Use HTTP API when erp_http - search BOTH group and individual (Group Life uses different view)
+        // Use HTTP API when erp_http - search all configured life segments
         if ($viewSource === 'erp_http') {
-            $groupResult = $this->getClientsFromHttpApi((int) ceil($limit / 2), 0, $term, null, false, 'group');
-            $indResult = $this->getClientsFromHttpApi((int) ceil($limit / 2), 0, $term, null, false, 'individual');
-            $groupData = $groupResult['data']->map(fn ($obj) => (array) $obj)->map(fn ($r) => $this->mapClientObjectToSearchResult($r))->values()->all();
-            $indData = $indResult['data']->map(fn ($obj) => (array) $obj)->map(fn ($r) => $this->mapClientObjectToSearchResult($r))->values()->all();
-            $seen = [];
+            $segments = ['group', 'individual'];
+            if ($this->optionalClientsSegmentConfigured('mortgage')) {
+                $segments[] = 'mortgage';
+            }
+            if ($this->optionalClientsSegmentConfigured('group_pension')) {
+                $segments[] = 'group_pension';
+            }
+            $perSegment = max(5, (int) ceil($limit / max(1, count($segments))));
             $data = [];
-            foreach (array_merge($groupData, $indData) as $r) {
-                $key = trim((string) ($r['policy_no'] ?? $r['policy_number'] ?? json_encode($r)));
-                if ($key !== '' && ! isset($seen[$key])) {
-                    $seen[$key] = true;
-                    $data[] = $r;
+            $seen = [];
+            $error = null;
+            foreach ($segments as $segment) {
+                $result = $this->getClientsFromHttpApi($perSegment, 0, $term, null, false, $segment);
+                if ($result['error'] && ! $error) {
+                    $error = $result['error'];
+                }
+                foreach ($result['data'] as $obj) {
+                    $row = $this->mapClientObjectToSearchResult((array) $obj);
+                    $key = trim((string) ($row['policy_no'] ?? $row['policy_number'] ?? ''));
+                    if ($key !== '' && ! isset($seen[$key])) {
+                        $seen[$key] = true;
+                        $data[] = $row;
+                    }
                 }
             }
             $data = array_slice($data, 0, $limit);
-            $error = $groupResult['error'] ?: $indResult['error'];
-            $total = min(($groupResult['total'] ?? 0) + ($indResult['total'] ?? 0), $limit * 2);
 
-            return ['data' => $data, 'total' => count($data) ?: $total, 'error' => $error];
+            if (empty($data) && $this->searchTermLooksLikePolicyNumber($term)) {
+                $details = $this->getPolicyDetails($term);
+                if ($details) {
+                    $data = [is_array($details) ? $details : (array) $details];
+                    $error = null;
+                }
+            }
+
+            return ['data' => $data, 'total' => count($data), 'error' => $error];
         }
 
         try {
@@ -599,6 +618,112 @@ class ErpClientService
     }
 
     /**
+     * @return array<string, mixed>|null
+     */
+    protected function fetchPolicyDetailsFromHttp(string $term): ?array
+    {
+        $url = config('erp.clients_http_url');
+        if (empty($url)) {
+            return null;
+        }
+        $url = rtrim($url, '/');
+        $sep = (strpos($url, '?') !== false) ? '&' : '?';
+        $termUpper = strtoupper($term);
+        $preferredSystemOrder = str_starts_with($termUpper, 'IL-')
+            ? ['individual', 'group', 'mortgage', 'group_pension', null]
+            : (str_starts_with($termUpper, 'GL-')
+                ? ['group', 'individual', 'mortgage', 'group_pension', null]
+                : ['group', 'individual', 'mortgage', 'group_pension', null]);
+        $systemsToTry = array_values(array_filter(
+            $preferredSystemOrder,
+            fn ($s) => $s === null || ! in_array($s, ['mortgage', 'group_pension'], true) || $this->optionalClientsSegmentConfigured($s)
+        ));
+        $norm = static fn (?string $v) => strtolower((string) preg_replace('/[^a-z0-9]/i', '', trim((string) $v)));
+        $termNorm = $norm($term);
+        foreach (['policy', 'search'] as $matchMode) {
+            foreach ($systemsToTry as $system) {
+                $params = ($matchMode === 'policy' ? 'policy=' : 'search=') . urlencode($term) . '&limit=5';
+                if ($system) {
+                    $params .= '&system=' . $system;
+                }
+                $response = Http::withOptions(['connect_timeout' => 2])->timeout($this->httpTimeoutSeconds(10))->get($url . $sep . $params);
+                if (! $response->successful()) {
+                    continue;
+                }
+                $body = $response->json();
+                $rows = $body['data'] ?? $body['clients'] ?? [];
+                if (! is_array($rows) || empty($rows)) {
+                    continue;
+                }
+                $row = null;
+                foreach ($rows as $r) {
+                    $r = is_array($r) ? $r : (array) $r;
+                    $mapped = $this->mapClientObjectToSearchResult($r);
+                    $returnedPolicy = trim((string) ($mapped['policy_no'] ?? $mapped['policy_number'] ?? $r['ipol_policy_no'] ?? $r['pol_policy_no'] ?? $r['policy_number'] ?? ''));
+                    $returnedNorm = $norm($returnedPolicy);
+                    if ($returnedNorm !== '' && $returnedNorm === $termNorm) {
+                        $row = $r;
+                        break;
+                    }
+                    if ($matchMode === 'search' && $returnedNorm !== '' && (str_contains($returnedNorm, $termNorm) || str_contains($termNorm, $returnedNorm))) {
+                        $row = $r;
+                        break;
+                    }
+                }
+                if (! $row) {
+                    continue;
+                }
+                $row = is_array($row) ? $row : (array) $row;
+                $mapped = $this->mapClientObjectToSearchResult($row);
+                $merged = $row;
+                foreach ($mapped as $k => $v) {
+                    if ($v !== null && $v !== '') {
+                        $merged[$k] = $v;
+                    }
+                }
+                $merged['life_system'] = $this->getLifeSystemFromProduct((string) ($merged['product'] ?? $merged['prod_desc'] ?? ''));
+                $merged['policy_no'] = $term;
+                $merged['policy_number'] = $term;
+                if (empty($merged['maturity']) && ! empty($merged['maturity_date'])) {
+                    $merged['maturity'] = $merged['maturity_date'];
+                }
+                if (empty($merged['product']) && ! empty($merged['prod_desc'])) {
+                    $merged['product'] = $merged['prod_desc'];
+                }
+                if (! empty($merged['intermediary']) && ! empty($merged['product']) && trim((string) $merged['product']) === trim((string) $merged['intermediary'])) {
+                    $merged['product'] = $merged['prod_desc'] ?? '';
+                }
+                if (empty($merged['paid_mat_amt']) && ! empty($merged['production_amt'])) {
+                    $merged['paid_mat_amt'] = $merged['production_amt'];
+                }
+                if (empty($merged['email_adr']) && ! empty($merged['client_email'])) {
+                    $merged['email_adr'] = $merged['client_email'];
+                }
+                if (empty($merged['email_adr']) && ! empty($merged['mem_email'])) {
+                    $merged['email_adr'] = $merged['mem_email'];
+                }
+                if (empty($merged['email_adr']) && ! empty($merged['EMAIL'])) {
+                    $merged['email_adr'] = $merged['EMAIL'];
+                }
+                if (empty($merged['email_adr'])) {
+                    $merged['email_adr'] = $this->extractEmailFromAnyRow($merged);
+                }
+                if (empty($merged['phone_no']) && ! empty($merged['client_contact'])) {
+                    $merged['phone_no'] = $merged['client_contact'];
+                    $merged['mobile'] = $merged['client_contact'];
+                }
+                if (empty($merged['life_assur']) && ! empty($merged['client_name'])) {
+                    $merged['life_assur'] = $merged['client_name'];
+                }
+
+                return $merged;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Get a single policy's full details by policy number.
      *
      * @param  string  $policyNumber  Policy number to look up
@@ -606,114 +731,22 @@ class ErpClientService
      */
     public function getPolicyDetails(string $policyNumber): ?array
     {
-        try {
-            if (config('erp.clients_view_source') === 'erp_http') {
-                $url = config('erp.clients_http_url');
-                if (empty($url)) {
-                    return null;
-                }
-                $url = rtrim($url, '/');
-                $sep = (strpos($url, '?') !== false) ? '&' : '?';
-                $term = trim($policyNumber);
-                if ($term === '') {
-                    return null;
-                }
-                $termUpper = strtoupper($term);
-                $preferredSystemOrder = str_starts_with($termUpper, 'IL-')
-                    ? ['individual', 'group', 'mortgage', 'group_pension', null]
-                    : (str_starts_with($termUpper, 'GL-')
-                        ? ['group', 'individual', 'mortgage', 'group_pension', null]
-                        : ['group', 'individual', 'mortgage', 'group_pension', null]);
-                $systemsToTry = array_values(array_filter(
-                    $preferredSystemOrder,
-                    fn ($s) => $s === null || ! in_array($s, ['mortgage', 'group_pension'], true) || $this->optionalClientsSegmentConfigured($s)
-                ));
-                $norm = static fn (?string $v) => strtolower((string) preg_replace('/[^a-z0-9]/i', '', trim((string) $v)));
-                $termNorm = $norm($term);
-                // First try exact policy= match, then try search= (LIKE %term%) if no results
-                foreach (['policy', 'search'] as $matchMode) {
-                    foreach ($systemsToTry as $system) {
-                        $params = ($matchMode === 'policy' ? 'policy=' : 'search=') . urlencode($term) . '&limit=5';
-                        if ($system) {
-                            $params .= '&system=' . $system;
-                        }
-                        $response = \Illuminate\Support\Facades\Http::withOptions(['connect_timeout' => 2])->timeout($this->httpTimeoutSeconds(10))->get($url . $sep . $params);
-                        if (! $response->successful()) {
-                            continue;
-                        }
-                        $body = $response->json();
-                        $rows = $body['data'] ?? $body['clients'] ?? [];
-                        if (! is_array($rows) || empty($rows)) {
-                            continue;
-                        }
-                        // Find row where policy matches.
-                        $row = null;
-                        foreach ($rows as $r) {
-                            $r = is_array($r) ? $r : (array) $r;
-                            $mapped = $this->mapClientObjectToSearchResult($r);
-                            $returnedPolicy = trim((string) ($mapped['policy_no'] ?? $mapped['policy_number'] ?? $r['ipol_policy_no'] ?? $r['pol_policy_no'] ?? $r['policy_number'] ?? ''));
-                            $returnedNorm = $norm($returnedPolicy);
-                            if ($returnedNorm !== '' && $returnedNorm === $termNorm) {
-                                $row = $r;
-                                break;
-                            }
-                            if ($matchMode === 'search' && $returnedNorm !== '' && (str_contains($returnedNorm, $termNorm) || str_contains($termNorm, $returnedNorm))) {
-                                $row = $r;
-                                break;
-                            }
-                        }
-                        if (! $row) {
-                            continue;
-                        }
-                        $row = is_array($row) ? $row : (array) $row;
-                        $mapped = $this->mapClientObjectToSearchResult($row);
-                        // Merge: keep all API keys, overlay mapped values. Build complete client object for details view.
-                        $merged = $row;
-                        foreach ($mapped as $k => $v) {
-                            if ($v !== null && $v !== '') {
-                                $merged[$k] = $v;
-                            }
-                        }
-                        $merged['life_system'] = $this->getLifeSystemFromProduct((string) ($merged['product'] ?? $merged['prod_desc'] ?? ''));
-                        $merged['policy_no'] = $term;
-                        $merged['policy_number'] = $term;
-                        if (empty($merged['maturity']) && ! empty($merged['maturity_date'])) {
-                            $merged['maturity'] = $merged['maturity_date'];
-                        }
-                        if (empty($merged['product']) && ! empty($merged['prod_desc'])) {
-                            $merged['product'] = $merged['prod_desc'];
-                        }
-                        if (! empty($merged['intermediary']) && ! empty($merged['product']) && trim((string) $merged['product']) === trim((string) $merged['intermediary'])) {
-                            $merged['product'] = $merged['prod_desc'] ?? '';
-                        }
-                        if (empty($merged['paid_mat_amt']) && ! empty($merged['production_amt'])) {
-                            $merged['paid_mat_amt'] = $merged['production_amt'];
-                        }
-                        if (empty($merged['email_adr']) && ! empty($merged['client_email'])) {
-                            $merged['email_adr'] = $merged['client_email'];
-                        }
-                        if (empty($merged['email_adr']) && ! empty($merged['mem_email'])) {
-                            $merged['email_adr'] = $merged['mem_email'];
-                        }
-                        if (empty($merged['email_adr']) && ! empty($merged['EMAIL'])) {
-                            $merged['email_adr'] = $merged['EMAIL'];
-                        }
-                        if (empty($merged['email_adr'])) {
-                            $merged['email_adr'] = $this->extractEmailFromAnyRow($merged);
-                        }
-                        if (empty($merged['phone_no']) && ! empty($merged['client_contact'])) {
-                            $merged['phone_no'] = $merged['client_contact'];
-                            $merged['mobile'] = $merged['client_contact'];
-                        }
-                        if (empty($merged['life_assur']) && ! empty($merged['client_name'])) {
-                            $merged['life_assur'] = $merged['client_name'];
-                        }
-                        return $merged;
-                    }
-                }
-                return null;
-            }
+        $term = trim($policyNumber);
+        if ($term === '') {
+            return null;
+        }
 
+        if (config('erp.clients_view_source') === 'erp_http') {
+            $cacheKey = 'erp:policy_details:' . sha1(strtoupper($term));
+            $ttl = (int) config('performance.cache_ttl.erp_policy_details', 300);
+            $payload = Cache::remember($cacheKey, $ttl, function () use ($term) {
+                return ['data' => $this->fetchPolicyDetailsFromHttp($term)];
+            });
+
+            return $payload['data'] ?? null;
+        }
+
+        try {
             if (config('erp.clients_view_source') === 'erp_sync') {
                 $row = DB::table('erp_clients_cache')->where('policy_number', $policyNumber)->first();
                 if (!$row) {
@@ -819,40 +852,54 @@ class ErpClientService
      * Get total clients count (for dashboard). Uses same source and logic as Support > Clients page.
      * For erp_http: sums Group Life + Individual Life + Mortgage + Group Pension (when those views are configured).
      */
-    public function getClientsCount(int $timeoutSeconds = 15): ?int
+    public function getClientsCount(int $timeoutSeconds = 8): ?int
     {
         if (! config('erp.enabled', true)) {
             return null;
         }
         $source = config('erp.clients_view_source', 'crm');
         if ($source === 'erp_http') {
-            $groupResult = $this->getClientsFromHttpApi(1, 0, null, $timeoutSeconds, true, 'group');
-            $indResult = $this->getClientsFromHttpApi(1, 0, null, $timeoutSeconds, true, 'individual');
-            $hadAnySuccess = (! $groupResult['error'] || ! $indResult['error']);
-            $groupTotal = (int) ($groupResult['total'] ?? 0);
-            $indTotal = (int) ($indResult['total'] ?? 0);
-            $sum = $groupTotal + $indTotal;
-
-            if ($this->optionalClientsSegmentConfigured('mortgage')) {
-                $m = $this->getClientsFromHttpApi(1, 0, null, $timeoutSeconds, true, 'mortgage');
-                if (! $m['error']) {
-                    $hadAnySuccess = true;
-                    $sum += (int) ($m['total'] ?? 0);
-                }
-            }
-            if ($this->optionalClientsSegmentConfigured('group_pension')) {
-                $gp = $this->getClientsFromHttpApi(1, 0, null, $timeoutSeconds, true, 'group_pension');
-                if (! $gp['error']) {
-                    $hadAnySuccess = true;
-                    $sum += (int) ($gp['total'] ?? 0);
-                }
-            }
-
-            if (! $hadAnySuccess && $groupResult['error'] && $indResult['error']) {
+            $url = config('erp.clients_http_url');
+            if (empty($url)) {
                 return null;
             }
 
-            return $sum;
+            $segments = ['group', 'individual'];
+            if ($this->optionalClientsSegmentConfigured('mortgage')) {
+                $segments[] = 'mortgage';
+            }
+            if ($this->optionalClientsSegmentConfigured('group_pension')) {
+                $segments[] = 'group_pension';
+            }
+
+            $timeout = $this->httpTimeoutSeconds($timeoutSeconds);
+            $responses = \Illuminate\Support\Facades\Http::pool(function ($pool) use ($url, $segments, $timeout) {
+                foreach ($segments as $segment) {
+                    $pool->as($segment)
+                        ->withOptions(['connect_timeout' => 2])
+                        ->timeout($timeout)
+                        ->get($url, [
+                            'limit' => 1,
+                            'offset' => 0,
+                            'count_only' => '1',
+                            'system' => $segment,
+                        ]);
+                }
+            });
+
+            $sum = 0;
+            $hadSuccess = false;
+            foreach ($segments as $segment) {
+                $response = $responses[$segment] ?? null;
+                if (! $response || ! $response->successful()) {
+                    continue;
+                }
+                $hadSuccess = true;
+                $body = $response->json();
+                $sum += (int) ($body['total'] ?? $body['count'] ?? 0);
+            }
+
+            return $hadSuccess ? $sum : null;
         }
         if ($source === 'erp_sync') {
             $result = $this->getClientsFromCache(1, 0);
@@ -1076,6 +1123,7 @@ class ErpClientService
             }
 
             $result = $this->getClientsFromHttpApi($limit, $offset, $search, null, false, $system);
+            $result = $this->enrichSegmentListTotals($result, $system, $search);
             // Group Life: when search returns 0, try Individual view (policy may be in either view)
             if (
                 $system === 'group'
@@ -1192,13 +1240,63 @@ class ErpClientService
         }
         $fetchCount = min(100, max($limit, (int) ceil($limit / $n) + 6));
 
+        $url = trim((string) config('erp.clients_http_url'));
+        if ($url === '') {
+            return ['data' => collect(), 'total' => 0, 'error' => 'ERP_CLIENTS_HTTP_URL is not set.'];
+        }
+
+        $timeout = $this->httpTimeoutSeconds(12);
+        $responses = Http::pool(function ($pool) use ($url, $streams, $perStreamSkip, $fetchCount, $timeout) {
+            foreach ($streams as $idx => $sys) {
+                $pool->as((string) $idx)
+                    ->withOptions(['connect_timeout' => 2])
+                    ->timeout($timeout)
+                    ->get($url, [
+                        'limit' => min($fetchCount, 100),
+                        'offset' => $perStreamSkip[$idx],
+                        'system' => $sys,
+                    ]);
+            }
+        });
+
         $buffers = [];
         $firstError = null;
         foreach ($streams as $idx => $sys) {
-            $res = $this->getClientsFromHttpApi($fetchCount, $perStreamSkip[$idx], null, null, false, $sys);
-            $buffers[$idx] = $res['data']->values()->all();
-            if ($firstError === null && ! empty($res['error'])) {
-                $firstError = $res['error'];
+            $response = $responses[(string) $idx] ?? null;
+            if (! $response || ! $response->successful()) {
+                $buffers[$idx] = [];
+                if ($firstError === null) {
+                    $body = $response?->json();
+                    $firstError = is_array($body) && ! empty($body['error'])
+                        ? 'ERP API: ' . $body['error']
+                        : 'ERP API error: ' . ($response?->status() ?? 'unknown');
+                }
+
+                continue;
+            }
+
+            $body = $response->json();
+            $rows = $body['data'] ?? $body['clients'] ?? $body['results'] ?? [];
+            if (! is_array($rows)) {
+                $rows = [];
+            }
+
+            $buffers[$idx] = collect($rows)
+                ->map(fn ($row) => $this->mapHttpRowToClientObject(is_array($row) ? $row : (array) $row, $sys))
+                ->values()
+                ->all();
+
+            if (in_array($sys, ['group', 'individual'], true) && $buffers[$idx] !== []) {
+                $buffers[$idx] = array_map(function ($row) use ($sys) {
+                    $row->life_system = $sys;
+
+                    return $row;
+                }, $buffers[$idx]);
+            }
+
+            $apiMsg = $body['error'] ?? $body['message'] ?? null;
+            if ($firstError === null && is_string($apiMsg) && $apiMsg !== '' && $buffers[$idx] === []) {
+                $firstError = 'ERP API: ' . $apiMsg;
             }
         }
 
@@ -1213,13 +1311,7 @@ class ErpClientService
         }
         $data = collect($merged);
 
-        $total = 0;
-        foreach ($streams as $sys) {
-            $c = $this->getClientsFromHttpApi(1, 0, null, null, true, $sys);
-            if (empty($c['error'])) {
-                $total += (int) ($c['total'] ?? 0);
-            }
-        }
+        $total = $this->cachedMergedClientsGrandTotal();
 
         return [
             'data' => $data,
@@ -1227,6 +1319,19 @@ class ErpClientService
             'grand_total' => $total,
             'error' => $firstError,
         ];
+    }
+
+    protected function cachedMergedClientsGrandTotal(): int
+    {
+        if (! config('erp.enabled', true)) {
+            return 0;
+        }
+
+        $ttl = (int) config('performance.cache_ttl.erp_clients_count', 600);
+
+        return (int) Cache::remember('erp_clients_merged_grand_total_v1', $ttl, function () {
+            return (int) ($this->getClientsCount(8) ?? 0);
+        });
     }
 
     /**
@@ -1262,8 +1367,38 @@ class ErpClientService
         $groupLimit = (int) (floor(($offset + $limit) / 2) - floor($offset / 2));
         $individualLimit = (int) (floor(($offset + $limit + 1) / 2) - floor(($offset + 1) / 2));
 
-        $groupResult = $this->getClientsFromHttpApi($groupLimit, $groupOffset, $search, null, false, 'group');
-        $indResult = $this->getClientsFromHttpApi($individualLimit, $individualOffset, $search, null, false, 'individual');
+        $url = trim((string) config('erp.clients_http_url'));
+        if ($url === '') {
+            return ['data' => collect(), 'total' => 0, 'error' => 'ERP_CLIENTS_HTTP_URL is not set.'];
+        }
+
+        $searchParams = ['limit' => 0, 'offset' => 0, 'search' => $searchTrim];
+        if ($this->shouldSendExactPolicyParamForSegmentSearch($searchTrim)) {
+            $searchParams['policy'] = $searchTrim;
+        }
+
+        $timeout = $this->httpTimeoutSeconds(12);
+        $responses = Http::pool(function ($pool) use ($url, $searchParams, $groupLimit, $groupOffset, $individualLimit, $individualOffset, $timeout) {
+            $pool->as('group')
+                ->withOptions(['connect_timeout' => 2])
+                ->timeout($timeout)
+                ->get($url, array_merge($searchParams, [
+                    'limit' => min($groupLimit, 100),
+                    'offset' => $groupOffset,
+                    'system' => 'group',
+                ]));
+            $pool->as('individual')
+                ->withOptions(['connect_timeout' => 2])
+                ->timeout($timeout)
+                ->get($url, array_merge($searchParams, [
+                    'limit' => min($individualLimit, 100),
+                    'offset' => $individualOffset,
+                    'system' => 'individual',
+                ]));
+        });
+
+        $groupResult = $this->parseHttpClientsPoolResponse($responses['group'] ?? null, 'group');
+        $indResult = $this->parseHttpClientsPoolResponse($responses['individual'] ?? null, 'individual');
 
         $groupData = $groupResult['data']->values()->all();
         $indData = $indResult['data']->values()->all();
@@ -1328,23 +1463,52 @@ class ErpClientService
 
         $groupTotal = (int) ($groupResult['total'] ?? 0);
         $indTotal = (int) ($indResult['total'] ?? 0);
-        $extraSegTotal = 0;
-        foreach (['mortgage', 'group_pension'] as $seg) {
-            if (! $this->optionalClientsSegmentConfigured($seg)) {
-                continue;
-            }
-            $c = $this->getClientsFromHttpApi(1, 0, $searchTrim, null, true, $seg);
-            if (empty($c['error'])) {
-                $extraSegTotal += (int) ($c['total'] ?? 0);
-            }
-        }
-        // Total rows across segments for this search (pagination / stat); mortgage rows are not double-counted vs $append.
-        $total = $groupTotal + $indTotal + $extraSegTotal;
+        $total = $groupTotal + $indTotal;
         $grandTotal = $total;
 
         $error = $groupResult['error'] ?: $indResult['error'];
 
         return ['data' => $data, 'total' => $total, 'grand_total' => $grandTotal, 'error' => $error];
+    }
+
+    /**
+     * @return array{data: Collection, total: int, error: ?string}
+     */
+    protected function parseHttpClientsPoolResponse($response, ?string $system): array
+    {
+        if (! $response || ! $response->successful()) {
+            $body = $response?->json();
+            $apiError = is_array($body) ? ($body['error'] ?? null) : null;
+            $errMsg = $apiError ? "ERP API: {$apiError}" : 'ERP API error: ' . ($response?->status() ?? 'unknown');
+
+            return ['data' => collect(), 'total' => 0, 'error' => $errMsg];
+        }
+
+        $body = $response->json();
+        $rows = $body['data'] ?? $body['clients'] ?? $body['results'] ?? [];
+        if (! is_array($rows)) {
+            $rows = [];
+        }
+
+        $offset = (int) ($body['offset'] ?? 0);
+        $total = (int) ($body['total'] ?? $body['count'] ?? count($rows) + $offset);
+        $data = collect($rows)
+            ->map(fn ($row) => $this->mapHttpRowToClientObject(is_array($row) ? $row : (array) $row, $system));
+
+        if (in_array($system, ['group', 'individual'], true) && $data->isNotEmpty()) {
+            $data = $data->map(function ($row) use ($system) {
+                $row->life_system = $system;
+
+                return $row;
+            })->values();
+        }
+
+        $apiMsg = $body['error'] ?? $body['message'] ?? null;
+        if (is_string($apiMsg) && $apiMsg !== '' && $data->isEmpty()) {
+            return ['data' => $data, 'total' => $total, 'error' => 'ERP API: '.$apiMsg];
+        }
+
+        return ['data' => $data, 'total' => $total, 'error' => null];
     }
 
     /**
@@ -1368,6 +1532,114 @@ class ErpClientService
         } catch (\Throwable $e) {
             return [];
         }
+    }
+
+    /**
+     * Fetch investment policy maturities from ERP HTTP API (LMS_POLICIES.POL_MATURITY_DATE).
+     * Not the partial maturities register used by getMaturingPoliciesFromHttpApi().
+     */
+    public function getInvestmentMaturitiesFromHttpApi(string $from, string $to): array
+    {
+        $params = ['from' => $from, 'to' => $to, 'limit' => 2000];
+        $lastError = 'Investment maturities API unavailable.';
+        $triedUrls = [];
+
+        foreach ($this->investmentMaturitiesUrlCandidates() as $url) {
+            if (in_array($url, $triedUrls, true)) {
+                continue;
+            }
+            $triedUrls[] = $url;
+
+            try {
+                $response = Http::withOptions(['connect_timeout' => 2])
+                    ->timeout($this->httpTimeoutSeconds(45))
+                    ->get($url, $params);
+
+                if ($response->status() === 404) {
+                    $lastError = 'Investment maturities endpoint not found at '.$url.'. Restart erp-clients-api after updating app.py.';
+
+                    continue;
+                }
+
+                if (! $response->successful()) {
+                    $body = $response->json();
+                    $lastError = is_array($body)
+                        ? ($body['error'] ?? 'Investment maturities API error: '.$response->status())
+                        : 'Investment maturities API error: '.$response->status();
+                    Log::warning('ERP investment maturities API failed', ['url' => $url, 'error' => $lastError]);
+
+                    continue;
+                }
+
+                $body = $response->json();
+                $rows = $body['data'] ?? [];
+                if (! is_array($rows)) {
+                    $rows = [];
+                }
+
+                $data = collect($rows)->map(function ($row) {
+                    $r = is_array($row) ? $row : (array) $row;
+
+                    return (object) [
+                        'pol_policy_no' => $r['pol_policy_no'] ?? $r['policy_number'] ?? $r['policy_no'] ?? null,
+                        'pol_maturity_date' => $r['pol_maturity_date'] ?? $r['maturity'] ?? $r['maturity_date'] ?? null,
+                        'full_name' => $r['full_name'] ?? $r['life_assured'] ?? $r['life_assur'] ?? null,
+                        'product' => $r['product'] ?? null,
+                        'phone_no' => $r['phone_no'] ?? $r['mobile'] ?? $r['client_contact'] ?? null,
+                        'email_adr' => $r['email_adr'] ?? $r['email'] ?? null,
+                    ];
+                })->all();
+
+                return ['data' => $data, 'error' => null];
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                Log::warning('ERP investment maturities API request failed', ['url' => $url, 'error' => $lastError]);
+            }
+        }
+
+        if ($triedUrls === []) {
+            return ['data' => [], 'error' => 'ERP_CLIENTS_HTTP_URL not set.'];
+        }
+
+        return ['data' => [], 'error' => $lastError];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function investmentMaturitiesUrlCandidates(): array
+    {
+        $candidates = [];
+        $explicit = trim((string) config('erp.investment_maturities_http_url', ''));
+        if ($explicit !== '') {
+            return [$explicit];
+        }
+
+        $clientsUrl = rtrim((string) config('erp.clients_http_url', ''), '/');
+        $financeBase = rtrim((string) (config('finance.erp_http_base') ?? env('FINANCE_ERP_HTTP_BASE', '')), '/');
+
+        foreach (array_filter([$financeBase, $clientsUrl]) as $base) {
+            if (preg_match('#/clients$#', $base)) {
+                $candidates[] = $base.'/investment-maturities';
+            }
+        }
+
+        $roots = array_unique(array_filter([
+            $financeBase,
+            $clientsUrl !== '' ? preg_replace('#/clients.*$#', '', $clientsUrl) : '',
+        ]));
+
+        foreach ($roots as $root) {
+            $root = rtrim((string) $root, '/');
+            if ($root === '') {
+                continue;
+            }
+            foreach (['/investment-maturities', '/clients/investment-maturities', '/api/clients/investment-maturities'] as $suffix) {
+                $candidates[] = $root.$suffix;
+            }
+        }
+
+        return array_values(array_unique(array_filter($candidates)));
     }
 
     /**
@@ -1534,6 +1806,46 @@ class ErpClientService
      * @param  bool  $mortgageUpcomingRenewalsOnly  When true with system=mortgage, require from/to or mendrRenewalWindowDays. Sends mortgage_upcoming_renewals=1.
      * @param  ?int  $mendrRenewalWindowDays  With system=mortgage: days from Oracle TRUNC(SYSDATE) for MENDR_RENEWAL_DATE (API mendr_window_days). Preferred for renewal dashboard.
      */
+    /**
+     * Ensure segment tabs (Group / Individual / …) expose the full ERP count for pagination and the stat badge.
+     *
+     * @param  array{data: \Illuminate\Support\Collection, total: int, error: string|null, grand_total?: int|null}  $result
+     * @return array{data: \Illuminate\Support\Collection, total: int, error: string|null, grand_total?: int|null}
+     */
+    protected function enrichSegmentListTotals(array $result, ?string $system, ?string $search): array
+    {
+        if (! in_array($system, ['group', 'individual', 'mortgage', 'group_pension'], true)) {
+            return $result;
+        }
+
+        if (! empty($result['error'])) {
+            return $result;
+        }
+
+        $rowCount = $result['data'] instanceof \Illuminate\Support\Collection
+            ? $result['data']->count()
+            : count($result['data'] ?? []);
+        $total = (int) ($result['total'] ?? 0);
+
+        if ($total <= $rowCount && trim((string) ($search ?? '')) === '') {
+            $countCacheKey = 'erp:segment_total:' . sha1(($system ?? '') . ':v1');
+            $countTtl = (int) config('performance.cache_ttl.erp_clients_count', 600);
+            $cachedTotal = Cache::remember($countCacheKey, $countTtl, function () use ($system) {
+                $countResult = $this->getClientsFromHttpApi(1, 0, null, null, true, $system);
+
+                return empty($countResult['error']) ? (int) ($countResult['total'] ?? 0) : 0;
+            });
+            if ($cachedTotal > 0) {
+                $total = $cachedTotal;
+            }
+        }
+
+        $result['total'] = $total;
+        $result['grand_total'] = $total;
+
+        return $result;
+    }
+
     public function getClientsFromHttpApi(int $limit, int $offset, ?string $search = null, ?int $timeoutSeconds = null, bool $countOnly = false, ?string $system = null, ?string $mendrRenewalOn = null, ?string $mendrRenewalFrom = null, ?string $mendrRenewalTo = null, bool $mortgageUpcomingRenewalsOnly = false, ?int $mendrRenewalWindowDays = null): array
     {
         try {
@@ -1621,24 +1933,12 @@ class ErpClientService
             $data = collect($rows)
                 ->map(fn ($row) => $this->mapHttpRowToClientObject(is_array($row) ? $row : (array) $row, $system));
 
-            if (in_array($system, ['group', 'individual'], true)) {
-                $filtered = $data
-                    ->filter(fn ($row) => strtolower(trim((string) ($row->life_system ?? ''))) === $system)
-                    ->values();
-                if ($filtered->isNotEmpty()) {
-                    $data = $filtered;
-                } elseif ($data->isNotEmpty()) {
-                    // Some ERP API responses omit/mislabel life_system even when system query param is applied.
-                    // In that case keep returned rows and tag them with requested system for broadcast/client filters.
-                    $data = $data->map(function ($row) use ($system) {
-                        $row->life_system = $system;
-                        return $row;
-                    })->values();
-                }
+            if (in_array($system, ['group', 'individual'], true) && $data->isNotEmpty()) {
+                $data = $data->map(function ($row) use ($system) {
+                    $row->life_system = $system;
 
-                if (! $countOnly) {
-                    $total = min($total, $offset + $data->count());
-                }
+                    return $row;
+                })->values();
             }
 
             $apiMsg = $body['error'] ?? $body['message'] ?? null;
@@ -1774,7 +2074,9 @@ class ErpClientService
         $apiSystem = in_array($apiSystemRaw, ['group', 'individual', 'mortgage', 'group_pension'], true) ? $apiSystemRaw : null;
         $detectedSystem = $this->getLifeSystemFromProduct($product);
         $lifeSystem = $apiSystem ?? $detectedSystem;
-        if (in_array($system, ['mortgage', 'group_pension'], true) && $apiSystem === null) {
+        if (in_array($system, ['group', 'individual'], true)) {
+            $lifeSystem = $system;
+        } elseif (in_array($system, ['mortgage', 'group_pension'], true) && $apiSystem === null) {
             $lifeSystem = $system;
         }
 

@@ -49,7 +49,7 @@
                     <i class="bi bi-search me-1"></i> Search
                 </button>
             </div>
-            <p class="text-muted small mt-2 mb-0">Search in both ERP (Oracle) and CRM. Minimum 2 characters. Press Enter or click Search.</p>
+            <p class="text-muted small mt-2 mb-0">Enter a policy number to open the client record directly. Name or phone shows matches — click a result to view full details.</p>
         </form>
 
         <div id="searchResults" class="serve-client-results" style="{{ ($initialSearch ?? '') && strlen($initialSearch ?? '') >= 2 ? '' : 'display:none' }}">
@@ -66,7 +66,7 @@
                 </div>
                 <div class="col-lg-6">
                     <h6 class="text-uppercase small fw-bold mb-3" style="color:var(--agile-primary);letter-spacing:0.06em">
-                        <i class="bi bi-person me-1"></i> CRM — Contacts
+                        <i class="bi bi-person me-1"></i> CRM — Prospects
                     </h6>
                     <div id="crmResults" class="serve-client-list">
                         @if(($initialSearch ?? '') && strlen($initialSearch ?? '') >= 2)
@@ -128,6 +128,7 @@
     background: #fff;
     position: relative;
     z-index: 2;
+    cursor: pointer;
 }
 .serve-client-item:hover {
     border-color: var(--agile-primary);
@@ -202,6 +203,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (!searchInput || !erpResults) return;
 
+    var searchFetchController = null;
+    var searchDebounceMs = 600;
+
     var searchBtn = document.getElementById('searchBtn');
     function doSearch() {
         var q = searchInput.value.trim();
@@ -251,6 +255,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function fetchResults(q) {
+        if (searchFetchController) searchFetchController.abort();
+        searchFetchController = new AbortController();
+
         showError('');
         searchEmpty.style.display = 'none';
         searchResults.style.display = 'block';
@@ -259,16 +266,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const base = '{{ route("serve-client.search") }}';
         const encoded = encodeURIComponent(q);
-        // Fetch ERP and CRM in parallel for faster results
-        var opts = { method: 'GET', headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, credentials: 'same-origin' };
+        var opts = {
+            method: 'GET',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+            credentials: 'same-origin',
+            signal: searchFetchController.signal
+        };
         Promise.all([
             fetch(base + '?q=' + encoded + '&source=erp', opts).then(function(r) { return r.json(); }),
             fetch(base + '?q=' + encoded + '&source=crm', opts).then(function(r) { return r.json(); })
         ])
         .then(function([erpData, crmData]) {
+            if (erpData.redirect) {
+                window.location.href = erpData.redirect;
+                return;
+            }
+            if (crmData.redirect) {
+                window.location.href = crmData.redirect;
+                return;
+            }
             return { erp: erpData.erp || [], crm: crmData.crm || [], error: erpData.error || crmData.error };
         })
         .then(function(data) {
+            if (!data) return;
             try {
                 renderErp(data.erp || [], q);
                 renderCrm(data.crm || [], q);
@@ -283,6 +303,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(function(err) {
+            if (err && err.name === 'AbortError') return;
             showError('Search failed. Check your connection. If using ERP API, ensure it is running (python app.py in erp-clients-api).');
             erpResults.innerHTML = '<div class="text-warning small py-3"><i class="bi bi-exclamation-triangle me-1"></i> Search could not complete. Check browser console (F12) for details.</div>';
             crmResults.innerHTML = '<div class="text-muted small">Search could not complete.</div>';
@@ -346,13 +367,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     '</div>';
             }
             const meta = [policy ? 'Policy: ' + policy : '', phone, email].filter(Boolean).join(' · ');
+            var detailHref = policy ? (detailUrl + '?policy=' + encodeURIComponent(policy) + '&from=serve-client') : '';
             const actions = '<div class="serve-client-actions">' +
-                (policy ? '<form method="GET" action="' + detailUrl + '" class="d-inline"><input type="hidden" name="policy" value="' + esc(policy) + '"><input type="hidden" name="from" value="serve-client"><button type="submit" class="serve-client-cta serve-client-cta-outline" title="View full details"><i class="bi bi-eye"></i> View Details</button></form>' : '') +
+                (policy ? '<span class="serve-client-cta serve-client-cta-outline"><i class="bi bi-eye"></i> Open client record</span>' : '') +
                 '<button type="button" class="serve-client-cta serve-client-cta-success serve-client-create-ticket" data-erp-store="' + storeId + '" title="Create support ticket"><i class="bi bi-ticket-perforated"></i> Create Ticket</button>' +
                 (email ? '<a href="' + supportEmailClientUrl({ email: email, client_name: name, policy: policy }) + '" class="serve-client-cta serve-client-cta-outline" title="Send email from CRM"><i class="bi bi-envelope"></i> Email</a>' : '') +
                 (phone ? '<a href="tel:' + esc(telHref(phone)) + '" class="serve-client-cta serve-client-cta-outline" title="Call"><i class="bi bi-telephone"></i> Call</a>' : '') +
                 '</div>';
-            return '<div class="serve-client-item">' +
+            return '<div class="serve-client-item"' + (detailHref ? ' data-open-url="' + detailHref + '"' : '') + '>' +
                 '<div class="serve-client-item-name">' + esc(name) + '</div>' +
                 (meta ? '<div class="serve-client-item-meta">' + esc(meta) + '</div>' : '') +
                 detailsHtml +
@@ -364,7 +386,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function renderCrm(items, searchTerm) {
         if (!items || items.length === 0) {
             var msg = '<div class="serve-client-empty-detail py-4">';
-            msg += '<p class="mb-2 text-muted small"><i class="bi bi-person me-1"></i> No CRM contacts found';
+            msg += '<p class="mb-2 text-muted small"><i class="bi bi-person me-1"></i> No CRM prospects found';
             if (searchTerm) msg += ' for "<strong>' + esc(searchTerm) + '</strong>"';
             msg += '.</p>';
             msg += '<p class="mb-0 small text-muted">Try a different name, phone, or email. You can still create a ticket from an ERP client above.</p>';
@@ -375,15 +397,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const contactUrl = '{{ url("/contacts") }}';
         const ticketUrl = '{{ route("tickets.create") }}';
         crmResults.innerHTML = items.map(function(item) {
-            const name = item.name || ('Contact #' + item.contactid);
+            const name = item.name || ('Prospect #' + item.contactid);
             const meta = [item.phone, item.email].filter(Boolean).join(' · ');
+            var openHref = contactUrl + '/' + item.contactid + '?tab=summary';
             const actions = '<div class="serve-client-actions">' +
-                '<a href="' + contactUrl + '/' + item.contactid + '" class="serve-client-cta serve-client-cta-outline" title="View contact"><i class="bi bi-eye"></i> View Details</a>' +
+                '<span class="serve-client-cta serve-client-cta-outline"><i class="bi bi-eye"></i> Open prospect record</span>' +
                 '<a href="' + ticketUrl + '?contact_id=' + item.contactid + '&from=serve-client" class="serve-client-cta serve-client-cta-success" title="Create ticket"><i class="bi bi-ticket-perforated"></i> Create Ticket</a>' +
                 (item.email ? '<a href="' + supportEmailClientUrl({ contact_id: item.contactid }) + '" class="serve-client-cta serve-client-cta-outline" title="Send email from CRM"><i class="bi bi-envelope"></i> Email</a>' : '') +
                 (item.phone ? '<a href="tel:' + esc(telHref(item.phone)) + '" class="serve-client-cta serve-client-cta-outline" title="Call"><i class="bi bi-telephone"></i> Call</a>' : '') +
                 '</div>';
-            return '<div class="serve-client-item">' +
+            return '<div class="serve-client-item" data-open-url="' + openHref + '">' +
                 '<div class="serve-client-item-name">' + esc(name) + '</div>' +
                 (meta ? '<div class="serve-client-item-meta">' + esc(meta) + '</div>' : '') +
                 actions +
@@ -392,6 +415,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.addEventListener('click', function(e) {
+        var openItem = e.target.closest('.serve-client-item[data-open-url]');
+        if (openItem && !e.target.closest('.serve-client-actions')) {
+            window.location.href = openItem.getAttribute('data-open-url');
+            return;
+        }
+
         var btn = e.target.closest('.serve-client-create-ticket');
         if (!btn) return;
         e.preventDefault();
@@ -420,9 +449,30 @@ document.addEventListener('DOMContentLoaded', function() {
             showError('');
             return;
         }
-        debounceTimer = setTimeout(function() { fetchResults(q); }, 280);
+        debounceTimer = setTimeout(function() { fetchResults(q); }, searchDebounceMs);
     });
-    // Form submit (Search button or Enter) triggers server-side search and full page reload with results
+
+    var searchForm = document.getElementById('serveClientSearchForm');
+    if (searchForm) {
+        searchForm.addEventListener('submit', function(e) {
+            var q = searchInput.value.trim();
+            if (q.length < 2) {
+                e.preventDefault();
+                showError('Type at least 2 characters to search.');
+                return;
+            }
+            var looksLikePolicy = /^GEMPPP/i.test(q) || /^[A-Za-z]{2,}[A-Za-z0-9\-\/]+$/.test(q);
+            if (looksLikePolicy) {
+                return;
+            }
+            e.preventDefault();
+            if (window.history && window.history.replaceState) {
+                var next = q ? ('?search=' + encodeURIComponent(q)) : window.location.pathname;
+                window.history.replaceState(null, '', next);
+            }
+            fetchResults(q);
+        });
+    }
 
     var urlSearch = new URLSearchParams(window.location.search).get('search');
     var hasInitialResults = @json(($initialSearch ?? '') && strlen($initialSearch ?? '') >= 2);

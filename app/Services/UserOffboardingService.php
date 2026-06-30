@@ -11,7 +11,7 @@ class UserOffboardingService
 {
     protected const MODULES = [
         'tickets' => ['HelpDesk', 'Ticket'],
-        'contacts' => ['Contacts', 'Contact'],
+        'contacts' => ['Prospects', 'Prospect'],
         'leads' => ['Leads', 'Lead'],
         'deals' => ['Potentials', 'Opportunity'],
     ];

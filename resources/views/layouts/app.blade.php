@@ -5,22 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <title>@yield('title', 'Dashboard') — Agile Craft</title>
-    <link rel="icon" type="image/png" href="{{ asset('images/agile-craft-logo.png') }}">
+    <title>@yield('title', 'Dashboard') — {{ config('branding.client_short') }}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ asset(config('branding.favicon')) }}">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @stack('head')
+    @include('partials.client-brand-styles')
     <style>
         :root {
-            --agile-primary: #1A468A;
-            --agile-primary-dark: #133A6F;
-            --agile-accent: #33B4E3;
-            --agile-primary-light: rgba(51, 180, 227, 0.15);
-            --agile-primary-muted: rgba(51, 180, 227, 0.08);
-            --agile-sidebar: #1A468A;
+            --agile-primary: {{ config('branding.primary') }};
+            --agile-primary-dark: {{ config('branding.primary_dark') }};
+            --agile-accent: {{ config('branding.accent') }};
+            --agile-logo-bg: {{ config('branding.logo_bg') }};
+            --agile-primary-light: color-mix(in srgb, {{ config('branding.accent') }} 15%, transparent);
+            --agile-primary-muted: color-mix(in srgb, {{ config('branding.primary') }} 8%, transparent);
+            --agile-sidebar: {{ config('branding.primary_dark') }};
             --agile-sidebar-hover: rgba(255,255,255,0.1);
             --agile-sidebar-active: rgba(255,255,255,0.2);
             --agile-text: #1e293b;
@@ -31,7 +33,7 @@
         * { box-sizing: border-box; }
         body {
             font-family: 'Inter', 'Plus Jakarta Sans', system-ui, sans-serif;
-            background: linear-gradient(180deg, #f0f9ff 0%, var(--agile-bg) 100%);
+            background: linear-gradient(180deg, #eef1f6 0%, var(--agile-bg) 100%);
             min-height: 100vh;
             color: var(--agile-text);
             -webkit-font-smoothing: antialiased;
@@ -41,33 +43,21 @@
         /* Sidebar */
         .app-sidebar {
             width: 260px;
-            background: var(--agile-sidebar);
+            background: linear-gradient(180deg, var(--agile-sidebar) 0%, {{ config('branding.primary') }} 100%);
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
             z-index: 100;
+            box-shadow: 2px 0 24px rgba(10, 22, 40, 0.12);
         }
         .app-sidebar-brand {
-            padding: 1.25rem 1.25rem;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
+            padding: 1rem 0.8rem;
+            background: #fff;
+            border-bottom: 1px solid #e8edf3;
+            display: block;
+            text-decoration: none;
         }
-        .app-sidebar-logo {
-            width: 40px;
-            height: 40px;
-            flex-shrink: 0;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            padding: 4px;
-        }
-        .app-sidebar-logo img { width: 100%; height: 100%; object-fit: contain; }
-        .app-sidebar-title { font-weight: 700; font-size: 1.1rem; color: #fff; }
-        .app-sidebar-sub { font-size: 0.7rem; color: rgba(255,255,255,0.7); }
+        .app-sidebar-brand .ko-brand { width: 100%; }
         .app-sidebar-nav { flex: 1; overflow-y: auto; padding: 1rem 0.75rem; }
         .app-nav-group { margin-bottom: 1.5rem; }
         .app-nav-label {
@@ -92,14 +82,18 @@
             transition: background 0.15s, color 0.15s;
         }
         .app-nav-link:hover { background: var(--agile-sidebar-hover); color: #fff; }
-        .app-nav-link.active { background: var(--agile-sidebar-active); color: #fff; }
+        .app-nav-link.active {
+            background: var(--agile-sidebar-active);
+            color: #fff;
+            box-shadow: inset 3px 0 0 var(--agile-accent);
+        }
         .app-nav-link i { font-size: 1.1rem; width: 22px; text-align: center; opacity: 0.9; }
         .app-nav-sublink { padding-left: 2.5rem; font-size: 0.85rem; }
         .app-sidebar-cta {
             margin: 1rem;
             padding: 0.75rem 1rem;
-            background: #fff;
-            color: var(--agile-primary);
+            background: var(--agile-accent);
+            color: #fff;
             border-radius: 9999px;
             font-weight: 600;
             font-size: 0.9rem;
@@ -109,9 +103,9 @@
             justify-content: center;
             gap: 0.5rem;
             transition: all 0.2s;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 14px rgba(0,0,0,0.2);
         }
-        .app-sidebar-cta:hover { background: #fff; color: var(--agile-primary-dark); transform: translateY(-1px); }
+        .app-sidebar-cta:hover { background: #c70511; color: #fff; transform: translateY(-1px); }
         .app-nav-toggle { cursor: pointer; width: 100%; border: none; background: transparent; text-align: left; }
         .app-nav-toggle .bi-chevron-down { font-size: 0.7rem; transition: transform 0.2s; }
         .app-nav-toggle[aria-expanded="true"] .bi-chevron-down { transform: rotate(180deg); }
@@ -275,13 +269,9 @@
     <div class="app-overlay" id="appOverlay" onclick="document.getElementById('appSidebar').classList.remove('open'); this.classList.remove('show')"></div>
     <div class="app-layout">
         <aside class="app-sidebar" id="appSidebar">
-            <div class="app-sidebar-brand">
-                <div class="app-sidebar-logo"><img src="{{ asset('images/agile-craft-logo.png') }}" alt="Agile Craft"></div>
-                <div>
-                    <div class="app-sidebar-title">Agile Craft</div>
-                    <div class="app-sidebar-sub">Insurance</div>
-                </div>
-            </div>
+            <a href="{{ route('dashboard') }}" class="app-sidebar-brand">
+                @include('partials.client-brand', ['variant' => 'compact'])
+            </a>
             @php $allowed = $allowedModules ?? []; $can = fn($k) => empty($allowed) || in_array($k, $allowed); @endphp
             <nav class="app-sidebar-nav">
                 <div class="app-nav-group">
@@ -291,23 +281,18 @@
                         <i class="bi bi-house-door-fill"></i><span>Dashboard</span>
                     </a>
                     @endif
+                    @if($can('support.customers'))
+                    <a href="{{ route('support.customers') }}" class="app-nav-link {{ request()->routeIs('support.customers') || request()->routeIs('support.clients.*') ? 'active' : '' }}"><i class="bi bi-people"></i><span>Clients</span></a>
+                    @endif
                     @if($can('contacts'))
                     <a href="{{ route('contacts.index') }}" class="app-nav-link {{ request()->routeIs('contacts.*') ? 'active' : '' }}">
-                        <i class="bi bi-person-lines-fill"></i><span>Contacts</span>
+                        <i class="bi bi-person-lines-fill"></i><span>Prospects</span>
                     </a>
                     @endif
                 </div>
-                @if($can('tickets') || $can('support'))
+                @if($can('tickets') || $can('support.faq') || $can('compliance.complaints') || ($can('support.customers') && ! ($can('leads') || $can('marketing'))))
                 <div class="app-nav-group">
                     <div class="app-nav-label">Support</div>
-                    <a href="{{ route('support') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('support') ? 'active' : '' }}">
-                        <i class="bi bi-headset"></i><span>Support</span>
-                    </a>
-                    @if($can('support.serve-client') || $can('tickets'))
-                    <a href="{{ route('support.serve-client') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('support.serve-client') ? 'active' : '' }}">
-                        <i class="bi bi-person-plus-fill"></i><span>Serve Client</span>
-                    </a>
-                    @endif
                     @if($can('tickets'))
                     <a href="{{ route('tickets.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('tickets.*') ? 'active' : '' }}">
                         <i class="bi bi-ticket-perforated-fill"></i><span>Tickets</span>
@@ -315,9 +300,6 @@
                     @endif
                     @if($can('support.faq'))
                     <a href="{{ route('support.faq') }}" class="app-nav-link app-nav-sublink"><i class="bi bi-question-circle"></i><span>FAQ</span></a>
-                    @endif
-                    @if($can('support.customers'))
-                    <a href="{{ route('support.customers') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('support.customers') || request()->routeIs('support.clients.*') ? 'active' : '' }}"><i class="bi bi-people"></i><span>Clients</span></a>
                     @endif
                     @if($can('support.customers') && ! ($can('leads') || $can('marketing')))
                     <a href="{{ route('marketing.broadcast') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.broadcast*') ? 'active' : '' }}"><i class="bi bi-broadcast"></i><span>Broadcast</span></a>
@@ -332,7 +314,7 @@
                     @endif
                 </div>
                 @endif
-                @if($can('leads') || $can('marketing'))
+                @if($can('leads') || $can('marketing') || $can('marketing.whatsapp') || $can('marketing.social-media') || $can('marketing.campaigns') || $can('marketing.broadcast'))
                 <div class="app-nav-group">
                     <div class="app-nav-label">Sales</div>
                     @if($can('leads'))
@@ -343,6 +325,11 @@
                     @if($can('marketing.social-media'))
                     <a href="{{ route('marketing.social-media') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.social-media') ? 'active' : '' }}">
                         <i class="bi bi-facebook"></i><span>Social Media</span>
+                    </a>
+                    @endif
+                    @if($can('marketing.whatsapp') || $can('marketing.social-media'))
+                    <a href="{{ route('marketing.whatsapp') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.whatsapp*') || request()->routeIs('support.whatsapp*') ? 'active' : '' }}">
+                        <i class="bi bi-whatsapp"></i><span>WhatsApp</span>
                     </a>
                     @endif
                     @if($can('marketing.campaigns'))
@@ -445,7 +432,7 @@
                 </button>
                 <div class="app-topbar-search position-relative">
                     <i class="bi bi-search"></i>
-                    <input type="text" id="globalSearch" class="form-control" placeholder="Search contacts, leads, deals..." autocomplete="off">
+                    <input type="text" id="globalSearch" class="form-control" placeholder="Search prospects, leads, deals..." autocomplete="off">
                     <div id="searchResults" class="search-dropdown" style="display:none"></div>
                 </div>
                 <div class="app-topbar-actions ms-auto">
@@ -457,9 +444,6 @@
                             <li class="dropdown-header px-3 py-2 text-muted small fw-bold text-uppercase">Quick Create</li>
                             @if($can('leads'))
                             <li><a class="dropdown-item py-2" href="{{ route('leads.create') }}"><i class="bi bi-briefcase me-2"></i>Lead</a></li>
-                            @endif
-                            @if($can('support.serve-client') || $can('tickets'))
-                            <li><a class="dropdown-item py-2" href="{{ route('support.serve-client') }}"><i class="bi bi-person-plus me-2"></i>Customer</a></li>
                             @endif
                             @if($can('deals'))
                             <li><a class="dropdown-item py-2" href="{{ route('deals.create') }}"><i class="bi bi-briefcase me-2"></i>Opportunity</a></li>
@@ -519,12 +503,26 @@
         function isInternal(url){ try{ var u=typeof url==='string'?new URL(url,base):url; return u.origin===window.location.origin; }catch(e){ return false; }}
         function showBar(){ if(bar){ bar.classList.add('loading'); bar.classList.remove('done'); bar.setAttribute('aria-hidden','false'); }}
         function hideBar(){ if(bar){ bar.classList.remove('loading'); bar.classList.add('done'); setTimeout(function(){ bar.classList.remove('done'); bar.style.transform='scaleX(0)'; bar.setAttribute('aria-hidden','true'); },220); }}
-        document.addEventListener('click',function(e){ var a=e.target.closest('a'); if(a&&a.href&&isInternal(a.href)&&!a.target&&!e.ctrlKey&&!e.metaKey&&!e.shiftKey){ showBar(); }},true);
+        var hideTimer;
+        function showBarWithTimeout(){
+            showBar();
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(hideBar, 15000);
+        }
+        document.addEventListener('click',function(e){ var a=e.target.closest('a'); if(a&&a.href&&isInternal(a.href)&&!a.target&&!e.ctrlKey&&!e.metaKey&&!e.shiftKey){ showBarWithTimeout(); }},true);
+        document.querySelectorAll('.app-sidebar-nav a.app-nav-link').forEach(function(link){
+            link.addEventListener('click',function(){
+                var sidebar=document.getElementById('appSidebar');
+                var overlay=document.getElementById('appOverlay');
+                if(sidebar) sidebar.classList.remove('open');
+                if(overlay) overlay.classList.remove('show');
+            });
+        });
         document.addEventListener('submit',function(e){
             var f=e.target;
             if(!f||!isInternal(f.action||window.location.href))return;
-            if(f.method.toLowerCase()==='get')showBar();
-            else if(f.classList&&f.classList.contains('logout-form')){ showBar(); var b=f.querySelector('button[type=submit]'); if(b){ b.disabled=true; b.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Logging out...'; }}
+            if(f.method.toLowerCase()==='get')showBarWithTimeout();
+            else if(f.classList&&f.classList.contains('logout-form')){ showBarWithTimeout(); var b=f.querySelector('button[type=submit]'); if(b){ b.disabled=true; b.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Logging out...'; }}
         },true);
         if(document.readyState==='complete')hideBar(); else window.addEventListener('load',hideBar);
     })();
@@ -551,19 +549,6 @@
         inp.onfocus=function(){if((inp.value||'').trim().length>=2&&res.innerHTML)res.style.display='block';};
         inp.onblur=function(){setTimeout(function(){res.style.display='none';},150);};
         document.onclick=function(e){if(!inp.contains(e.target)&&!res.contains(e.target))res.style.display='none';};
-    })();
-    </script>
-    <script>
-    (function(){
-        var prefetched={};
-        document.querySelectorAll('a[href*="serve-client"],a[href*="tickets"],a[href*="support/customers"],a[href*="contacts"]').forEach(function(a){
-            if(!a.href||a.target||prefetched[a.href])return;
-            a.addEventListener('mouseenter',function(){
-                if(prefetched[a.href])return;
-                prefetched[a.href]=true;
-                var link=document.createElement('link');link.rel='prefetch';link.href=a.href;document.head.appendChild(link);
-            },{once:true,passive:true});
-        });
     })();
     </script>
     @include('partials.pbx-tel-handler')

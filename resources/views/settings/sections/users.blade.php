@@ -19,6 +19,9 @@
             <i class="bi bi-diagram-3 me-1"></i>Reporting lines
         </a>
         <a href="{{ route('settings.crm') }}?section=roles" class="btn btn-sm" style="background:var(--agile-primary);color:#fff;border-radius:8px">Manage Roles</a>
+        <a href="{{ route('settings.crm') }}?section=client-access" class="btn btn-sm btn-outline-primary" style="border-radius:8px">
+            <i class="bi bi-person-check me-1"></i>Client Access
+        </a>
     </div>
 </div>
 

@@ -23,7 +23,7 @@ class SocialAccount extends Model
 
     public static function platforms(): array
     {
-        return ['facebook', 'instagram', 'twitter', 'youtube', 'tiktok'];
+        return ['facebook', 'instagram', 'twitter', 'youtube', 'tiktok', 'whatsapp'];
     }
 
     public function isExpired(): bool

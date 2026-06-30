@@ -15,28 +15,22 @@
             <h1 class="reports-audit-title mb-1">Tickets by date range</h1>
             <p class="reports-audit-subtitle mb-0">Fetch support tickets by <strong>created</strong> date (inclusive). Combine with status, search, or assignee as needed.</p>
         </div>
+        @php
+            $ticketsExportParams = array_filter([
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
+                'status' => $status,
+                'search' => $search,
+                'only_with_contact' => $onlyWithContact ? 1 : null,
+                'assigned_to' => ($ownerFilter === null && $assignedTo) ? $assignedTo : null,
+            ]);
+        @endphp
         <div class="d-flex flex-wrap gap-2 align-items-center no-print">
-            <a href="{{ route('reports.export.tickets-by-date', array_filter([
-                'date_from' => $dateFrom,
-                'date_to' => $dateTo,
-                'status' => $status,
-                'search' => $search,
-                'only_with_contact' => $onlyWithContact ? 1 : null,
-                'assigned_to' => ($ownerFilter === null && $assignedTo) ? $assignedTo : null,
-                'format' => 'xlsx',
-            ])) }}" class="btn btn-primary btn-sm">
-                <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel
-            </a>
-            <a href="{{ route('reports.export.tickets-by-date', array_filter([
-                'date_from' => $dateFrom,
-                'date_to' => $dateTo,
-                'status' => $status,
-                'search' => $search,
-                'only_with_contact' => $onlyWithContact ? 1 : null,
-                'assigned_to' => ($ownerFilter === null && $assignedTo) ? $assignedTo : null,
-            ])) }}" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-download me-1"></i>Export CSV
-            </a>
+            @include('partials.report-export-buttons', [
+                'route' => 'reports.export.tickets-by-date',
+                'params' => $ticketsExportParams,
+                'csvWithoutFormat' => true,
+            ])
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()" title="Print report">
                 <i class="bi bi-printer me-1"></i>Print
             </button>
@@ -62,7 +56,7 @@
                         <option value="In Progress" {{ ($status ?? '') === 'In Progress' ? 'selected' : '' }}>In Progress</option>
                         <option value="Wait For Response" {{ ($status ?? '') === 'Wait For Response' ? 'selected' : '' }}>Wait For Response</option>
                         <option value="Closed" {{ ($status ?? '') === 'Closed' ? 'selected' : '' }}>Closed</option>
-                        <option value="Unassigned" {{ ($status ?? '') === 'Unassigned' ? 'selected' : '' }}>Unassigned (no contact)</option>
+                        <option value="Unassigned" {{ ($status ?? '') === 'Unassigned' ? 'selected' : '' }}>Unassigned (no prospect)</option>
                     </select>
                 </div>
                 <div class="col-md-2">
@@ -75,7 +69,7 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small text-muted mb-1">Search</label>
-                    <input type="text" name="search" class="form-control" placeholder="Ticket no, title, contact, policy fields, owner..." value="{{ $search ?? '' }}">
+                    <input type="text" name="search" class="form-control" placeholder="Ticket no, title, prospect, policy fields, owner..." value="{{ $search ?? '' }}">
                 </div>
                 @if($ownerFilter === null)
                 <div class="col-md-4">
@@ -93,7 +87,7 @@
                 <div class="col-md-4 d-flex align-items-center">
                     <div class="form-check mt-3">
                         <input class="form-check-input" type="checkbox" name="only_with_contact" value="1" id="onlyWithContact" {{ !empty($onlyWithContact) ? 'checked' : '' }}>
-                        <label class="form-check-label small" for="onlyWithContact">Only tickets linked to a contact</label>
+                        <label class="form-check-label small" for="onlyWithContact">Only tickets linked to a prospect</label>
                     </div>
                 </div>
                 <div class="col-12 col-md-auto">
@@ -122,7 +116,7 @@
                         <th>Status</th>
                         <th>Priority</th>
                         <th>Category</th>
-                        <th>Contact</th>
+                        <th>Prospect</th>
                         <th>Created</th>
                         <th>Assigned to</th>
                         <th>Dept</th>

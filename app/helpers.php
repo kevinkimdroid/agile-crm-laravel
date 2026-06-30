@@ -227,6 +227,29 @@ if (! function_exists('crm_owner_filter')) {
     }
 }
 
+if (! function_exists('resolve_overdue_activity_scope')) {
+    /**
+     * Resolve Mine vs All scope for overdue activity widgets and lists.
+     *
+     * @return array{scope: string, ownerId: ?int, canViewAll: bool}
+     */
+    function resolve_overdue_activity_scope(?string $requestedScope = null): array
+    {
+        $user = \Illuminate\Support\Facades\Auth::guard('vtiger')->user()
+            ?? \Illuminate\Support\Facades\Auth::user();
+        $canViewAll = (bool) $user?->isAdministrator();
+        $scope = $requestedScope === 'all' && $canViewAll ? 'all' : 'mine';
+
+        if ($scope === 'all') {
+            return ['scope' => 'all', 'ownerId' => null, 'canViewAll' => true];
+        }
+
+        $ownerId = $user ? (int) ($user->id ?? $user->getAuthIdentifier()) : crm_owner_filter();
+
+        return ['scope' => 'mine', 'ownerId' => $ownerId, 'canViewAll' => $canViewAll];
+    }
+}
+
 if (! function_exists('ticket_can_access')) {
     /**
      * Check if current user can access a ticket by ID.
@@ -582,5 +605,114 @@ if (! function_exists('tel_href')) {
         }
         // Already 9 digits or other format - return as-is (avoid breaking intl numbers)
         return $digits;
+    }
+}
+
+if (! function_exists('allowed_client_segments')) {
+    /**
+     * Client life-system segments the current user may access on Support > Clients.
+     *
+     * @return list<string>
+     */
+    function allowed_client_segments(): array
+    {
+        try {
+            $user = \Illuminate\Support\Facades\Auth::guard('vtiger')->user();
+
+            return app(\App\Services\ProfileAccessService::class)->getClientSegmentsForUser($user);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('allowed_client_segments failed', ['error' => $e->getMessage()]);
+
+            return app(\App\Services\ProfileAccessService::class)->allClientSegmentKeys();
+        }
+    }
+}
+
+if (! function_exists('user_can_access_client_segment')) {
+    function user_can_access_client_segment(?string $system): bool
+    {
+        try {
+            $user = \Illuminate\Support\Facades\Auth::guard('vtiger')->user();
+
+            return app(\App\Services\ProfileAccessService::class)->userCanAccessClientSegment($user, $system);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('user_can_access_client_segment failed', [
+                'system' => $system,
+                'error' => $e->getMessage(),
+            ]);
+
+            return true;
+        }
+    }
+}
+
+if (! function_exists('user_is_limited_to_assigned_clients')) {
+    function user_is_limited_to_assigned_clients(): bool
+    {
+        try {
+            $user = \Illuminate\Support\Facades\Auth::guard('vtiger')->user();
+
+            return app(\App\Services\ProfileAccessService::class)->userIsLimitedToAssignedClients($user);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+}
+
+if (! function_exists('user_can_access_client_policy')) {
+    function user_can_access_client_policy(?string $policyNumber, ?string $system = null): bool
+    {
+        try {
+            $user = \Illuminate\Support\Facades\Auth::guard('vtiger')->user();
+
+            return app(\App\Services\ProfileAccessService::class)->userCanAccessClientPolicy($user, $policyNumber, $system);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('user_can_access_client_policy failed', [
+                'policy' => $policyNumber,
+                'error' => $e->getMessage(),
+            ]);
+
+            return true;
+        }
+    }
+}
+
+if (! function_exists('client_suggested_premium_amount')) {
+    /**
+     * Best-effort premium / instalment amount from ERP client row (array or object).
+     */
+    function client_suggested_premium_amount(mixed $client): ?int
+    {
+        if ($client === null) {
+            return null;
+        }
+
+        $keys = [
+            'modal_prem', 'modal_premium', 'MODAL_PREM', 'MODAL_PREMIUM',
+            'premium_amt', 'prem_amt', 'PREMIUM_AMT', 'PREM_AMT',
+            'instalment_amt', 'instalment', 'installment', 'INSTALLMENT',
+            'contribution', 'monthly_prem', 'monthly_premium',
+            'pol_premium', 'POL_PREMIUM', 'inst_amt', 'INST_AMT',
+        ];
+
+        foreach ($keys as $key) {
+            $val = is_array($client) ? ($client[$key] ?? null) : ($client->{$key} ?? null);
+            if ($val === null || $val === '') {
+                continue;
+            }
+            $num = (float) preg_replace('/[^0-9.-]/', '', (string) $val);
+            if ($num >= 1) {
+                return (int) round($num);
+            }
+        }
+
+        return null;
+    }
+}
+
+if (! function_exists('oracle_oci8_available')) {
+    function oracle_oci8_available(): bool
+    {
+        return extension_loaded('oci8') && function_exists('oci_connect');
     }
 }

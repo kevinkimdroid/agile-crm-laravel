@@ -168,6 +168,8 @@ return [
 
     'maturities_http_url' => env('ERP_MATURITIES_HTTP_URL', ''),
 
+    'investment_maturities_http_url' => env('ERP_INVESTMENT_MATURITIES_HTTP_URL', ''),
+
     /*
     |--------------------------------------------------------------------------
     | Clients list lazy load
@@ -177,7 +179,10 @@ return [
     | Keep false on servers where /api/support/clients may be blocked.
     |
     */
-    'clients_lazy_load' => env('ERP_CLIENTS_LAZY_LOAD', false),
+    'clients_lazy_load' => filter_var(
+        env('ERP_CLIENTS_LAZY_LOAD', in_array(env('CLIENTS_VIEW_SOURCE', 'crm'), ['erp_http', 'erp_sync'], true)),
+        FILTER_VALIDATE_BOOLEAN
+    ),
 
     /*
     |--------------------------------------------------------------------------

@@ -4,30 +4,80 @@ namespace App\Http\Controllers;
 
 use App\Models\VtigerProfile;
 use App\Models\VtigerTab;
+use App\Services\ProfileAccessService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\View\View;
 
 class ProfileController extends Controller
 {
-    /**
-     * List all profiles.
-     */
-    public function index(): View
+    public function __construct(protected ProfileAccessService $profileAccess)
     {
-        $profiles = VtigerProfile::on('vtiger')
-            ->orderBy('profilename')
-            ->withCount('roles')
-            ->get();
+    }
 
-        return view('settings.profiles-index', ['profiles' => $profiles]);
+    public function index(): RedirectResponse
+    {
+        return redirect()->route('settings.crm', ['section' => 'profiles']);
+    }
+
+    public function create(): RedirectResponse
+    {
+        return redirect()->route('settings.crm', ['section' => 'profiles', 'action' => 'create']);
     }
 
     /**
-     * Show profile detail view (matching Vtiger Profile view layout).
+     * @return array<string, mixed>
      */
-    /** @return View|RedirectResponse */
+    public function buildFormData(?VtigerProfile $profile = null, bool $isCreate = false): array
+    {
+        $profile = $profile ?? new VtigerProfile(['profilename' => '', 'description' => '']);
+        $profileId = $profile->exists ? (int) $profile->profileid : null;
+
+        if ($profile->exists) {
+            $profile->load(['tabs', 'roles']);
+        }
+
+        return [
+            'profile' => $profile,
+            'isCreate' => $isCreate,
+            'moduleList' => $this->buildModuleList($profile),
+            'appModuleList' => $this->buildAppModuleList($profileId),
+            'clientSegments' => $profileId
+                ? $this->profileAccess->getClientSegmentsForProfile($profileId)
+                : $this->profileAccess->allClientSegmentKeys(),
+            'clientAccessMode' => $profileId
+                ? $this->profileAccess->getClientAccessModeForProfile($profileId)
+                : ProfileAccessService::CLIENT_ACCESS_ALL,
+            'segmentLabels' => config('profile_modules.client_segments', []),
+            'tools' => $profileId
+                ? $this->getProfileTools($profileId)
+                : ['Import' => false, 'Export' => false, 'DuplicatesHandling' => false],
+            'profileCancelUrl' => route('settings.crm', ['section' => 'profiles']),
+        ];
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'profilename' => 'required|string|max:100',
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        $nextId = (int) VtigerProfile::on('vtiger')->max('profileid') + 1;
+        $profile = VtigerProfile::on('vtiger')->create([
+            'profileid' => $nextId,
+            'profilename' => $validated['profilename'],
+            'description' => $validated['description'] ?? '',
+        ]);
+
+        $this->persistProfileSettings($request, (int) $profile->profileid);
+
+        return redirect()
+            ->route('settings.crm', ['section' => 'profiles', 'action' => 'edit', 'profile' => $profile->profileid])
+            ->with('success', 'Profile created.');
+    }
+
+    /** @return RedirectResponse */
     public function show(string $id)
     {
         $profile = VtigerProfile::on('vtiger')->find($id);
@@ -36,56 +86,13 @@ class ProfileController extends Controller
                 ->withErrors(['profile' => 'Profile not found.']);
         }
 
-        $profile->load(['tabs', 'roles']);
-
-        $vtigerNames = array_filter(array_unique(array_values(config('modules.app_to_vtiger', []))));
-        $allTabs = VtigerTab::on('vtiger')
-            ->whereIn('name', $vtigerNames)
-            ->orderBy('name')
-            ->get();
-
-        $allowedTabIds = $profile->tabs->pluck('tabid')->toArray();
-
-        $standardPerms = DB::connection('vtiger')
-            ->table('vtiger_profile2standardpermissions')
-            ->where('profileid', $profile->profileid)
-            ->get()
-            ->groupBy('tabid');
-
-        $fieldPerms = DB::connection('vtiger')
-            ->table('vtiger_profile2field')
-            ->where('profileid', $profile->profileid)
-            ->get()
-            ->groupBy('tabid');
-
-        $moduleList = [];
-        foreach ($allTabs as $tab) {
-            $perms = $standardPerms->get($tab->tabid, collect());
-            $hasView = in_array($tab->tabid, $allowedTabIds);
-            $moduleList[] = [
-                'tabid' => $tab->tabid,
-                'name' => $tab->name,
-                'label' => $this->tabLabel($tab->name),
-                'view' => $hasView,
-                'create' => (bool) (($p = $perms->firstWhere('operation', 0)) ? ($p->permissions ?? 0) : 0),
-                'edit' => (bool) (($p = $perms->firstWhere('operation', 1)) ? ($p->permissions ?? 0) : 0),
-                'delete' => (bool) (($p = $perms->firstWhere('operation', 2)) ? ($p->permissions ?? 0) : 0),
-                'fields' => $hasView ? $this->getFieldsForTab($tab->tabid, $fieldPerms->get($tab->tabid, collect())) : [],
-            ];
-        }
-
-        $tools = $this->getProfileTools($profile->profileid);
-
-        return view('settings.profile-detail', [
-            'profile' => $profile,
-            'moduleList' => $moduleList,
-            'tools' => $tools,
+        return redirect()->route('settings.crm', [
+            'section' => 'profiles',
+            'action' => 'edit',
+            'profile' => $profile->profileid,
         ]);
     }
 
-    /**
-     * Update profile permissions.
-     */
     public function update(Request $request, string $id): RedirectResponse
     {
         $profile = VtigerProfile::on('vtiger')->find($id);
@@ -105,22 +112,119 @@ class ProfileController extends Controller
             $profile->update(['description' => $request->description]);
         }
 
+        $this->persistProfileSettings($request, (int) $profile->profileid);
+
+        return redirect()
+            ->route('settings.crm', ['section' => 'profiles', 'action' => 'edit', 'profile' => $profile->profileid])
+            ->with('success', 'Profile permissions updated.');
+    }
+
+    protected function persistProfileSettings(Request $request, int $profileId): void
+    {
         $modules = $request->input('modules', []);
         if (is_array($modules)) {
-            $this->updateModulePermissions($profile->profileid, $modules);
+            $this->updateModulePermissions($profileId, $modules);
         }
 
         $tools = $request->input('tools', []);
         if (is_array($tools)) {
-            $this->updateProfileTools($profile->profileid, $tools);
+            $this->updateProfileTools($profileId, $tools);
         }
 
         $fields = $request->input('fields', []);
         if (is_array($fields)) {
-            $this->updateFieldPermissions($profile->profileid, $fields);
+            $this->updateFieldPermissions($profileId, $fields);
         }
 
-        return back()->with('success', 'Profile permissions updated.');
+        $segments = $request->input('client_segments', []);
+        $appModules = $request->input('app_modules', []);
+        if (! is_array($segments)) {
+            $segments = [];
+        }
+        if (! is_array($appModules)) {
+            $appModules = [];
+        }
+
+        $clientAccessMode = (string) $request->input('client_access_mode', ProfileAccessService::CLIENT_ACCESS_ALL);
+
+        $this->profileAccess->saveForProfile($profileId, $segments, $appModules, $clientAccessMode);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function buildModuleList(VtigerProfile $profile): array
+    {
+        $fromApp = array_filter(array_unique(array_values(config('modules.app_to_vtiger', []))));
+        $vtigerNames = array_values(array_unique(array_merge(
+            config('profile_modules.vtiger_tabs', []),
+            $fromApp
+        )));
+        $allTabs = VtigerTab::on('vtiger')
+            ->whereIn('name', $vtigerNames)
+            ->orderBy('name')
+            ->get()
+            ->sortBy(fn ($tab) => array_search($tab->name, $vtigerNames, true) ?: 999);
+
+        $allowedTabIds = $profile->exists ? $profile->tabs->pluck('tabid')->toArray() : [];
+
+        $standardPerms = $profile->exists
+            ? DB::connection('vtiger')
+                ->table('vtiger_profile2standardpermissions')
+                ->where('profileid', $profile->profileid)
+                ->get()
+                ->groupBy('tabid')
+            : collect();
+
+        $fieldPerms = $profile->exists
+            ? DB::connection('vtiger')
+                ->table('vtiger_profile2field')
+                ->where('profileid', $profile->profileid)
+                ->get()
+                ->groupBy('tabid')
+            : collect();
+
+        $moduleList = [];
+        foreach ($allTabs as $tab) {
+            $perms = $standardPerms->get($tab->tabid, collect());
+            $hasView = in_array($tab->tabid, $allowedTabIds, true);
+            $moduleList[] = [
+                'tabid' => $tab->tabid,
+                'name' => $tab->name,
+                'label' => $this->tabLabel($tab->name),
+                'view' => $hasView,
+                'create' => (bool) (($p = $perms->firstWhere('operation', 0)) ? ($p->permissions ?? 0) : 0),
+                'edit' => (bool) (($p = $perms->firstWhere('operation', 1)) ? ($p->permissions ?? 0) : 0),
+                'delete' => (bool) (($p = $perms->firstWhere('operation', 2)) ? ($p->permissions ?? 0) : 0),
+                'fields' => $hasView ? $this->getFieldsForTab($tab->tabid, $fieldPerms->get($tab->tabid, collect())) : [],
+            ];
+        }
+
+        return $moduleList;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function buildAppModuleList(?int $profileId): array
+    {
+        $labels = config('profile_modules.app_modules', []);
+        $perms = $this->profileAccess->getAppModulePermissionsForProfile($profileId);
+        $list = [];
+
+        foreach ($labels as $key => $label) {
+            $p = $perms[$key] ?? ['view' => true, 'create' => true, 'edit' => true, 'delete' => true];
+            $list[] = [
+                'key' => $key,
+                'label' => $label,
+                'view' => (bool) ($p['view'] ?? true),
+                'create' => (bool) ($p['create'] ?? true),
+                'edit' => (bool) ($p['edit'] ?? true),
+                'delete' => (bool) ($p['delete'] ?? true),
+            ];
+        }
+
+        return $list;
     }
 
     protected function tabLabel(string $name): string
@@ -131,8 +235,11 @@ class ProfileController extends Controller
             'HelpDesk' => 'Tickets',
             'Contacts' => 'Contacts',
             'Leads' => 'Leads',
+            'Calendar' => 'Calendar',
+            'Emails' => 'Emails',
             'Campaigns' => 'Campaigns',
             'Reports' => 'Reports',
+            'Documents' => 'Documents',
         ];
 
         return $labels[$name] ?? $name;
@@ -175,9 +282,9 @@ class ProfileController extends Controller
                 ->toArray();
 
             return [
-                'Import' => in_array(5, $utils),
-                'Export' => in_array(6, $utils),
-                'DuplicatesHandling' => in_array(10, $utils),
+                'Import' => in_array(5, $utils, true),
+                'Export' => in_array(6, $utils, true),
+                'DuplicatesHandling' => in_array(10, $utils, true),
             ];
         } catch (\Throwable $e) {
             return ['Import' => false, 'Export' => false, 'DuplicatesHandling' => false];

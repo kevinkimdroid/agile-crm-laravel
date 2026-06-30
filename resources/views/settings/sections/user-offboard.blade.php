@@ -41,7 +41,7 @@
             <div class="mb-4">
                 <h6 class="text-muted text-uppercase small fw-bold mb-2">Records to reassign</h6>
                 <div class="d-flex flex-wrap gap-3">
-                    @foreach(['tickets' => 'Tickets', 'contacts' => 'Contacts', 'leads' => 'Leads', 'deals' => 'Deals'] as $key => $label)
+                    @foreach(['tickets' => 'Tickets', 'contacts' => 'Prospects', 'leads' => 'Leads', 'deals' => 'Deals'] as $key => $label)
                         @if(($recordCounts[$key] ?? 0) > 0)
                         <span class="badge bg-light text-dark border px-3 py-2">
                             {{ $label }}: <strong>{{ $recordCounts[$key] }}</strong>

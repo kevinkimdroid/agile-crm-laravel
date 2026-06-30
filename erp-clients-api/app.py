@@ -1005,6 +1005,98 @@ def _partial_maturities_sql(product_filter=None):
     return inner
 
 
+def _investment_maturity_product_codes():
+    raw = os.getenv("INVESTMENT_MATURITY_PRODUCT_CODES", "2024608,2025615,2025621")
+    codes = []
+    for part in raw.split(","):
+        part = part.strip()
+        if part.isdigit():
+            codes.append(int(part))
+    return codes or [2024608, 2025615, 2025621]
+
+
+def _investment_maturities_sql(product_codes):
+    """
+    Full policy maturity dates for investment products (LMS_POLICIES.POL_MATURITY_DATE).
+    Not the partial maturities register (LMS_POLICY_PRTL_MATURITIES).
+    """
+    pol = _lms_qualified("LMS_POLICIES")
+    prod = _lms_qualified("LMS_PRODUCTS")
+    prp = _lms_qualified("LMS_PROPOSERS")
+    placeholders = ", ".join(f":pc{i}" for i in range(len(product_codes)))
+    return f"""
+        SELECT TO_CHAR(p.POL_POLICY_NO) AS POL_POLICY_NO,
+               TO_CHAR(p.POL_MATURITY_DATE, 'YYYY-MM-DD') AS POL_MATURITY_DATE,
+               TRIM(r.PRP_SURNAME || ' ' || r.PRP_OTHER_NAMES) AS FULL_NAME,
+               d.PROD_DESC AS PRODUCT
+        FROM {pol} p
+        JOIN {prp} r ON r.PRP_CODE = p.POL_PRP_CODE
+        JOIN {prod} d ON d.PROD_CODE = p.POL_PROD_CODE
+        WHERE d.PROD_CODE IN ({placeholders})
+          AND p.POL_MATURITY_DATE >= TO_DATE(:df, 'YYYY-MM-DD')
+          AND p.POL_MATURITY_DATE < TO_DATE(:dt, 'YYYY-MM-DD') + 1
+        ORDER BY p.POL_MATURITY_DATE ASC, p.POL_POLICY_NO ASC
+    """
+
+
+@app.route("/investment-maturities", methods=["GET"])
+@app.route("/clients/investment-maturities", methods=["GET"])
+@app.route("/api/clients/investment-maturities", methods=["GET"])
+def get_investment_maturities():
+    """
+    Investment policies maturing on POL_MATURITY_DATE (not partial maturities register).
+    GET /investment-maturities?from=2026-06-01&to=2026-06-14
+    """
+    if not PASSWORD:
+        return jsonify({"data": [], "error": "ORACLE_PASSWORD not set"}), 503
+    date_from = (request.args.get("from") or "").strip()
+    date_to = (request.args.get("to") or "").strip()
+    if not date_from or not date_to:
+        return jsonify({"data": [], "error": "Missing from or to (YYYY-MM-DD)"}), 400
+    product_codes = _investment_maturity_product_codes()
+    try:
+        limit = min(max(int(request.args.get("limit", 500)), 1), 2000)
+        offset = max(int(request.args.get("offset", 0)), 0)
+        inner = _investment_maturities_sql(product_codes)
+        sql = f"""
+            SELECT * FROM (
+                SELECT a.*, ROWNUM rn FROM ({inner}) a WHERE ROWNUM <= :upper
+            ) WHERE rn > :lower
+        """
+        bind = {"df": date_from, "dt": date_to, "upper": offset + limit, "lower": offset}
+        for i, code in enumerate(product_codes):
+            bind[f"pc{i}"] = code
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(sql, bind)
+        rows = cursor.fetchall()
+        col_names = [d[0] for d in cursor.description] if cursor.description else []
+        data = []
+        for r in rows:
+            row_dict = {}
+            for i, col in enumerate(col_names):
+                if col.upper() == "RN":
+                    continue
+                row_dict[col] = r[i] if i < len(r) else None
+            data.append(row_to_client(
+                [row_dict.get(c) for c in col_names if c.upper() != "RN"],
+                [c for c in col_names if c.upper() != "RN"],
+            ))
+        cursor.close()
+        conn.close()
+        return jsonify({
+            "data": data,
+            "total": len(data),
+            "offset": offset,
+            "limit": limit,
+            "has_more": len(data) >= limit,
+            "source": "lms_policies_pol_maturity_date",
+            "product_codes": product_codes,
+        })
+    except Exception as e:
+        return jsonify({"data": [], "error": str(e)}), 500
+
+
 @app.route("/maturities", methods=["GET"])
 @app.route("/clients/maturities", methods=["GET"])
 @app.route("/api/clients/maturities", methods=["GET"])

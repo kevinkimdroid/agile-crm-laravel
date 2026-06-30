@@ -302,42 +302,20 @@ class SetupController extends Controller
     {
         $role = VtigerRole::on('vtiger')->find($roleId);
         if (!$role) {
-            return redirect()->route('setup.roles')->withErrors(['role' => 'Role not found.']);
+            return redirect()->route('settings.crm', ['section' => 'roles'])->withErrors(['role' => 'Role not found.']);
         }
 
-        $role->load('profiles.tabs');
-        $profile = $role->profiles->first();
-
-        $vtigerNames = array_filter(array_unique(array_values(config('modules.app_to_vtiger', []))));
-        $allTabs = VtigerTab::on('vtiger')
-            ->whereIn('name', $vtigerNames)
-            ->orderBy('name')
-            ->get();
-
-        $appModules = config('modules.app_to_vtiger', []);
-        $moduleList = [];
-        foreach ($appModules as $appKey => $vtigerName) {
-            if ($vtigerName) {
-                $tab = $allTabs->firstWhere('name', $vtigerName);
-                if ($tab) {
-                    $moduleList[] = [
-                        'key' => $appKey,
-                        'label' => ucfirst(str_replace(['.', '-'], [' ', ' '], $appKey)),
-                        'tabid' => $tab->tabid,
-                        'tab_name' => $vtigerName,
-                    ];
-                }
-            }
+        $profile = $role->profiles()->first();
+        if ($profile) {
+            return redirect()->route('settings.crm', [
+                'section' => 'profiles',
+                'action' => 'edit',
+                'profile' => $profile->profileid,
+            ]);
         }
 
-        $allowedTabIds = $profile ? $profile->tabs->pluck('tabid')->toArray() : [];
-
-        return view('setup.role-modules', [
-            'role' => $role,
-            'profile' => $profile,
-            'moduleList' => $moduleList,
-            'allowedTabIds' => $allowedTabIds,
-        ]);
+        return redirect()->route('settings.crm', ['section' => 'roles'])
+            ->withErrors(['profile' => 'This role has no profile assigned. Assign a profile on the Roles page first.']);
     }
 
     /**

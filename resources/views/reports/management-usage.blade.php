@@ -19,12 +19,14 @@
             <a href="{{ route('reports.export.management-usage', ['date_from' => $dateFrom, 'date_to' => $dateTo, 'simple' => 1, 'format' => 'xlsx']) }}" class="btn btn-success btn-sm">
                 <i class="bi bi-file-earmark-excel me-1"></i>Simplified Excel
             </a>
-            <a href="{{ route('reports.export.management-usage', ['date_from' => $dateFrom, 'date_to' => $dateTo, 'format' => 'xlsx']) }}" class="btn btn-primary btn-sm">
-                <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel
+            <a href="{{ route('reports.export.management-usage', ['date_from' => $dateFrom, 'date_to' => $dateTo, 'simple' => 1, 'format' => 'pdf']) }}" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-file-earmark-pdf me-1"></i>Simplified PDF
             </a>
-            <a href="{{ route('reports.export.management-usage', ['date_from' => $dateFrom, 'date_to' => $dateTo]) }}" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-download me-1"></i>Export CSV
-            </a>
+            @include('partials.report-export-buttons', [
+                'route' => 'reports.export.management-usage',
+                'params' => ['date_from' => $dateFrom, 'date_to' => $dateTo],
+                'csvWithoutFormat' => true,
+            ])
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()">
                 <i class="bi bi-printer me-1"></i>Print
             </button>

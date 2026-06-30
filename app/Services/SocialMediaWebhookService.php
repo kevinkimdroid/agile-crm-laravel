@@ -9,6 +9,10 @@ use Illuminate\Support\Facades\Log;
 
 class SocialMediaWebhookService
 {
+    public function __construct(
+        private WhatsAppService $whatsapp
+    ) {}
+
     public function verifyMetaChallenge(?string $mode, ?string $token, ?string $challenge): ?string
     {
         $expected = config('services.social_webhook.meta_verify_token');
@@ -41,6 +45,11 @@ class SocialMediaWebhookService
     public function processMetaPayload(array $payload): int
     {
         $object = $payload['object'] ?? '';
+
+        if ($object === 'whatsapp_business_account') {
+            return $this->whatsapp->processWebhookPayload($payload);
+        }
+
         if (!in_array($object, ['page', 'instagram'], true)) {
             return 0;
         }

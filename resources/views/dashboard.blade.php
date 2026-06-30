@@ -1,11 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Dashboard')
-
-@push('head')
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-@endpush
+@section('title', config('branding.client_short') . ' Dashboard')
 
 @section('content')
 @if (session('error'))
@@ -38,29 +33,42 @@
 @endphp
 
 <div class="dashboard">
-    {{-- Header: compact one-liner --}}
-    <header class="dashboard-header">
-        <div class="dashboard-header-left">
-            <h1 class="dashboard-title">
-                <span class="dashboard-greeting">{{ $greeting }}{{ $firstName ? ',' : '' }}</span>
-                <span class="dashboard-name">{{ $firstName ?? 'Welcome back' }}</span>
-            </h1>
-            <p class="dashboard-subtitle">CRM overview · {{ now()->format('l, F j') }}</p>
-        </div>
-        <div class="dashboard-header-right">
-            <div class="dropdown">
-                <button class="dashboard-header-btn dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi bi-three-dots"></i> More
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item" href="{{ route('tickets.index') }}"><i class="bi bi-ticket-perforated me-2"></i>Tickets</a></li>
-                    <li><a class="dropdown-item" href="{{ route('reports') }}"><i class="bi bi-bar-chart-line me-2"></i>Revenue</a></li>
-                    <li><a class="dropdown-item" href="{{ route('activities.index') }}"><i class="bi bi-exclamation-triangle me-2"></i>Overdue</a></li>
-                </ul>
+    {{-- Welcome header --}}
+    <header class="dashboard-welcome">
+        <div class="dashboard-welcome-body">
+            <div class="dashboard-welcome-text">
+                <p class="dashboard-welcome-date">{{ now()->format('l, F j') }}</p>
+                <h1 class="dashboard-welcome-heading">
+                    {{ $greeting }}{{ $firstName ? ',' : '' }}
+                    <span class="dashboard-welcome-name">{{ $firstName ?? 'Welcome back' }}</span>
+                </h1>
+                <p class="dashboard-welcome-meta">{{ config('branding.client_short') }} {{ config('branding.app_name') }} <span class="dashboard-welcome-dot" aria-hidden="true">·</span> <em>{{ config('branding.tagline') }}</em></p>
             </div>
-            <a href="{{ route('reports') }}" class="dashboard-header-btn dashboard-header-btn-primary">
-                <i class="bi bi-download"></i> Export
-            </a>
+            <div class="dashboard-welcome-toolbar">
+                @if((isset($clientsCount) && $clientsCount !== null) || ($clientsCountDeferred ?? false))
+                <a href="{{ route('support.customers') }}" class="dashboard-welcome-btn dashboard-welcome-btn-outline">
+                    <i class="bi bi-people-fill"></i><span>Clients</span>
+                </a>
+                @endif
+                <a href="{{ route('tickets.create') }}" class="dashboard-welcome-btn dashboard-welcome-btn-primary">
+                    <i class="bi bi-plus-lg"></i><span>New Ticket</span>
+                </a>
+                <div class="dropdown">
+                    <button class="dashboard-welcome-btn dashboard-welcome-btn-outline dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-three-dots"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        @if(Route::has('support.maturities'))
+                        <li><a class="dropdown-item" href="{{ route('support.maturities') }}"><i class="bi bi-calendar2-event me-2"></i>Maturities</a></li>
+                        @endif
+                        <li><a class="dropdown-item" href="{{ route('tickets.index') }}"><i class="bi bi-ticket-perforated me-2"></i>Tickets</a></li>
+                        <li><a class="dropdown-item" href="{{ route('reports') }}"><i class="bi bi-bar-chart-line me-2"></i>Reports</a></li>
+                        <li><a class="dropdown-item" href="{{ route('activities.index', ['overdue' => 1]) }}"><i class="bi bi-exclamation-triangle me-2"></i>Overdue</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{{ route('reports') }}"><i class="bi bi-download me-2"></i>Export</a></li>
+                    </ul>
+                </div>
+            </div>
         </div>
     </header>
 
@@ -76,7 +84,7 @@
         </a>
         <a href="{{ route('contacts.index') }}" class="dashboard-kpi">
             <span class="dashboard-kpi-value" id="contactsCountValue">{{ $contactsCountDeferred ?? false ? '—' : number_format($contactsCount ?? 0) }}</span>
-            <span class="dashboard-kpi-label">Contacts</span>
+            <span class="dashboard-kpi-label">Prospects</span>
         </a>
         <a href="{{ route('leads.index') }}" class="dashboard-kpi">
             <span class="dashboard-kpi-value">{{ number_format($leadsCount ?? 0) }}</span>
@@ -87,7 +95,7 @@
         </a>
         @if(($clientsCountDeferred ?? false) || (isset($clientsCount) && $clientsCount !== null))
         <div class="dashboard-kpi dashboard-kpi-static" id="clientsStatCard">
-            <span class="dashboard-kpi-value" id="clientsCountValue">{{ $clientsCountDeferred ?? false ? '...' : number_format($clientsCount ?? 0) }}</span>
+            <span class="dashboard-kpi-value" id="clientsCountValue">{{ ($clientsCountDeferred ?? false) ? '...' : number_format($clientsCount ?? 0) }}</span>
             <span class="dashboard-kpi-label">Clients</span>
             <a href="{{ route('support.customers') }}" class="dashboard-kpi-link">View</a>
         </div>
@@ -98,13 +106,12 @@
         </a>
     </section>
 
-    {{-- Quick actions: moved up for immediate access --}}
+    {{-- Quick actions --}}
     <section class="dashboard-actions dashboard-actions-top">
-        <span class="dashboard-actions-label">Quick actions</span>
+        <span class="dashboard-actions-label">Insurance operations</span>
         <div class="dashboard-actions-btns">
             @if((isset($clientsCount) && $clientsCount !== null) || ($clientsCountDeferred ?? false))
             <a href="{{ route('support.customers') }}" class="dashboard-action-btn"><i class="bi bi-people"></i> Clients</a>
-            <a href="{{ route('support.serve-client') }}" class="dashboard-action-btn"><i class="bi bi-person-plus"></i> Serve Client</a>
             @if(in_array(config('erp.clients_view_source', 'crm'), ['erp_http', 'erp_sync']))
             <a href="{{ route('support.customers', ['system' => 'group']) }}" class="dashboard-action-btn"><i class="bi bi-people-fill"></i> Group Life</a>
             <a href="{{ route('support.customers', ['system' => 'individual']) }}" class="dashboard-action-btn"><i class="bi bi-person-fill"></i> Individual</a>
@@ -118,7 +125,7 @@
             @endif
             <a href="{{ route('tickets.create') }}" class="dashboard-action-btn"><i class="bi bi-ticket-perforated"></i> New Ticket</a>
             <a href="{{ route('leads.create') }}" class="dashboard-action-btn"><i class="bi bi-plus-circle"></i> Add Lead</a>
-            <a href="{{ route('contacts.index') }}" class="dashboard-action-btn"><i class="bi bi-person"></i> Contacts</a>
+            <a href="{{ route('contacts.index') }}" class="dashboard-action-btn"><i class="bi bi-person"></i> Prospects</a>
             <a href="{{ route('deals.index') }}" class="dashboard-action-btn"><i class="bi bi-briefcase"></i> Deals</a>
         </div>
     </section>
@@ -132,24 +139,48 @@
                     <h3 class="dashboard-card-title"><i class="bi bi-exclamation-triangle"></i> Overdue Activities</h3>
                     <div class="dashboard-card-actions">
                         <div class="dropdown">
-                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Mine</button>
+                            @php
+                                $overdueScopeLabel = ($overdueScope ?? 'mine') === 'all' ? 'Everyone' : 'Mine';
+                            @endphp
+                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">{{ $overdueScopeLabel }}</button>
                             <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item active" href="#">Mine</a></li>
-                                <li><a class="dropdown-item" href="{{ route('activities.index') }}">View all</a></li>
+                                <li>
+                                    <a class="dropdown-item {{ ($overdueScope ?? 'mine') === 'mine' ? 'active' : '' }}"
+                                       href="{{ route('dashboard', ['overdue_scope' => 'mine']) }}">Mine</a>
+                                </li>
+                                @if($canViewAllOverdue ?? false)
+                                <li>
+                                    <a class="dropdown-item {{ ($overdueScope ?? 'mine') === 'all' ? 'active' : '' }}"
+                                       href="{{ route('dashboard', ['overdue_scope' => 'all']) }}">Everyone</a>
+                                </li>
+                                @endif
                             </ul>
                         </div>
-                        <a href="{{ route('activities.index') }}" class="dashboard-card-link">View</a>
+                        <a href="{{ route('activities.index', ['overdue' => 1, 'scope' => $overdueScope ?? 'mine']) }}" class="dashboard-card-link">View</a>
                     </div>
                 </div>
                 <div class="dashboard-list dashboard-list-overdue">
                     @forelse(($overdueActivities ?? []) as $activity)
-                        <div class="dashboard-list-row dashboard-list-row-overdue">
+                        @php
+                            if (!empty($activity['related_ticket_id'])) {
+                                $activityUrl = route('tickets.show', $activity['related_ticket_id']);
+                            } elseif (!empty($activity['related_to_id'])) {
+                                $activityUrl = route('contacts.show', $activity['related_to_id']);
+                            } else {
+                                $activityUrl = route('activities.index', array_filter([
+                                    'overdue' => 1,
+                                    'scope' => $overdueScope ?? 'mine',
+                                    'search' => $activity['subject'] ?? null,
+                                ], fn ($v) => $v !== null && $v !== ''));
+                            }
+                        @endphp
+                        <a href="{{ $activityUrl }}" class="dashboard-list-row dashboard-list-row-overdue text-decoration-none text-body">
                             <i class="bi bi-exclamation-circle"></i>
                             <div>
                                 <span>{{ $activity['subject'] }}</span>
-                                <small>{{ $activity['due_date'] ? \Carbon\Carbon::parse($activity['due_date'])->diffForHumans() : '—' }}</small>
+                                <small>{{ !empty($activity['due_date']) ? \Carbon\Carbon::parse($activity['due_date'])->diffForHumans() : '—' }}</small>
                             </div>
-                        </div>
+                        </a>
                     @empty
                         <div class="dashboard-empty">
                             <i class="bi bi-check-circle-fill text-success"></i>
@@ -161,9 +192,9 @@
         </div>
     </section>
 
-    {{-- Section: Support & Tickets --}}
+    {{-- Section: Client service --}}
     <section class="dashboard-section">
-        <h2 class="dashboard-section-title"><i class="bi bi-headset"></i> Support & Tickets</h2>
+        <h2 class="dashboard-section-title"><i class="bi bi-headset"></i> Client Service &amp; Claims</h2>
         <div class="dashboard-section-grid dashboard-section-grid-2">
             <div class="dashboard-card">
                 <div class="dashboard-card-head">
@@ -210,17 +241,17 @@
                         <div class="dashboard-donut-center">{{ $ticketResolvedPct }}%</div>
                     </div>
                     <div class="dashboard-donut-legend">
-                        <span><i style="background:#0d9488"></i> Closed {{ $ticketClosed }}</span>
-                        <span><i style="background:#3d8fd9"></i> Open {{ $ticketOpen }}</span>
+                        <span><i style="background:var(--dash-success)"></i> Closed {{ $ticketClosed }}</span>
+                        <span><i style="background:var(--dash-accent)"></i> Open {{ $ticketOpen }}</span>
                     </div>
                 </div>
             </div>
         </div>
     </section>
 
-    {{-- Section: Sales & Pipeline --}}
+    {{-- Section: Business development --}}
     <section class="dashboard-section">
-        <h2 class="dashboard-section-title"><i class="bi bi-graph-up"></i> Sales & Pipeline</h2>
+        <h2 class="dashboard-section-title"><i class="bi bi-graph-up"></i> Business Development</h2>
         <div class="dashboard-section-grid dashboard-section-grid-3">
             <div class="dashboard-card">
                 <div class="dashboard-card-head">
@@ -298,20 +329,23 @@
 
 <style>
 :root {
-    --dash-bg: #f8fafc;
+    --dash-bg: #f4f7fb;
     --dash-card: #ffffff;
-    --dash-primary: #1a4a8a;
-    --dash-primary-light: #3d8fd9;
-    --dash-primary-soft: rgba(26, 74, 138, 0.09);
+    --dash-primary: {{ config('branding.primary') }};
+    --dash-primary-dark: {{ config('branding.primary_dark') }};
+    --dash-primary-light: #3d6eb5;
+    --dash-accent: {{ config('branding.accent') }};
+    --dash-primary-soft: color-mix(in srgb, {{ config('branding.primary') }} 9%, white);
+    --dash-accent-soft: color-mix(in srgb, {{ config('branding.accent') }} 10%, white);
     --dash-text: #1e293b;
     --dash-text-soft: #64748b;
-    --dash-border: rgba(26, 74, 138, 0.09);
+    --dash-border: color-mix(in srgb, {{ config('branding.primary') }} 11%, white);
     --dash-success: #0d9488;
     --dash-danger: #dc2626;
     --dash-radius: 12px;
     --dash-radius-lg: 14px;
-    --dash-shadow: 0 1px 3px rgba(26, 74, 138, 0.06);
-    --dash-shadow-hover: 0 6px 20px rgba(26, 74, 138, 0.1);
+    --dash-shadow: 0 1px 3px color-mix(in srgb, {{ config('branding.primary') }} 8%, transparent);
+    --dash-shadow-hover: 0 8px 24px color-mix(in srgb, {{ config('branding.primary') }} 14%, transparent);
 }
 
 .dashboard {
@@ -319,7 +353,7 @@
     max-width: calc(100% + 3.5rem);
     margin: 0 -1.75rem 0 -1.75rem;
     padding: 0 1.75rem 1rem;
-    font-family: 'Poppins', system-ui, sans-serif;
+    font-family: 'Inter', system-ui, sans-serif;
     background: transparent;
     min-height: 100%;
     position: relative;
@@ -329,39 +363,109 @@
     .dashboard { width: calc(100% + 2rem); margin: 0 -1rem; padding: 0 1rem 1rem; max-width: none; }
 }
 
-.dashboard-header {
-    display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap;
-    gap: 1rem; margin-bottom: 1.35rem; padding-bottom: 1.1rem;
-    border-bottom: 1px solid var(--dash-border);
-    position: relative;
-}
-.dashboard-title {
-    font-family: 'Poppins', sans-serif;
-    font-size: 1.55rem; font-weight: 700; color: var(--dash-text); margin: 0 0 0.15rem;
-    letter-spacing: -0.02em; line-height: 1.3;
-}
-.dashboard-greeting { color: var(--dash-text-soft); font-weight: 500; }
-.dashboard-name { color: var(--dash-primary); }
-.dashboard-subtitle { font-size: 0.85rem; color: var(--dash-text-soft); margin: 0; }
-.dashboard-header-right { display: flex; align-items: center; gap: 0.5rem; }
-.dashboard-header-btn {
-    display: inline-flex; align-items: center; gap: 0.45rem;
-    padding: 0.45rem 0.9rem; font-size: 0.8rem; font-weight: 600; border-radius: 10px;
-    background: var(--dash-card); border: 1px solid var(--dash-border); color: var(--dash-text-soft);
-    text-decoration: none; transition: all 0.25s ease;
+
+.dashboard-welcome {
+    margin: 0 0 1.35rem;
+    padding: 1.25rem 1.35rem;
+    border-radius: 12px;
+    background: var(--dash-card);
+    border: 1px solid var(--dash-border);
+    border-left: 4px solid var(--dash-accent);
     box-shadow: var(--dash-shadow);
 }
-.dashboard-header-btn:hover {
-    border-color: rgba(26, 74, 138, 0.25); color: var(--dash-primary);
-    box-shadow: 0 4px 12px rgba(0, 51, 160, 0.1);
+.dashboard-welcome-body {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    flex-wrap: wrap;
 }
-.dashboard-header-btn-primary {
-    background: linear-gradient(135deg, var(--dash-primary) 0%, #2563a8 100%) !important;
-    border: none !important; color: #fff !important;
+.dashboard-welcome-text { min-width: 0; }
+.dashboard-welcome-date {
+    margin: 0 0 0.2rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dash-text-soft);
 }
-.dashboard-header-btn-primary:hover {
-    background: linear-gradient(135deg, #133a6f 0%, var(--dash-primary) 100%) !important;
-    box-shadow: 0 4px 16px rgba(0, 51, 160, 0.35);
+.dashboard-welcome-heading {
+    font-family: 'Poppins', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--dash-text-soft);
+    margin: 0 0 0.35rem;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+}
+.dashboard-welcome-name {
+    display: block;
+    font-weight: 700;
+    color: var(--dash-primary-dark);
+}
+@media (min-width: 576px) {
+    .dashboard-welcome-name { display: inline; }
+}
+.dashboard-welcome-meta {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--dash-text-soft);
+}
+.dashboard-welcome-meta em {
+    font-style: normal;
+    color: var(--dash-muted, #8fa3b8);
+}
+.dashboard-welcome-dot { opacity: 0.5; }
+.dashboard-welcome-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+.dashboard-welcome-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.95rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+    white-space: nowrap;
+}
+.dashboard-welcome-btn-outline {
+    background: var(--dash-card);
+    border-color: var(--dash-border);
+    color: var(--dash-primary);
+}
+.dashboard-welcome-btn-outline:hover {
+    background: var(--dash-primary-soft);
+    border-color: color-mix(in srgb, var(--dash-primary) 25%, white);
+    color: var(--dash-primary-dark);
+}
+.dashboard-welcome-btn-primary {
+    background: var(--dash-accent);
+    border-color: var(--dash-accent);
+    color: #fff;
+}
+.dashboard-welcome-btn-primary:hover {
+    background: color-mix(in srgb, var(--dash-accent) 90%, black);
+    border-color: color-mix(in srgb, var(--dash-accent) 90%, black);
+    color: #fff;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--dash-accent) 30%, transparent);
+}
+.dashboard-welcome-toolbar .dropdown-toggle::after { display: none; }
+.dashboard-welcome-toolbar .dashboard-welcome-btn-outline.dropdown-toggle {
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+}
+@media (max-width: 576px) {
+    .dashboard-welcome-toolbar { width: 100%; }
+    .dashboard-welcome-toolbar .dashboard-welcome-btn-primary { flex: 1; }
 }
 
 .dashboard-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.85rem; margin-bottom: 1.5rem; position: relative; }
@@ -384,7 +488,7 @@
 .dashboard-kpi-featured {
     background: var(--dash-card);
     border-color: var(--dash-primary);
-    border-left-width: 3px;
+    border-left: 4px solid var(--dash-accent);
     flex-direction: row; align-items: center; gap: 0.85rem;
 }
 .dashboard-kpi-featured:hover { border-color: var(--dash-primary); }
@@ -407,7 +511,7 @@
 .dashboard-kpi-meta { font-size: 0.75rem; color: var(--dash-text-soft); }
 .dashboard-kpi-badge {
     position: absolute; top: 0.75rem; right: 0.75rem;
-    padding: 0.25rem 0.6rem; background: var(--dash-primary-light); color: #fff;
+    padding: 0.25rem 0.6rem; background: var(--dash-accent); color: #fff;
     font-size: 0.65rem; font-weight: 700; border-radius: 8px;
     text-transform: uppercase; letter-spacing: 0.04em;
 }
@@ -501,7 +605,7 @@
 .dashboard-donut-chart svg { width: 100%; height: 100%; transform: rotate(-90deg); }
 .dashboard-donut-bg { fill: none; stroke: rgba(26, 74, 138, 0.08); stroke-width: 4; }
 .dashboard-donut-resolved { fill: none; stroke: var(--dash-success); stroke-width: 4; stroke-linecap: round; }
-.dashboard-donut-pending { fill: none; stroke: var(--dash-primary-light); stroke-width: 4; stroke-linecap: round; }
+.dashboard-donut-pending { fill: none; stroke: var(--dash-accent); stroke-width: 4; stroke-linecap: round; }
 .dashboard-donut-center {
     font-family: 'Poppins', sans-serif;
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -525,6 +629,9 @@
 .dashboard-list-row-overdue {
     background: rgba(220, 38, 38, 0.05);
     border-left: 3px solid var(--dash-danger);
+}
+a.dashboard-list-row-overdue:hover {
+    background: rgba(220, 38, 38, 0.1);
 }
 .dashboard-list-row-overdue i { color: var(--dash-danger); margin-right: 0.5rem; font-size: 0.95rem; flex-shrink: 0; }
 .dashboard-list-row-overdue > div { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
@@ -560,7 +667,7 @@
 .dashboard-empty i { font-size: 2.2rem; margin-bottom: 0.6rem; opacity: 0.5; }
 .dashboard-empty .btn {
     border-radius: 12px; font-weight: 600;
-    background: linear-gradient(135deg, var(--dash-primary) 0%, #0044bb 100%);
+    background: linear-gradient(135deg, var(--dash-primary) 0%, var(--dash-primary-light) 100%);
     border: none;
 }
 
@@ -570,13 +677,13 @@
     margin-bottom: 1.35rem; padding-bottom: 1.1rem; border-bottom: 1px solid var(--dash-border);
 }
 .dashboard-action-btn-primary {
-    background: linear-gradient(135deg, var(--dash-primary) 0%, #2563a8 100%) !important;
+    background: linear-gradient(135deg, var(--dash-primary) 0%, var(--dash-primary-light) 100%) !important;
     border: none !important; color: #fff !important;
 }
 .dashboard-action-btn-primary:hover {
-    background: linear-gradient(135deg, #002d80 0%, var(--dash-primary) 100%) !important;
+    background: linear-gradient(135deg, var(--dash-primary-dark) 0%, var(--dash-primary) 100%) !important;
     color: #fff !important;
-    box-shadow: 0 4px 16px rgba(0, 51, 160, 0.35);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--dash-primary) 35%, transparent);
 }
 .dashboard-actions-label {
     font-size: 0.75rem; font-weight: 600; color: var(--dash-text-soft);
@@ -598,7 +705,7 @@
     box-shadow: var(--dash-shadow);
 }
 .dashboard-action-btn:hover {
-    border-color: rgba(26, 74, 138, 0.3);
+    border-color: color-mix(in srgb, var(--dash-accent) 45%, white);
     background: var(--dash-primary); color: #fff;
     box-shadow: var(--dash-shadow-hover);
     transform: translateY(-1px);
@@ -609,19 +716,19 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    var c = document.getElementById('clientsCountValue');
-    var t = document.getElementById('contactsCountValue');
-    if (c || t) {
+    var clientsEl = document.getElementById('clientsCountValue');
+    if (clientsEl && (clientsEl.textContent === '...' || clientsEl.textContent.trim() === '')) {
         fetch('{{ route("api.dashboard.clients-count") }}', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
             .then(function(r) { return r.json(); })
             .then(function(d) {
-                var n = d.count != null ? (d.count).toLocaleString() : '—';
-                if (c) c.textContent = n;
-                if (t) t.textContent = n;
+                if (d.count != null) {
+                    clientsEl.textContent = Number(d.count).toLocaleString();
+                }
             })
             .catch(function() {
-                if (c) c.textContent = '—';
-                if (t) t.textContent = '—';
+                if (clientsEl.textContent === '...') {
+                    clientsEl.textContent = '—';
+                }
             });
     }
     if (window.Echo) window.Echo.channel('dashboard').listen('.stats.updated', function() { location.reload(); });

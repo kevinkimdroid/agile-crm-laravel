@@ -42,6 +42,10 @@ Route::any('/modules/PBXManager/callbacks/PBXManager.php', [\App\Http\Controller
 
 Route::any('/crm-client-feedback', \App\Http\Controllers\CrmClientFeedbackProxyController::class);
 
+Route::post('/webhooks/mpesa/stk-callback', [\App\Http\Controllers\MpesaStkPushController::class, 'callback'])
+    ->middleware('throttle:120,1')
+    ->name('webhooks.mpesa.stk-callback');
+
 Route::get('/api/erp/clients', [\App\Http\Controllers\Api\ErpClientController::class, 'index'])
     ->middleware(['erp.api.token', 'throttle:60,1'])
     ->name('api.erp.clients');
@@ -78,6 +82,9 @@ Route::resource('deals', DealController::class);
 Route::get('/activities', [\App\Http\Controllers\ActivityController::class, 'index'])->name('activities.index');
 Route::get('/activities/create', [\App\Http\Controllers\ActivityController::class, 'create'])->name('activities.create');
 Route::post('/activities', [\App\Http\Controllers\ActivityController::class, 'store'])->name('activities.store');
+Route::get('/activities/{activity}/edit', [\App\Http\Controllers\ActivityController::class, 'edit'])->name('activities.edit');
+Route::put('/activities/{activity}', [\App\Http\Controllers\ActivityController::class, 'update'])->name('activities.update');
+Route::delete('/activities/{activity}', [\App\Http\Controllers\ActivityController::class, 'destroy'])->name('activities.destroy');
 Route::get('/api/contacts/{contact}/tickets', [\App\Http\Controllers\ActivityController::class, 'ticketsForContact'])->name('api.contacts.tickets');
 Route::get('/work-tickets', [\App\Http\Controllers\WorkTicketController::class, 'index'])->name('work-tickets.index');
 Route::get('/work-tickets/export', [\App\Http\Controllers\WorkTicketController::class, 'export'])->name('work-tickets.export');
@@ -100,6 +107,12 @@ Route::get('/finance/receipts/{receiptNo}/xml', [\App\Http\Controllers\FinanceRe
 Route::get('/marketing', fn () => view('marketing'))->name('marketing');
 Route::get('/marketing/social-media', [\App\Http\Controllers\SocialMediaController::class, 'index'])->name('marketing.social-media');
 Route::post('/marketing/social-media/schedule', [\App\Http\Controllers\SocialMediaController::class, 'schedule'])->name('marketing.social-media.schedule');
+Route::post('/marketing/social-media/publish-now', [\App\Http\Controllers\SocialMediaController::class, 'publishNow'])->name('marketing.social-media.publish-now');
+Route::get('/marketing/whatsapp', [\App\Http\Controllers\WhatsAppController::class, 'index'])->name('marketing.whatsapp');
+Route::get('/support/whatsapp', [\App\Http\Controllers\WhatsAppController::class, 'index'])->name('support.whatsapp');
+Route::get('/marketing/whatsapp/poll', [\App\Http\Controllers\WhatsAppController::class, 'poll'])->name('marketing.whatsapp.poll');
+Route::post('/marketing/whatsapp/send', [\App\Http\Controllers\WhatsAppController::class, 'send'])->name('marketing.whatsapp.send');
+Route::post('/marketing/whatsapp/simulate-inbound', [\App\Http\Controllers\WhatsAppController::class, 'simulateInbound'])->name('marketing.whatsapp.simulate-inbound');
 Route::get('/marketing/social-media/create-lead/{id}', [\App\Http\Controllers\SocialMediaController::class, 'createLeadFromInteraction'])->name('marketing.social-media.create-lead');
 Route::post('/marketing/social-media/schedule/{id}/cancel', [\App\Http\Controllers\SocialMediaController::class, 'cancelSchedule'])->name('marketing.social-media.schedule.cancel');
 Route::get('/social-auth/{platform}/redirect', [SocialAuthController::class, 'redirect'])->name('social-auth.redirect');
@@ -109,6 +122,7 @@ Route::prefix('marketing')->name('marketing.')->group(function () {
     Route::get('broadcast', [\App\Http\Controllers\MassBroadcastController::class, 'index'])->name('broadcast');
     Route::get('broadcast/template', [\App\Http\Controllers\MassBroadcastController::class, 'downloadRecipientsTemplate'])->name('broadcast.template');
     Route::post('broadcast/send', [\App\Http\Controllers\MassBroadcastController::class, 'send'])->name('broadcast.send');
+    Route::post('broadcast/templates', [\App\Http\Controllers\MassBroadcastController::class, 'storeTemplate'])->name('broadcast.templates.store');
     Route::get('credit-life-statements', [\App\Http\Controllers\CreditLifeStatementController::class, 'index'])->name('credit-life-statements');
     Route::post('credit-life-statements/send', [\App\Http\Controllers\CreditLifeStatementController::class, 'send'])->name('credit-life-statements.send');
     Route::resource('campaigns', \App\Http\Controllers\CampaignController::class)->parameters(['campaigns' => 'campaign']);
@@ -118,7 +132,7 @@ Route::get('/support/tickets', fn () => redirect()->route('tickets.index'))->nam
 Route::get('/support/serve-client', [\App\Http\Controllers\ServeClientController::class, 'index'])->name('support.serve-client');
 Route::get('/support/serve-client/search', [\App\Http\Controllers\ServeClientController::class, 'search'])->name('serve-client.search');
 Route::post('/support/serve-client/create-ticket', [\App\Http\Controllers\ServeClientController::class, 'createTicket'])->name('serve-client.create-ticket');
-Route::get('/support/faq', fn () => view('support.faq'))->name('support.faq');
+Route::get('/support/faq', [\App\Http\Controllers\FaqController::class, 'index'])->name('support.faq');
 Route::get('/support/maturities', [\App\Http\Controllers\MaturitiesController::class, 'index'])->name('support.maturities');
 Route::get('/support/investment-maturities', [\App\Http\Controllers\InvestmentMaturitiesController::class, 'index'])->name('support.investment-maturities');
 Route::post('/support/investment-maturities/send', [\App\Http\Controllers\InvestmentMaturitiesController::class, 'send'])->name('support.investment-maturities.send');
@@ -127,6 +141,8 @@ Route::get('/support/mortgage-renewals/export', [\App\Http\Controllers\MortgageR
 Route::post('/support/maturities/renewal-status', [\App\Http\Controllers\MaturitiesController::class, 'updateRenewalStatus'])->name('support.maturities.renewal-status');
 Route::get('/support/maturities/discharge-voucher/pdf', [\App\Http\Controllers\MaturityDischargeVoucherController::class, 'pdf'])->name('support.maturities.discharge-voucher.pdf');
 Route::post('/support/maturities/discharge-voucher/email', [\App\Http\Controllers\MaturityDischargeVoucherController::class, 'email'])->name('support.maturities.discharge-voucher.email');
+Route::post('/support/maturities/notify-client', [\App\Http\Controllers\MaturityClientNotificationController::class, 'send'])->name('support.maturities.notify-client');
+Route::get('/support/maturities/client-contact', [\App\Http\Controllers\MaturityClientNotificationController::class, 'lookupContact'])->name('support.maturities.client-contact');
 Route::get('/support/maturities/export', [\App\Http\Controllers\MaturitiesController::class, 'export'])->name('support.maturities.export');
 Route::get('/support/sms-notifier', [\App\Http\Controllers\SmsNotifierController::class, 'index'])->name('support.sms-notifier');
 Route::post('/support/sms-notifier/send', [\App\Http\Controllers\SmsNotifierController::class, 'send'])->name('support.sms-notifier.send');
@@ -135,10 +151,18 @@ Route::post('/support/email-client/send', [\App\Http\Controllers\SupportClientEm
 Route::get('/support/customers', [\App\Http\Controllers\CustomerController::class, 'index'])->name('support.customers');
 Route::prefix('compliance')->name('compliance.')->group(function () {
     Route::get('complaints/export', [\App\Http\Controllers\ComplaintController::class, 'export'])->name('complaints.export');
+    Route::post('complaints/{complaint}/register-status', [\App\Http\Controllers\ComplaintController::class, 'updateRegisterStatus'])->name('complaints.register-status');
     Route::resource('complaints', \App\Http\Controllers\ComplaintController::class)->parameters(['complaints' => 'complaint']);
 });
 Route::get('/api/support/clients', [\App\Http\Controllers\CustomerController::class, 'clientsApi'])->name('api.support.clients');
+Route::get('/api/support/clients/tab-counts', [\App\Http\Controllers\CustomerController::class, 'clientTabCounts'])->name('api.support.clients.tab-counts');
 Route::get('/support/clients/show', [\App\Http\Controllers\CustomerController::class, 'show'])->name('support.clients.show');
+Route::post('/support/clients/mpesa-stk', [\App\Http\Controllers\MpesaStkPushController::class, 'initiate'])->name('support.clients.mpesa-stk');
+Route::get('/support/clients/mpesa-stk/{transaction}', [\App\Http\Controllers\MpesaStkPushController::class, 'status'])->name('support.clients.mpesa-stk.status');
+Route::post('/support/clients/consent', [\App\Http\Controllers\CustomerController::class, 'updateConsent'])->name('support.clients.consent');
+Route::post('/support/clients/comments', [\App\Http\Controllers\CustomerController::class, 'storeComment'])->name('support.clients.comments.store');
+Route::post('/support/clients/documents', [\App\Http\Controllers\CustomerController::class, 'uploadDocument'])->name('support.clients.documents.store');
+Route::get('/support/clients/documents/{document}/download', [\App\Http\Controllers\CustomerController::class, 'downloadDocument'])->name('support.clients.documents.download');
 Route::get('/support/clients/debug-api', [\App\Http\Controllers\CustomerController::class, 'debugApi'])->name('support.clients.debug-api');
 Route::get('/support/clients/debug-products', [\App\Http\Controllers\CustomerController::class, 'debugProducts'])->name('support.clients.debug-products');
 Route::get('/support/clients/create-ticket', [\App\Http\Controllers\ServeClientController::class, 'createTicketFromPolicy'])->name('support.clients.create-ticket');
@@ -218,8 +242,18 @@ Route::post('/settings/crm/ticket-dropdowns', [\App\Http\Controllers\TicketDropd
 Route::post('/settings/crm/ticket-sla/import', [\App\Http\Controllers\TicketSlaController::class, 'importFromExcel'])->name('settings.ticket-sla.import');
 Route::post('/settings/crm/ticket-sla/departments/update', [\App\Http\Controllers\TicketSlaController::class, 'updateDepartmentTat'])->name('settings.ticket-sla.update-department');
 Route::delete('/settings/crm/ticket-sla/departments/{department}', [\App\Http\Controllers\TicketSlaController::class, 'deleteDepartmentTat'])->name('settings.ticket-sla.delete-department');
+Route::post('/settings/crm/roles/{role}/profile', [\App\Http\Controllers\RoleController::class, 'assignProfile'])->name('settings.roles.assign-profile');
+Route::post('/settings/client-access', [\App\Http\Controllers\ClientAssignmentController::class, 'store'])->name('settings.client-access.store');
+Route::post('/settings/client-access/bulk', [\App\Http\Controllers\ClientAssignmentController::class, 'bulkStore'])->name('settings.client-access.bulk');
+Route::get('/settings/client-access/template.csv', [\App\Http\Controllers\ClientAssignmentController::class, 'downloadTemplate'])->name('settings.client-access.template');
+Route::delete('/settings/client-access/{assignment}', [\App\Http\Controllers\ClientAssignmentController::class, 'destroy'])->name('settings.client-access.destroy');
 Route::post('/settings/modules/toggle', [\App\Http\Controllers\ModuleController::class, 'toggle'])->name('settings.modules.toggle');
 Route::get('/settings/layout-editor', [\App\Http\Controllers\LayoutEditorController::class, 'index'])->name('settings.layout-editor');
+Route::get('/settings/profiles', [\App\Http\Controllers\ProfileController::class, 'index'])->name('profiles.index');
+Route::get('/settings/profiles/create', [\App\Http\Controllers\ProfileController::class, 'create'])->name('profiles.create');
+Route::post('/settings/profiles', [\App\Http\Controllers\ProfileController::class, 'store'])->name('profiles.store');
+Route::get('/settings/profiles/{profile}', [\App\Http\Controllers\ProfileController::class, 'show'])->name('profiles.show');
+Route::put('/settings/profiles/{profile}', [\App\Http\Controllers\ProfileController::class, 'update'])->name('profiles.update');
 });
 Route::get('/settings/layout-editor/module/{tabid}', [\App\Http\Controllers\LayoutEditorController::class, 'show'])->name('settings.layout-editor.show')->where('tabid', '[0-9]+');
 Route::post('/settings/layout-editor/field', [\App\Http\Controllers\LayoutEditorController::class, 'updateField'])->name('settings.layout-editor.field.update');
@@ -247,12 +281,9 @@ Route::get('/reports/export/tickets-by-date', [\App\Http\Controllers\ReportsCont
 Route::get('/reports/export/sales-by-person', [\App\Http\Controllers\ReportsController::class, 'exportSalesByPerson'])->name('reports.export.sales-by-person');
 Route::get('/reports/export/pipeline-by-stage', [\App\Http\Controllers\ReportsController::class, 'exportPipelineByStage'])->name('reports.export.pipeline-by-stage');
 Route::get('/reports/export/all-excel', [\App\Http\Controllers\ReportsController::class, 'exportAllExcel'])->name('reports.export.all-excel');
-Route::get('/settings/profiles', [\App\Http\Controllers\ProfileController::class, 'index'])->name('profiles.index');
-Route::get('/settings/profiles/{profile}', [\App\Http\Controllers\ProfileController::class, 'show'])->name('profiles.show');
-Route::put('/settings/profiles/{profile}', [\App\Http\Controllers\ProfileController::class, 'update'])->name('profiles.update');
-Route::post('/settings/users/{user}/send-reset-link', [\App\Http\Controllers\UserManagementController::class, 'sendResetLink'])->name('settings.users.send-reset-link');
-Route::get('/settings/users/{user}/edit', [\App\Http\Controllers\UserManagementController::class, 'edit'])->name('settings.users.edit');
-Route::put('/settings/profiles/{profile}', [\App\Http\Controllers\ProfileController::class, 'update'])->name('profiles.update');
+Route::get('/reports/export/all-pdf', [\App\Http\Controllers\ReportsController::class, 'exportAllPdf'])->name('reports.export.all-pdf');
+Route::get('/reports/export/contacts-summary', [\App\Http\Controllers\ReportsController::class, 'exportContactsSummary'])->name('reports.export.contacts-summary');
+Route::get('/reports/export/calls-summary', [\App\Http\Controllers\ReportsController::class, 'exportCallsSummary'])->name('reports.export.calls-summary');
 
 Route::middleware('admin')->prefix('setup')->name('setup.')->group(function () {
     Route::get('/', [SetupController::class, 'index'])->name('index');

@@ -16,12 +16,7 @@
             <p class="reports-audit-subtitle mb-0">Tickets that exceeded their Turnaround Time (TAT).</p>
         </div>
         <div class="d-flex flex-wrap gap-2 align-items-center no-print">
-            <a href="{{ route('reports.export.sla-broken', ['format' => 'xlsx']) }}" class="btn btn-primary btn-sm">
-                <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel
-            </a>
-            <a href="{{ route('reports.export.sla-broken') }}" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-download me-1"></i>Export CSV
-            </a>
+            @include('partials.report-export-buttons', ['route' => 'reports.export.sla-broken', 'csvWithoutFormat' => true])
             <a href="{{ route('settings.crm') }}?section=ticket-sla" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-gear me-1"></i>Configure TAT
             </a>
@@ -42,7 +37,7 @@
                         <th>Status</th>
                         <th>Assigned to</th>
                         <th>User Dept</th>
-                        <th>Contact</th>
+                        <th>Prospect</th>
                         <th>Created</th>
                         <th>Due by</th>
                         <th>Resolved at</th>

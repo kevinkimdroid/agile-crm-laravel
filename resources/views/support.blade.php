@@ -91,6 +91,21 @@
             </div>
         </a>
     </div>
+    @php $canWa = isset($can) && ($can('marketing.whatsapp') || $can('marketing.social-media')); @endphp
+    @if($canWa)
+    <div class="col-md-6 col-lg-4">
+        <a href="{{ route('support.whatsapp') }}" class="card support-quick-card text-decoration-none h-100" style="border-color:#25d366;">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="support-quick-icon text-white" style="background:#25d366;"><i class="bi bi-whatsapp"></i></div>
+                <div>
+                    <h6 class="mb-1 fw-semibold">Kenya Orient WhatsApp</h6>
+                    <p class="text-muted small mb-0">Reply to customers from Kenya Orient WhatsApp</p>
+                </div>
+                <i class="bi bi-chevron-right ms-auto text-success"></i>
+            </div>
+        </a>
+    </div>
+    @endif
     <div class="col-md-6 col-lg-4">
         <a href="{{ route('support.faq') }}" class="card support-quick-card text-decoration-none h-100">
             <div class="card-body d-flex align-items-center gap-3">

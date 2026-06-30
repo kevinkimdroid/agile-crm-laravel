@@ -55,8 +55,8 @@
                 </div>
             </div>
             <div class="mt-4">
-                <label class="form-label fw-semibold">Link to Contact (optional)</label>
-                <input type="number" name="contact_id" class="form-control" value="{{ old('contact_id') }}" placeholder="Contact ID if known client" min="1">
+                <label class="form-label fw-semibold">Link to Prospect (optional)</label>
+                <input type="number" name="contact_id" class="form-control" value="{{ old('contact_id') }}" placeholder="Prospect ID if known" min="1">
             </div>
         </div>
     </div>

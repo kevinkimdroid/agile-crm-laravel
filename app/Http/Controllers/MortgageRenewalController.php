@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Exports\MortgageRenewalsExport;
 use App\Services\ErpClientService;
+use App\Services\MaturityClientNotificationService;
+use App\Services\AdvantaSmsService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -39,33 +41,47 @@ class MortgageRenewalController extends Controller
         $useHttp = ! empty(config('erp.clients_http_url'));
 
         $window = $this->normalizeWindow($request);
+        $search = trim((string) $request->get('search', ''));
+        $searchParam = $search !== '' ? $search : null;
+        $notifyService = app(MaturityClientNotificationService::class);
         $renewalDateStart = now()->startOfDay();
         $renewalDateEnd = now()->startOfDay()->addDays($window);
         $fromStr = $renewalDateStart->format('Y-m-d');
         $toStr = $renewalDateEnd->format('Y-m-d');
 
         $page = max(1, (int) $request->get('page', 1));
-        $perPage = 25;
+        $perPage = in_array((int) $request->get('per_page', 25), [25, 50, 100], true)
+            ? (int) $request->get('per_page', 25)
+            : 25;
         $offset = ($page - 1) * $perPage;
 
         $error = null;
         $rows = collect();
         $total = 0;
+        $stats = ['total' => 0, 'today' => 0, 'this_week' => 0, 'pending_notify' => 0];
         if (! $mortgageConfigured) {
             $error = 'Mortgage renewals are not configured yet. Ask an administrator to set the mortgage view in the system configuration.';
         } elseif (! $useHttp) {
             $error = 'Mortgage renewals need a live connection to the policy system. Ask an administrator to enable ERP HTTP client access.';
         } else {
             // Send mendr_window_days (Oracle SYSDATE) and mendr_renewal_from/to so older APIs still apply the date range.
-            $countRes = $this->erp->getClientsFromHttpApi(1, 0, null, 25, true, 'mortgage', null, $fromStr, $toStr, true, $window);
+            $countRes = $this->erp->getClientsFromHttpApi(1, 0, $searchParam, 25, true, 'mortgage', null, $fromStr, $toStr, true, $window);
             $error = $countRes['error'] ?? null;
             $total = (int) ($countRes['total'] ?? 0);
+            $stats = $this->buildStats($fromStr, $toStr, $window, $searchParam, $total);
 
-            $dataRes = $this->erp->getClientsFromHttpApi($perPage, $offset, null, 45, false, 'mortgage', null, $fromStr, $toStr, true, $window);
+            $dataRes = $this->erp->getClientsFromHttpApi($perPage, $offset, $searchParam, 45, false, 'mortgage', null, $fromStr, $toStr, true, $window);
             if (! $error && ! empty($dataRes['error'])) {
                 $error = $dataRes['error'];
             }
             $rows = $dataRes['data'] instanceof Collection ? $dataRes['data'] : collect($dataRes['data'] ?? []);
+            if ($rows->isNotEmpty()) {
+                $rows = $notifyService->enrichContactsFromClientDetails($rows, 'policy_no');
+                $rows = $notifyService->annotateRows($rows, 'mortgage', 'policy_no', 'mendr_renewal_date');
+                $stats['pending_notify'] = $rows->filter(
+                    fn ($row) => empty($row->client_notified_email) && empty($row->client_notified_sms)
+                )->count();
+            }
         }
 
         $paginator = new LengthAwarePaginator(
@@ -78,13 +94,47 @@ class MortgageRenewalController extends Controller
 
         return view('support.mortgage-renewals', [
             'customers' => $paginator,
+            'stats' => $stats,
             'renewalDateStart' => $renewalDateStart,
             'renewalDateEnd' => $renewalDateEnd,
             'window' => $window,
+            'search' => $search,
+            'perPage' => $perPage,
             'pageError' => $error,
             'mortgageConfigured' => $mortgageConfigured,
             'useHttp' => $useHttp,
+            'notifyService' => $notifyService,
+            'smsConfigured' => app(AdvantaSmsService::class)->isConfigured(),
         ]);
+    }
+
+    /**
+     * @return array{total: int, today: int, this_week: int, pending_notify: int}
+     */
+    protected function buildStats(string $fromStr, string $toStr, int $window, ?string $search, int $total): array
+    {
+        $stats = [
+            'total' => $total,
+            'today' => 0,
+            'this_week' => 0,
+            'pending_notify' => 0,
+        ];
+
+        $today = now()->startOfDay()->format('Y-m-d');
+        $weekEnd = now()->startOfDay()->addDays(7)->format('Y-m-d');
+        $rangeEnd = min($toStr, $weekEnd);
+
+        if ($today >= $fromStr && $today <= $toStr) {
+            $todayRes = $this->erp->getClientsFromHttpApi(1, 0, $search, 20, true, 'mortgage', null, $today, $today, true, max(1, min($window, 7)));
+            $stats['today'] = (int) ($todayRes['total'] ?? 0);
+        }
+
+        if ($rangeEnd >= $today) {
+            $weekRes = $this->erp->getClientsFromHttpApi(1, 0, $search, 20, true, 'mortgage', null, $today, $rangeEnd, true, max(1, min($window, 7)));
+            $stats['this_week'] = (int) ($weekRes['total'] ?? 0);
+        }
+
+        return $stats;
     }
 
     /**

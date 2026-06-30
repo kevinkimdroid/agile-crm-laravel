@@ -16,12 +16,7 @@
             <p class="reports-audit-subtitle mb-0">Standalone analysis of normal tickets vs work tickets and what should be automated.</p>
         </div>
         <div class="d-flex flex-wrap gap-2 align-items-center no-print">
-            <a href="{{ route('reports.export.ticket-automation-analysis', ['format' => 'xlsx']) }}" class="btn btn-primary btn-sm">
-                <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel
-            </a>
-            <a href="{{ route('reports.export.ticket-automation-analysis', ['format' => 'csv']) }}" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-download me-1"></i>Export CSV
-            </a>
+            @include('partials.report-export-buttons', ['route' => 'reports.export.ticket-automation-analysis'])
             <span class="text-muted small">
                 <i class="bi bi-clock me-1"></i>Generated: {{ now()->format('l, F j, Y g:i A') }}
             </span>

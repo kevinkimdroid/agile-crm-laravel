@@ -128,7 +128,7 @@ class ContactController extends Controller
             Cache::forget('agile_dashboard_stats');
             $this->forgetContactsListCache($ownerId);
             \App\Events\DashboardStatsUpdated::dispatch();
-            return redirect()->route('contacts.show', $id)->with('success', 'Contact created.');
+            return redirect()->route('contacts.show', $id)->with('success', 'Prospect created.');
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Failed to create contact: ' . $e->getMessage());
         }
@@ -145,6 +145,9 @@ class ContactController extends Controller
             return redirect()->route('contacts.index')->with('info', 'That contact is assigned to someone else. Showing your contacts.');
         }
         $tab = $request->get('tab', 'summary');
+        if ($tab === 'calendar') {
+            return redirect()->route('contacts.show', array_merge(['contact' => $id], $request->except(['tab']), ['tab' => 'updates']));
+        }
         $tickets = collect();
         $ticketsPaginator = null;
         $policies = [];
@@ -170,8 +173,8 @@ class ContactController extends Controller
             $emailsPage = max(1, (int) $request->get('page', 1));
             $emailsPerPage = 20;
             $emailsOffset = ($emailsPage - 1) * $emailsPerPage;
-            $emails = $this->mailService->getEmailsForContact($contact, $emailsPerPage, $emailsOffset);
-            $emailsTotal = $this->mailService->getEmailsForContactCount($contact);
+            $emails = $this->mailService->getEmailsForContact($contact, $emailsPerPage, $emailsOffset, $id);
+            $emailsTotal = $this->mailService->getEmailsForContactCount($contact, $id);
             $emailsPaginator = new LengthAwarePaginator(
                 $emails,
                 $emailsTotal,
@@ -244,18 +247,86 @@ class ContactController extends Controller
             );
         }
 
+        $calendarActivities = collect();
+        $calendarPaginator = null;
+        $activityType = null;
+        $activityStatus = null;
+        $activitySearch = null;
+        $activitySort = 'date_start';
+        $activitySortDir = 'desc';
+        $activityAssignedToFilter = null;
+        $calendarUsers = collect();
+        $canFilterActivitiesByAssignee = false;
+
+        if ($tab === 'updates') {
+            $activityType = $request->get('type');
+            $activityStatus = $request->get('status');
+            $activitySearch = $request->get('search');
+            $activitySort = $request->get('sort', 'date_start');
+            $activitySortDir = $request->get('dir', 'desc');
+            $calPage = max(1, (int) $request->get('page', 1));
+            $calPerPage = 25;
+            $calOffset = ($calPage - 1) * $calPerPage;
+            $ownerId = crm_owner_filter();
+            $vtigerUser = Auth::guard('vtiger')->user();
+            $canFilterActivitiesByAssignee = (bool) $vtigerUser?->isAdministrator();
+            if ($canFilterActivitiesByAssignee) {
+                try {
+                    $calendarUsers = \App\Models\VtigerUser::on('vtiger')->where('status', 'Active')->orderBy('first_name')->orderBy('last_name')->get();
+                } catch (\Throwable $e) {
+                    $calendarUsers = collect();
+                }
+            }
+            if ($vtigerUser?->isAdministrator() && $request->filled('assigned_to')) {
+                $aid = (int) $request->get('assigned_to');
+                $activityAssignedToFilter = $aid > 0 ? $aid : null;
+            }
+            $calendarActivities = $this->crm->getActivities(
+                $calPerPage,
+                $calOffset,
+                $activityType,
+                $activityStatus,
+                $activitySearch,
+                $id,
+                null,
+                $ownerId,
+                $activityAssignedToFilter,
+                $activitySort,
+                $activitySortDir
+            );
+            $calendarTotal = $this->crm->countActivities(
+                $activityType,
+                $activityStatus,
+                $activitySearch,
+                $id,
+                null,
+                $ownerId,
+                $activityAssignedToFilter
+            );
+            $calendarPaginator = new LengthAwarePaginator(
+                $calendarActivities,
+                $calendarTotal,
+                $calPerPage,
+                $calPage,
+                ['path' => route('contacts.show', $id), 'query' => array_merge($request->query(), ['tab' => 'updates'])]
+            );
+        }
+
         $ownerId = crm_owner_filter();
         $adjacent = $this->crm->getAdjacentContactIds($id, $ownerId);
         $ticketsCount = $this->crm->getTicketsForContactCount($id, null, null, $ownerId);
+        $activitiesCount = $this->crm->countActivities(null, null, null, $id, null, $ownerId);
+        $commentsCount = ContactComment::where('contact_id', $id)->count();
 
         $deals = $activities = $comments = $contactComments = collect();
         if ($tab === 'summary') {
             $deals = $this->crm->getContactDeals($id, 5);
             $activities = $this->crm->getContactActivities($id, 5);
-            $comments = $this->crm->getContactComments($id, 5);
+        }
+        if ($tab === 'updates') {
+            $comments = $this->crm->getContactComments($id, 100);
             $contactComments = ContactComment::where('contact_id', $id)
                 ->orderByDesc('created_at')
-                ->limit(20)
                 ->get();
         }
 
@@ -283,10 +354,22 @@ class ContactController extends Controller
             'ticketsCount' => $ticketsCount,
             'emails' => $emails ?? [],
             'emailsPaginator' => $emailsPaginator ?? null,
-            'emailsCount' => (int) Cache::remember('agile_emails_contact_' . $id, 120, fn () => $this->mailService->getEmailsForContactCount($contact)),
+            'emailsCount' => (int) Cache::remember('agile_emails_contact_' . $id, 120, fn () => $this->mailService->getEmailsForContactCount($contact, $id)),
             'campaigns' => $campaigns ?? collect(),
             'followups' => $followups ?? collect(),
             'allCampaigns' => Cache::remember('agile_all_campaigns', 300, fn () => Campaign::orderBy('campaign_name')->get()),
+            'calendarActivities' => $calendarActivities,
+            'calendarPaginator' => $calendarPaginator,
+            'activityType' => $activityType,
+            'activityStatus' => $activityStatus,
+            'activitySearch' => $activitySearch,
+            'activitySort' => $activitySort,
+            'activitySortDir' => $activitySortDir,
+            'activityAssignedToFilter' => $activityAssignedToFilter,
+            'activitiesCount' => $activitiesCount,
+            'commentsCount' => $commentsCount,
+            'calendarUsers' => $calendarUsers,
+            'canFilterActivitiesByAssignee' => $canFilterActivitiesByAssignee,
         ]);
     }
 
@@ -330,7 +413,7 @@ class ContactController extends Controller
                 'mobile' => $validated['mobile'] ?? '',
             ]);
             $this->forgetContactsListCache(null);
-            return redirect()->route('contacts.show', $id)->with('success', 'Contact updated.');
+            return redirect()->route('contacts.show', $id)->with('success', 'Prospect updated.');
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Failed to update: ' . $e->getMessage());
         }
@@ -345,7 +428,7 @@ class ContactController extends Controller
             Cache::forget('agile_dashboard_stats');
             $this->forgetContactsListCache(null);
             \App\Events\DashboardStatsUpdated::dispatch();
-            return redirect()->route('contacts.index')->with('success', 'Contact deleted.');
+            return redirect()->route('contacts.index')->with('success', 'Prospect deleted.');
         } catch (\Throwable $e) {
             return back()->with('error', 'Failed to delete: ' . $e->getMessage());
         }
@@ -410,7 +493,8 @@ class ContactController extends Controller
             'attachment_name' => $attachmentName,
         ]);
 
-        return redirect()->route('contacts.show', ['contact' => $contact, 'tab' => 'summary'])
+        return redirect()
+            ->to(route('contacts.show', ['contact' => $contact, 'tab' => 'updates']) . '#contact-comments')
             ->with('success', 'Comment posted.');
     }
 

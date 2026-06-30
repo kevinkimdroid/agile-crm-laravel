@@ -5,12 +5,17 @@
 @section('content')
 <div class="page-header d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
     <div>
-        <h1 class="page-title mb-1">EMAIL TEMPLATES <span class="text-muted fw-normal">> List</span></h1>
-        <p class="page-subtitle mb-0">Create and manage email templates for campaigns and notifications.</p>
+        <h1 class="page-title mb-1">Message templates</h1>
+        <p class="page-subtitle mb-0">Reusable copy for mass <strong>email</strong> (Broadcast/Marketing) and <strong>SMS</strong> (Broadcast SMS).</p>
     </div>
-    <a href="{{ route('tools.email-templates.create') }}" class="btn btn-light border">
-        <i class="bi bi-plus-lg me-2"></i>Add Email Template
-    </a>
+    <div class="d-flex flex-wrap gap-2">
+        <a href="{{ route('tools.email-templates.create', ['module' => 'Broadcast']) }}" class="btn btn-primary-custom btn-sm">
+            <i class="bi bi-envelope-plus me-1"></i>Email template
+        </a>
+        <a href="{{ route('tools.email-templates.create', ['module' => 'Broadcast SMS']) }}" class="btn btn-sm" style="background:#0d5c4a;color:#fff;border-color:#0d5c4a">
+            <i class="bi bi-chat-square-text me-1"></i>SMS template
+        </a>
+    </div>
 </div>
 
 @if (session('success'))

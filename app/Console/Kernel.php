@@ -12,6 +12,9 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
+        $runHeavyInLocal = (bool) config('performance.scheduler_in_local', false);
+        $runHeavy = ! app()->environment('local') || $runHeavyInLocal;
+
         $schedule->command('maturities:sync')->dailyAt('06:00');
         $schedule->command('tickets:create-maturity-reminders')->dailyAt('08:00');
         $schedule->command('tickets:sla-violation-reminders')->hourly();
@@ -21,12 +24,12 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(10)
             ->appendOutputTo(storage_path('logs/investment-maturities.log'));
 
-        if (filter_var(env('PBX_CDR_SYNC_ENABLED', true), FILTER_VALIDATE_BOOLEAN)) {
+        if ($runHeavy && filter_var(env('PBX_CDR_SYNC_ENABLED', true), FILTER_VALIDATE_BOOLEAN)) {
             $schedule->command('pbx:sync-cdr --minutes=30 --limit=500')->everyMinute();
             $schedule->command('pbx:health')->everyFiveMinutes();
         }
 
-        if (filter_var(env('MAIL_AUTO_FETCH_ENABLED', true), FILTER_VALIDATE_BOOLEAN)) {
+        if ($runHeavy && filter_var(env('MAIL_AUTO_FETCH_ENABLED', true), FILTER_VALIDATE_BOOLEAN)) {
             $schedule->command('mail:fetch')->everyFiveMinutes();
         }
 
@@ -48,6 +51,13 @@ class Kernel extends ConsoleKernel
         $schedule->command('advanta:sync-delivery', ['--limit' => 100, '--hours' => 72])
             ->everyTenMinutes()
             ->withoutOverlapping(5);
+
+        if ($runHeavy && filter_var(env('SOCIAL_PUBLISH_SCHEDULED', true), FILTER_VALIDATE_BOOLEAN)) {
+            $schedule->command('social:publish-scheduled', ['--limit' => 20])
+                ->everyMinute()
+                ->withoutOverlapping(2)
+                ->appendOutputTo(storage_path('logs/social-publish.log'));
+        }
     }
 
     /**

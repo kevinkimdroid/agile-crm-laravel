@@ -62,6 +62,7 @@
                     <button type="submit" class="btn" style="background:var(--agile-primary);color:#fff;">
                         <i class="bi bi-check-lg me-1"></i>Save changes
                     </button>
+                    <a href="{{ route('settings.crm', ['section' => 'client-access', 'user' => $user->id]) }}" class="btn btn-outline-primary">Client access</a>
                     @php $backUrl = route('settings.crm') . '?section=users'; $r = request()->get('redirect'); if ($r && \Illuminate\Support\Str::startsWith($r, [url('/'), config('app.url')])) { $backUrl = $r; } @endphp
                     <a href="{{ $backUrl }}" class="btn btn-outline-secondary">Cancel</a>
                 </div>

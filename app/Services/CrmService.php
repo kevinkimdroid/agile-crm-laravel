@@ -129,8 +129,8 @@ class CrmService
             foreach ($contacts as $r) {
                 $results[] = [
                     'type' => 'contact',
-                    'label' => 'Contact',
-                    'title' => trim($r->title) ?: 'Contact #' . $r->id,
+                    'label' => 'Prospect',
+                    'title' => trim($r->title) ?: 'Prospect #' . $r->id,
                     'url' => route('contacts.show', $r->id),
                     'icon' => 'bi-person',
                 ];
@@ -354,8 +354,9 @@ class CrmService
 
     public function getContactsCount(?int $ownerId = null): int
     {
+        $ttl = (int) config('performance.cache_ttl.counts', 300);
         if ($ownerId === null) {
-            return (int) Cache::remember('agile_contacts_count', 60, fn () => $this->fetchContactsCount(null));
+            return (int) Cache::remember('agile_contacts_count', $ttl, fn () => $this->fetchContactsCount(null));
         }
         return $this->fetchContactsCount($ownerId);
     }
@@ -380,8 +381,9 @@ class CrmService
 
     public function getLeadsCount(?string $search = null, ?int $ownerId = null): int
     {
+        $ttl = (int) config('performance.cache_ttl.counts', 300);
         if ((!$search || trim($search) === '') && $ownerId === null) {
-            return (int) Cache::remember('agile_leads_count', 60, fn () => $this->fetchLeadsCount(null, null));
+            return (int) Cache::remember('agile_leads_count', $ttl, fn () => $this->fetchLeadsCount(null, null));
         }
         return $this->fetchLeadsCount($search, $ownerId);
     }
@@ -418,8 +420,9 @@ class CrmService
 
     public function getDealsCount(?int $ownerId = null): int
     {
+        $ttl = (int) config('performance.cache_ttl.counts', 300);
         if ($ownerId === null) {
-            return (int) Cache::remember('agile_deals_count', 60, fn () => $this->fetchDealsCount(null));
+            return (int) Cache::remember('agile_deals_count', $ttl, fn () => $this->fetchDealsCount(null));
         }
         return $this->fetchDealsCount($ownerId);
     }
@@ -464,27 +467,31 @@ class CrmService
     /**
      * Get all dashboard stats in one cached call (avoids 12+ sequential DB queries).
      */
-    public function getDashboardStats(int $cacheSeconds = 120, ?int $ownerId = null): array
+    public function getDashboardStats(int $cacheSeconds = null, ?int $ownerId = null): array
     {
+        $cacheSeconds = $cacheSeconds ?? (int) config('performance.cache_ttl.dashboard', 600);
         $cacheKey = 'agile_dashboard_stats_' . ($ownerId ?? 'all');
         return Cache::remember($cacheKey, $cacheSeconds, function () use ($ownerId) {
             return [
-                'ticketCounts' => $this->getTicketCountsByStatus($ownerId),
-                'contactsCount' => $this->getContactsCount($ownerId),
-                'leadsCount' => $this->getLeadsCount(null, $ownerId),
-                'dealsCount' => $this->getDealsCount($ownerId),
+                'ticketCounts' => $this->fetchTicketCountsByStatus($ownerId),
+                'contactsCount' => $this->fetchContactsCount($ownerId),
+                'leadsCount' => $this->fetchLeadsCount(null, $ownerId),
+                'dealsCount' => $this->fetchDealsCount($ownerId),
                 'pipelineValue' => $this->getPipelineValue($ownerId),
-                'leadsTodayCount' => $this->getLeadsTodayCount($ownerId),
-                'openTicketsByAssignee' => $this->getOpenTicketsByAssignee($ownerId),
+                'leadsTodayCount' => $this->fetchLeadsTodayCount($ownerId),
                 'overdueActivities' => $this->getOverdueActivities(5, $ownerId),
-                'upcomingTasks' => $this->getUpcomingTasks(7, 5, $ownerId),
-                'leadsBySource' => $this->getLeadsBySource($ownerId),
-                'dealsClosingSoon' => $this->getDealsClosingSoon(30, 8, $ownerId),
+                'leadsBySource' => $this->getLeadsBySource(),
+                'dealsClosingSoon' => $this->getDealsClosingSoon(30, 8),
             ];
         });
     }
 
     public function getLeadsTodayCount(?int $ownerId = null): int
+    {
+        return $this->fetchLeadsTodayCount($ownerId);
+    }
+
+    protected function fetchLeadsTodayCount(?int $ownerId = null): int
     {
         try {
             $today = now()->format('Y-m-d');
@@ -532,33 +539,104 @@ class CrmService
         }
     }
 
-    public function getOverdueActivities(int $limit = 10, ?int $ownerId = null): array
+    public function getOverdueActivities(int $limit = 10, ?int $ownerId = null, int $offset = 0): array
     {
-        try {
-            $today = now()->format('Y-m-d');
-            $query = DB::connection('vtiger')
-                ->table('vtiger_activity')
-                ->join('vtiger_crmentity as e', 'vtiger_activity.activityid', '=', 'e.crmid')
-                ->where('e.deleted', 0)
-                ->where('vtiger_activity.activitytype', 'Task')
-                ->where('vtiger_activity.status', '!=', 'Completed')
-                ->whereRaw('vtiger_activity.date_start < ?', [$today]);
-            if ($ownerId !== null && $ownerId > 0) {
-                $query->where('e.smownerid', $ownerId);
-            }
-            $rows = $query->select('vtiger_activity.activityid', 'vtiger_activity.subject', 'vtiger_activity.date_start', 'vtiger_activity.due_date')
-                ->orderBy('vtiger_activity.due_date')
-                ->limit($limit)
-                ->get();
-            return $rows->map(fn ($r) => [
+        return $this->getOverdueActivitiesList($limit, $offset, $ownerId)
+            ->map(fn ($r) => [
                 'id' => $r->activityid,
                 'subject' => $r->subject ?? 'Untitled',
                 'due_date' => $r->due_date ?? $r->date_start,
-            ])->toArray();
+                'related_to_id' => $r->related_to_id ?? null,
+                'related_ticket_id' => $r->related_ticket_id ?? null,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Overdue tasks across the CRM (not scoped to a single contact/ticket).
+     *
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    public function getOverdueActivitiesList(int $limit = 25, int $offset = 0, ?int $ownerId = null, ?string $search = null): \Illuminate\Support\Collection
+    {
+        try {
+            $query = $this->overdueActivitiesBaseQuery($ownerId, $search);
+            $query->leftJoinSub($this->activityPrimaryContactSubquery(), 'relc', function ($join) {
+                $join->on('a.activityid', '=', 'relc.activityid');
+            });
+            $query->leftJoin('vtiger_contactdetails as c', 'relc.contactid', '=', 'c.contactid');
+            $query->leftJoinSub($this->activityPrimaryTicketSubquery(), 'relt', function ($join) {
+                $join->on('a.activityid', '=', 'relt.activityid');
+            });
+            $query->leftJoin('vtiger_troubletickets as t', 'relt.ticketid', '=', 't.ticketid');
+
+            return $query->select(
+                'a.activityid',
+                'a.subject',
+                'a.activitytype',
+                'a.date_start',
+                'a.due_date',
+                'a.status',
+                'e.smownerid',
+                'relc.contactid as related_to_id',
+                'relt.ticketid as related_ticket_id',
+                't.ticket_no as related_ticket_no',
+                DB::raw("TRIM(CONCAT(COALESCE(c.firstname,''), ' ', COALESCE(c.lastname,''))) as related_to_name"),
+                DB::raw("TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) as assigned_to_name")
+            )
+                ->orderByRaw('COALESCE(a.due_date, a.date_start) ASC')
+                ->offset($offset)
+                ->limit($limit)
+                ->get();
         } catch (\Throwable $e) {
-            Log::warning('CrmService::getOverdueActivities: ' . $e->getMessage());
-            return [];
+            Log::warning('CrmService::getOverdueActivitiesList: ' . $e->getMessage());
+
+            return collect();
         }
+    }
+
+    public function countOverdueActivities(?int $ownerId = null, ?string $search = null): int
+    {
+        try {
+            return (int) $this->overdueActivitiesBaseQuery($ownerId, $search)->count();
+        } catch (\Throwable $e) {
+            Log::warning('CrmService::countOverdueActivities: ' . $e->getMessage());
+
+            return 0;
+        }
+    }
+
+    private function overdueActivitiesBaseQuery(?int $ownerId, ?string $search = null): \Illuminate\Database\Query\Builder
+    {
+        $today = now()->format('Y-m-d');
+        $query = DB::connection('vtiger')
+            ->table('vtiger_activity as a')
+            ->join('vtiger_crmentity as e', 'a.activityid', '=', 'e.crmid')
+            ->leftJoin('vtiger_users as u', 'e.smownerid', '=', 'u.id')
+            ->where('e.deleted', 0)
+            ->whereIn('e.setype', self::VTIGER_ACTIVITY_SETYPES)
+            ->where('a.activitytype', 'Task')
+            ->where(function ($q) {
+                $q->whereNull('a.status')->orWhere('a.status', '!=', 'Completed');
+            })
+            ->where(function ($q) use ($today) {
+                $q->where(function ($q2) use ($today) {
+                    $q2->whereNotNull('a.due_date')->where('a.due_date', '<', $today);
+                })->orWhere(function ($q2) use ($today) {
+                    $q2->whereNull('a.due_date')->where('a.date_start', '<', $today);
+                });
+            });
+
+        if ($ownerId !== null && $ownerId > 0) {
+            $query->where('e.smownerid', $ownerId);
+        }
+
+        if ($search !== null && trim($search) !== '') {
+            $query->where('a.subject', 'like', '%' . trim($search) . '%');
+        }
+
+        return $query;
     }
 
     /**
@@ -2205,6 +2283,30 @@ class CrmService
         }
     }
 
+    private function applyActivitySort($query, ?string $sortBy, ?string $sortDir): void
+    {
+        $direction = strtolower((string) $sortDir) === 'asc' ? 'asc' : 'desc';
+        $sortMap = [
+            'status' => 'a.status',
+            'activitytype' => 'a.activitytype',
+            'subject' => 'a.subject',
+            'date_start' => 'a.date_start',
+            'due_date' => 'a.due_date',
+            'recurringtype' => 'a.recurringtype',
+            'modifiedtime' => 'e.modifiedtime',
+        ];
+
+        if ($sortBy === 'assigned_to') {
+            $query->orderByRaw("TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) {$direction}");
+        } elseif ($sortBy === 'related_to') {
+            $query->orderByRaw("TRIM(CONCAT(COALESCE(c.firstname,''), ' ', COALESCE(c.lastname,''))) {$direction}");
+        } elseif (isset($sortMap[$sortBy])) {
+            $query->orderBy($sortMap[$sortBy], $direction);
+        } else {
+            $query->orderByDesc('a.date_start');
+        }
+    }
+
     /**
      * One row per activity: core joins (no vtiger_seactivityrel fan-out).
      *
@@ -2248,7 +2350,7 @@ class CrmService
      * @param  int|null  $ownerScope  From crm_owner_filter(); non-admins only see their records.
      * @param  int|null  $assignedToFilter  When $ownerScope is null (admin), filter by assignee.
      */
-    public function getActivities(int $limit = 50, int $offset = 0, ?string $activityType = null, ?string $status = null, ?string $search = null, ?int $contactId = null, ?int $ticketId = null, ?int $ownerScope = null, ?int $assignedToFilter = null)
+    public function getActivities(int $limit = 50, int $offset = 0, ?string $activityType = null, ?string $status = null, ?string $search = null, ?int $contactId = null, ?int $ticketId = null, ?int $ownerScope = null, ?int $assignedToFilter = null, ?string $sortBy = null, ?string $sortDir = null)
     {
         try {
             $activityIds = $this->resolveActivityIdsForContactOrTicket($contactId, $ticketId);
@@ -2282,13 +2384,43 @@ class CrmService
                 DB::raw("TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) as assigned_to_name")
             );
 
-            return $query->orderByDesc('a.date_start')
-                ->offset($offset)
+            $this->applyActivitySort($query, $sortBy ?: 'date_start', $sortDir ?: 'desc');
+
+            return $query->offset($offset)
                 ->limit($limit)
                 ->get();
         } catch (\Throwable $e) {
             Log::warning('CrmService::getActivities: ' . $e->getMessage());
             return collect();
+        }
+    }
+
+    /**
+     * Count activities for the same filters as getActivities (no pagination).
+     */
+    public function countActivities(
+        ?string $activityType = null,
+        ?string $status = null,
+        ?string $search = null,
+        ?int $contactId = null,
+        ?int $ticketId = null,
+        ?int $ownerScope = null,
+        ?int $assignedToFilter = null
+    ): int {
+        try {
+            $activityIds = $this->resolveActivityIdsForContactOrTicket($contactId, $ticketId);
+            if ($activityIds === null || $activityIds->isEmpty()) {
+                return 0;
+            }
+
+            $query = $this->activitiesScopeQuery($activityIds, $ownerScope, $assignedToFilter);
+            $this->applyActivityTypeStatusSearch($query, $activityType, $status, $search);
+
+            return (int) $query->count();
+        } catch (\Throwable $e) {
+            Log::warning('CrmService::countActivities: ' . $e->getMessage());
+
+            return 0;
         }
     }
 
@@ -2582,7 +2714,7 @@ class CrmService
                 'smownerid' => $ownerId,
                 'modifiedby' => $ownerId,
                 'setype' => $setype,
-                'description' => '',
+                'description' => $data['description'] ?? '',
                 'createdtime' => now()->format('Y-m-d H:i:s'),
                 'modifiedtime' => now()->format('Y-m-d H:i:s'),
                 'viewedtime' => null,
@@ -2651,6 +2783,125 @@ class CrmService
                 'trace' => $e->getTraceAsString(),
             ]);
             return null;
+        }
+    }
+
+    public function getActivity(int $activityId): ?object
+    {
+        try {
+            $query = DB::connection('vtiger')
+                ->table('vtiger_activity as a')
+                ->join('vtiger_crmentity as e', 'a.activityid', '=', 'e.crmid')
+                ->leftJoin('vtiger_users as u', 'e.smownerid', '=', 'u.id')
+                ->leftJoinSub($this->activityPrimaryContactSubquery(), 'relc', function ($join) {
+                    $join->on('a.activityid', '=', 'relc.activityid');
+                })
+                ->leftJoin('vtiger_contactdetails as c', 'relc.contactid', '=', 'c.contactid')
+                ->where('a.activityid', $activityId)
+                ->where('e.deleted', 0)
+                ->whereIn('e.setype', self::VTIGER_ACTIVITY_SETYPES);
+
+            return $query->select(
+                'a.activityid',
+                'a.subject',
+                'a.activitytype',
+                'a.date_start',
+                'a.due_date',
+                'a.time_start',
+                'a.time_end',
+                'a.status',
+                'a.eventstatus',
+                'a.priority',
+                'a.recurringtype',
+                'e.smownerid',
+                'e.description',
+                'e.modifiedtime',
+                'relc.contactid as related_to_id',
+                DB::raw("TRIM(CONCAT(COALESCE(c.firstname,''), ' ', COALESCE(c.lastname,''))) as related_to_name"),
+                DB::raw("TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) as assigned_to_name")
+            )->first();
+        } catch (\Throwable $e) {
+            Log::warning('CrmService::getActivity: ' . $e->getMessage());
+
+            return null;
+        }
+    }
+
+    public function updateActivity(int $activityId, array $data, int $modifierId): bool
+    {
+        $conn = DB::connection('vtiger');
+        try {
+            $existing = $this->getActivity($activityId);
+            if (! $existing) {
+                return false;
+            }
+
+            $conn->beginTransaction();
+
+            $activityType = $data['activitytype'] ?? $existing->activitytype ?? 'Task';
+            $subject = $data['subject'] ?? $existing->subject ?? 'Untitled';
+            $dateStart = $data['date_start'] ?? $existing->date_start;
+            $dueDate = $data['due_date'] ?? $existing->due_date ?? $dateStart;
+            $ownerId = ! empty($data['assigned_to']) ? (int) $data['assigned_to'] : (int) ($existing->smownerid ?? $modifierId);
+            $setype = in_array($activityType, ['Event', 'Meeting', 'Call'], true) ? 'Events' : 'Task';
+
+            $conn->table('vtiger_activity')->where('activityid', $activityId)->update([
+                'subject' => $subject,
+                'activitytype' => $activityType,
+                'date_start' => $dateStart,
+                'due_date' => $dueDate,
+                'time_start' => $data['time_start'] ?? $existing->time_start,
+                'time_end' => $data['time_end'] ?? $existing->time_end,
+                'status' => $data['status'] ?? $existing->status,
+                'eventstatus' => $data['eventstatus'] ?? $existing->eventstatus,
+                'priority' => $data['priority'] ?? $existing->priority ?? 'Medium',
+            ]);
+
+            $conn->table('vtiger_crmentity')->where('crmid', $activityId)->update([
+                'smownerid' => $ownerId,
+                'modifiedby' => $modifierId,
+                'modifiedtime' => now()->format('Y-m-d H:i:s'),
+                'setype' => $setype,
+                'label' => $subject,
+                'description' => $data['description'] ?? ($existing->description ?? ''),
+            ]);
+
+            $conn->commit();
+
+            return true;
+        } catch (\Throwable $e) {
+            $conn->rollBack();
+            Log::error('CrmService::updateActivity failed', [
+                'activity_id' => $activityId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    public function deleteActivity(int $activityId, int $modifierId): bool
+    {
+        try {
+            $existing = $this->getActivity($activityId);
+            if (! $existing) {
+                return false;
+            }
+
+            return DB::connection('vtiger')->table('vtiger_crmentity')
+                ->where('crmid', $activityId)
+                ->update([
+                    'deleted' => 1,
+                    'modifiedby' => $modifierId,
+                    'modifiedtime' => now()->format('Y-m-d H:i:s'),
+                ]) > 0;
+        } catch (\Throwable $e) {
+            Log::error('CrmService::deleteActivity failed', [
+                'activity_id' => $activityId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return false;
         }
     }
 
@@ -2752,6 +3003,29 @@ class CrmService
     }
 
     /**
+     * Get lead counts grouped by status for analytics.
+     */
+    public function getLeadsByStatus(): array
+    {
+        try {
+            return DB::connection('vtiger')
+                ->table('vtiger_leaddetails as l')
+                ->join('vtiger_crmentity as e', 'l.leadid', '=', 'e.crmid')
+                ->where('e.deleted', 0)
+                ->whereIn('e.setype', ['Leads', 'Lead'])
+                ->selectRaw('COALESCE(NULLIF(TRIM(l.leadstatus), ""), "New") as status, count(*) as cnt')
+                ->groupBy('status')
+                ->orderByDesc('cnt')
+                ->pluck('cnt', 'status')
+                ->toArray();
+        } catch (\Throwable $e) {
+            Log::warning('CrmService::getLeadsByStatus: ' . $e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
      * Get deals closing in the next N days (renewal/retention alerts).
      */
     public function getDealsClosingSoon(int $days = 30, int $limit = 10): \Illuminate\Support\Collection
@@ -2784,16 +3058,238 @@ class CrmService
     public function getReportsIndexData(int $cacheSeconds = 120): array
     {
         return Cache::remember('agile_reports_index', $cacheSeconds, function () {
+            $contactsSummary = $this->getContactsSummaryReport(30);
+            $callsSummary = $this->getCallsSummaryReport();
+            $ticketsDailyTrend = $this->getTicketsDailyTrend(30);
+            $created30 = array_sum(array_column($ticketsDailyTrend, 'created'));
+            $closed30 = array_sum(array_column($ticketsDailyTrend, 'closed'));
+
             return [
                 'wonRevenue' => $this->getWonRevenue(),
                 'pipelineValue' => $this->getPipelineValue(),
                 'salesByPerson' => $this->getSalesByPerson(10),
                 'leadsBySource' => $this->getLeadsBySource(),
+                'leadsByStatus' => $this->getLeadsByStatus(),
                 'pipelineByStage' => $this->getPipelineByStage(),
                 'ticketsByStatus' => $this->getTicketsByStatusReport(),
                 'ticketsByCategory' => $this->getTicketsByCategory(),
+                'ticketsDailyTrend' => $ticketsDailyTrend,
+                'ticketsMonthlyTrend' => $this->getTicketsMonthlyTrend(6),
+                'topCategories30d' => $this->getTopTicketCategoriesInPeriod(30, 8),
+                'leadsMonthlyTrend' => $this->getLeadsMonthlyTrend(6),
+                'contactsSummary' => $contactsSummary,
+                'callsSummary' => $callsSummary,
+                'agingTicketCount' => $this->getTicketAgingCount(7),
+                'analyticsSummary' => [
+                    'tickets_created_30d' => $created30,
+                    'tickets_closed_30d' => $closed30,
+                    'closure_rate_30d' => $created30 > 0 ? round(($closed30 / $created30) * 100, 1) : 0,
+                    'prospects_total' => (int) ($contactsSummary['total'] ?? 0),
+                    'prospects_new_30d' => (int) ($contactsSummary['new_last_days'] ?? 0),
+                    'total_calls' => (int) ($callsSummary['total_calls'] ?? 0),
+                    'call_duration_hours' => round(((int) ($callsSummary['total_duration_sec'] ?? 0)) / 3600, 1),
+                ],
             ];
         });
+    }
+
+    /**
+     * Daily ticket created vs closed counts for trend charts.
+     *
+     * @return array<int, array{date: string, label: string, created: int, closed: int}>
+     */
+    public function getTicketsDailyTrend(int $days = 30): array
+    {
+        $days = max(7, min(90, $days));
+        try {
+            $fromDate = now()->subDays($days - 1)->startOfDay()->format('Y-m-d');
+            $toDate = now()->format('Y-m-d');
+            $fromStart = $fromDate . ' 00:00:00';
+            $toEnd = $toDate . ' 23:59:59';
+            $inactiveStatus = (string) config('tickets.inactive_status', 'Inactive');
+
+            $createdRows = DB::connection('vtiger')
+                ->table('vtiger_troubletickets as t')
+                ->join('vtiger_crmentity as e', 't.ticketid', '=', 'e.crmid')
+                ->where('e.deleted', 0)
+                ->whereIn('e.setype', ['HelpDesk', 'Ticket'])
+                ->whereBetween('e.createdtime', [$fromStart, $toEnd])
+                ->selectRaw('DATE(e.createdtime) as d, COUNT(*) as cnt')
+                ->groupByRaw('DATE(e.createdtime)')
+                ->pluck('cnt', 'd')
+                ->toArray();
+
+            $closedRows = DB::connection('vtiger')
+                ->table('vtiger_troubletickets as t')
+                ->join('vtiger_crmentity as e', 't.ticketid', '=', 'e.crmid')
+                ->where('e.deleted', 0)
+                ->whereIn('e.setype', ['HelpDesk', 'Ticket'])
+                ->whereIn('t.status', ['Closed', 'Resolved'])
+                ->whereBetween('e.modifiedtime', [$fromStart, $toEnd])
+                ->selectRaw('DATE(e.modifiedtime) as d, COUNT(*) as cnt')
+                ->groupByRaw('DATE(e.modifiedtime)')
+                ->pluck('cnt', 'd')
+                ->toArray();
+
+            $daily = [];
+            $cursor = \Carbon\Carbon::parse($fromDate);
+            $end = \Carbon\Carbon::parse($toDate);
+            while ($cursor->lte($end)) {
+                $key = $cursor->format('Y-m-d');
+                $daily[] = [
+                    'date' => $key,
+                    'label' => $cursor->format('d M'),
+                    'created' => (int) ($createdRows[$key] ?? 0),
+                    'closed' => (int) ($closedRows[$key] ?? 0),
+                ];
+                $cursor->addDay();
+            }
+
+            return $daily;
+        } catch (\Throwable $e) {
+            Log::warning('CrmService::getTicketsDailyTrend: ' . $e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * Monthly ticket volume for the last N months.
+     *
+     * @return array<int, array{month: string, label: string, created: int}>
+     */
+    public function getTicketsMonthlyTrend(int $months = 6): array
+    {
+        $months = max(3, min(12, $months));
+        try {
+            $fromDate = now()->subMonths($months - 1)->startOfMonth()->format('Y-m-d');
+            $fromStart = $fromDate . ' 00:00:00';
+
+            $rows = DB::connection('vtiger')
+                ->table('vtiger_troubletickets as t')
+                ->join('vtiger_crmentity as e', 't.ticketid', '=', 'e.crmid')
+                ->where('e.deleted', 0)
+                ->whereIn('e.setype', ['HelpDesk', 'Ticket'])
+                ->where('e.createdtime', '>=', $fromStart)
+                ->selectRaw("DATE_FORMAT(e.createdtime, '%Y-%m') as ym, COUNT(*) as cnt")
+                ->groupByRaw("DATE_FORMAT(e.createdtime, '%Y-%m')")
+                ->orderBy('ym')
+                ->pluck('cnt', 'ym')
+                ->toArray();
+
+            $monthly = [];
+            $cursor = now()->subMonths($months - 1)->startOfMonth();
+            for ($i = 0; $i < $months; $i++) {
+                $key = $cursor->format('Y-m');
+                $monthly[] = [
+                    'month' => $key,
+                    'label' => $cursor->format('M Y'),
+                    'created' => (int) ($rows[$key] ?? 0),
+                ];
+                $cursor->addMonth();
+            }
+
+            return $monthly;
+        } catch (\Throwable $e) {
+            Log::warning('CrmService::getTicketsMonthlyTrend: ' . $e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * Top ticket categories in a recent period.
+     *
+     * @return array<string, int>
+     */
+    public function getTopTicketCategoriesInPeriod(int $days = 30, int $limit = 8): array
+    {
+        $days = max(7, min(365, $days));
+        $limit = max(3, min(15, $limit));
+        try {
+            $fromStart = now()->subDays($days)->format('Y-m-d H:i:s');
+
+            return DB::connection('vtiger')
+                ->table('vtiger_troubletickets as t')
+                ->join('vtiger_crmentity as e', 't.ticketid', '=', 'e.crmid')
+                ->where('e.deleted', 0)
+                ->whereIn('e.setype', ['HelpDesk', 'Ticket'])
+                ->where('e.createdtime', '>=', $fromStart)
+                ->selectRaw('COALESCE(NULLIF(TRIM(t.category), ""), "General") as category, COUNT(*) as cnt')
+                ->groupByRaw('COALESCE(NULLIF(TRIM(t.category), ""), "General")')
+                ->orderByDesc('cnt')
+                ->limit($limit)
+                ->pluck('cnt', 'category')
+                ->map(fn ($c) => (int) $c)
+                ->toArray();
+        } catch (\Throwable $e) {
+            Log::warning('CrmService::getTopTicketCategoriesInPeriod: ' . $e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * Leads created per month.
+     *
+     * @return array<int, array{month: string, label: string, created: int}>
+     */
+    public function getLeadsMonthlyTrend(int $months = 6): array
+    {
+        $months = max(3, min(12, $months));
+        try {
+            $fromStart = now()->subMonths($months - 1)->startOfMonth()->format('Y-m-d H:i:s');
+
+            $rows = DB::connection('vtiger')
+                ->table('vtiger_leaddetails as l')
+                ->join('vtiger_crmentity as e', 'l.leadid', '=', 'e.crmid')
+                ->where('e.deleted', 0)
+                ->whereIn('e.setype', ['Leads', 'Lead'])
+                ->where('e.createdtime', '>=', $fromStart)
+                ->selectRaw("DATE_FORMAT(e.createdtime, '%Y-%m') as ym, COUNT(*) as cnt")
+                ->groupByRaw("DATE_FORMAT(e.createdtime, '%Y-%m')")
+                ->orderBy('ym')
+                ->pluck('cnt', 'ym')
+                ->toArray();
+
+            $monthly = [];
+            $cursor = now()->subMonths($months - 1)->startOfMonth();
+            for ($i = 0; $i < $months; $i++) {
+                $key = $cursor->format('Y-m');
+                $monthly[] = [
+                    'month' => $key,
+                    'label' => $cursor->format('M Y'),
+                    'created' => (int) ($rows[$key] ?? 0),
+                ];
+                $cursor->addMonth();
+            }
+
+            return $monthly;
+        } catch (\Throwable $e) {
+            Log::warning('CrmService::getLeadsMonthlyTrend: ' . $e->getMessage());
+
+            return [];
+        }
+    }
+
+    public function getTicketAgingCount(int $days = 7): int
+    {
+        try {
+            $cutoff = now()->subDays($days)->format('Y-m-d H:i:s');
+
+            return (int) DB::connection('vtiger')
+                ->table('vtiger_troubletickets as t')
+                ->join('vtiger_crmentity as e', 't.ticketid', '=', 'e.crmid')
+                ->where('e.deleted', 0)
+                ->whereIn('e.setype', ['HelpDesk', 'Ticket'])
+                ->whereNotIn('t.status', ['Closed', 'Resolved', config('tickets.inactive_status', 'Inactive')])
+                ->whereRaw('e.createdtime < ?', [$cutoff])
+                ->count();
+        } catch (\Throwable $e) {
+            Log::warning('CrmService::getTicketAgingCount: ' . $e->getMessage());
+
+            return 0;
+        }
     }
 
     /**

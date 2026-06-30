@@ -12,7 +12,10 @@ class VtigerProfile extends Model
 
     protected $primaryKey = 'profileid';
 
+    public $incrementing = false;
+
     protected $fillable = [
+        'profileid',
         'profilename',
         'description',
     ];

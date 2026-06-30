@@ -27,8 +27,8 @@
                     <p class="text-muted small mb-3">
                         Profile: {{ $role->profiles->first()->profilename }}
                     </p>
-                    <a href="{{ route('setup.roles.modules', $role->roleid) }}" class="btn btn-primary-custom w-100">
-                        <i class="bi bi-grid-3x3-gap me-1"></i> Configure Modules
+                    <a href="{{ route('settings.crm', ['section' => 'profiles', 'action' => 'edit', 'profile' => $role->profiles->first()->profileid]) }}" class="btn btn-primary-custom w-100">
+                        <i class="bi bi-grid-3x3-gap me-1"></i> Edit Profile Privileges
                     </a>
                 @else
                     <p class="text-warning small mb-0">No profile assigned. Assign a profile in Vtiger first.</p>

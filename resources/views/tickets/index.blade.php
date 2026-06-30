@@ -66,7 +66,7 @@
             @if($currentList ?? '')<input type="hidden" name="list" value="{{ $currentList }}">@endif
             <div class="tickets-search">
                 <i class="bi bi-search"></i>
-                <input type="text" name="search" id="tickets-search-input" class="form-control border-0 bg-transparent" placeholder="Search tickets, contacts, assigned to / by… (Ctrl+K)" value="{{ $search ?? '' }}">
+                <input type="text" name="search" id="tickets-search-input" class="form-control border-0 bg-transparent" placeholder="Search tickets, prospects, assigned to / by… (Ctrl+K)" value="{{ $search ?? '' }}">
             </div>
             <select name="assigned_to" class="form-select form-select-sm tickets-assign-filter" onchange="this.form.submit()">
                 <option value="">All assignees</option>
@@ -88,7 +88,7 @@
                     <tr>
                         <th>Ticket</th>
                         <th>Title</th>
-                        <th>Contact</th>
+                        <th>Prospect</th>
                         <th title="Policy linked when ticket was created (from Create Ticket / Serve Client)">Policy</th>
                         <th>Status</th>
                         <th>Priority</th>

@@ -110,7 +110,7 @@ ADVANTA_SHORTCODE=your_shortcode</pre>
                                 <div class="sms-recipients-empty">
                                     <i class="bi bi-people text-muted mb-2"></i>
                                     <p class="mb-0 small text-muted">No clients with phone numbers.</p>
-                                    <a href="{{ route('contacts.index') }}" class="btn btn-sm btn-outline-secondary mt-2">Add contacts</a>
+                                    <a href="{{ route('contacts.index') }}" class="btn btn-sm btn-outline-secondary mt-2">Add prospects</a>
                                 </div>
                             @endforelse
                         </div>
@@ -283,7 +283,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (match) matches.push(item);
         });
         if (matches.length === 0) {
-            typeahead.innerHTML = '<div class="sms-typeahead-empty">No matching contacts. Paste numbers (comma-separated) and send.</div>';
+            typeahead.innerHTML = '<div class="sms-typeahead-empty">No matching prospects. Paste numbers (comma-separated) and send.</div>';
         } else {
             typeahead.innerHTML = matches.slice(0, 10).map(function(item) {
                 const cb = item.querySelector('.recipient-check');

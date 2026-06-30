@@ -16,7 +16,7 @@
                 <i class="bi bi-house"></i> Overview
             </a>
             <div class="settings-tab-group dropdown">
-                <button type="button" class="settings-tab settings-tab-dropdown {{ in_array($section ?? '', ['users','departments','roles','profiles','sharing-rules','groups','login-history']) ? 'active' : '' }}" data-bs-toggle="dropdown" aria-expanded="false">
+                <button type="button" class="settings-tab settings-tab-dropdown {{ in_array($section ?? '', ['users','departments','roles','profiles','client-access','sharing-rules','groups','login-history']) ? 'active' : '' }}" data-bs-toggle="dropdown" aria-expanded="false">
                     <i class="bi bi-people"></i> People <i class="bi bi-chevron-down ms-1"></i>
                 </button>
                 <ul class="dropdown-menu">
@@ -24,6 +24,7 @@
                     <li><a class="dropdown-item" href="{{ route('settings.crm') }}?section=departments"><i class="bi bi-building me-2"></i>Departments</a></li>
                     <li><a class="dropdown-item" href="{{ route('settings.crm') }}?section=roles"><i class="bi bi-shield-lock me-2"></i>Roles</a></li>
                     <li><a class="dropdown-item" href="{{ route('settings.crm') }}?section=profiles"><i class="bi bi-person-vcard me-2"></i>Profiles</a></li>
+                    <li><a class="dropdown-item" href="{{ route('settings.crm') }}?section=client-access"><i class="bi bi-person-check me-2"></i>Client Access</a></li>
                     <li><a class="dropdown-item" href="{{ route('settings.crm') }}?section=sharing-rules"><i class="bi bi-share me-2"></i>Sharing Rules</a></li>
                     <li><a class="dropdown-item" href="{{ route('settings.crm') }}?section=groups"><i class="bi bi-people me-2"></i>Groups</a></li>
                     <li><a class="dropdown-item" href="{{ route('settings.crm') }}?section=login-history"><i class="bi bi-clock-history me-2"></i>Login History</a></li>
@@ -79,6 +80,12 @@
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
     @endif
+    @if (session('error'))
+    <div class="alert alert-danger alert-dismissible fade show d-flex align-items-center" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ session('error') }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    @endif
 
     <main class="settings-main">
         <div class="settings-main-inner">
@@ -89,7 +96,7 @@
             @endif
             @php
                 $section = $section ?? 'overview';
-                $validSections = ['overview', 'users', 'departments', 'roles', 'profiles', 'sharing-rules', 'groups', 'login-history', 'modules', 'module-layouts', 'module-numbering', 'scheduler', 'workflows', 'ticket-automation', 'ticket-sla', 'ticket-dropdowns', 'configuration', 'pbx-extension-mapping', 'marketing', 'integration', 'other'];
+                $validSections = ['overview', 'users', 'departments', 'roles', 'profiles', 'client-access', 'sharing-rules', 'groups', 'login-history', 'modules', 'module-layouts', 'module-numbering', 'scheduler', 'workflows', 'ticket-automation', 'ticket-sla', 'ticket-dropdowns', 'configuration', 'pbx-extension-mapping', 'marketing', 'integration', 'other'];
                 $section = in_array($section, $validSections) ? $section : 'overview';
             @endphp
             @include('settings.sections.' . $section)
@@ -170,14 +177,40 @@
     var search = document.getElementById('settingsSearch');
     if (!search) return;
     var overviewLink = document.querySelector('a.settings-tab[href*="overview"]');
+    var overviewCards = document.querySelectorAll('[data-settings-card]');
+    var overviewGroups = document.querySelectorAll('[data-settings-group]');
+    var overviewEmpty = document.getElementById('settingsOverviewEmpty');
+
+    function filterOverview(q) {
+        if (!overviewCards.length) return;
+        var visibleCards = 0;
+        overviewCards.forEach(function(card) {
+            var text = (card.getAttribute('data-search') || card.textContent || '').toLowerCase();
+            var match = q.length < 2 || text.indexOf(q) >= 0;
+            card.style.display = match ? '' : 'none';
+            if (match) visibleCards++;
+        });
+        overviewGroups.forEach(function(group) {
+            var anyVisible = false;
+            group.querySelectorAll('[data-settings-card]').forEach(function(card) {
+                if (card.style.display !== 'none') anyVisible = true;
+            });
+            group.classList.toggle('is-hidden', !anyVisible);
+        });
+        if (overviewEmpty) {
+            overviewEmpty.classList.toggle('d-none', q.length < 2 || visibleCards > 0);
+        }
+    }
+
     search.addEventListener('input', function() {
         var q = (this.value || '').toLowerCase().trim();
+        filterOverview(q);
         if (q.length < 2) {
             document.querySelectorAll('.settings-tab-group').forEach(function(g) { g.style.display = ''; });
             if (overviewLink) overviewLink.style.display = '';
             return;
         }
-        if (overviewLink) overviewLink.style.display = ('overview'.indexOf(q) >= 0) ? '' : 'none';
+        if (overviewLink) overviewLink.style.display = ('overview'.indexOf(q) >= 0 || overviewCards.length) ? '' : 'none';
         document.querySelectorAll('.settings-tab-group').forEach(function(g) {
             var btnText = (g.querySelector('.settings-tab')?.textContent || '').toLowerCase();
             var anyMatch = btnText.indexOf(q) >= 0;

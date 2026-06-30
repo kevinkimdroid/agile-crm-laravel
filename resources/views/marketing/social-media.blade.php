@@ -135,6 +135,11 @@
         </button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link" id="whatsapp-tab" data-bs-toggle="tab" data-bs-target="#whatsapp" type="button" role="tab">
+            <i class="bi bi-whatsapp me-2"></i>WhatsApp
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
         <button class="nav-link" id="analytics-tab" data-bs-toggle="tab" data-bs-target="#analytics" type="button" role="tab">
             <i class="bi bi-graph-up me-2"></i>Analytics
         </button>
@@ -263,7 +268,7 @@
                             @foreach(request()->except(['post_platform','post_sort']) as $k => $v) @if($v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endif @endforeach
                             <select name="post_platform" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
                                 <option value="">All platforms</option>
-                                @foreach(['twitter','youtube','tiktok','facebook','instagram'] as $p)
+                                @foreach(['twitter','youtube','tiktok','facebook','instagram','whatsapp'] as $p)
                                 <option value="{{ $p }}" {{ ($postPlatform ?? '') === $p ? 'selected' : '' }}>{{ ucfirst($p) }}</option>
                                 @endforeach
                             </select>
@@ -367,6 +372,21 @@
                         </div>
                         <button type="submit" class="btn btn-primary-custom"><i class="bi bi-calendar-plus me-1"></i>Schedule</button>
                     </form>
+                    @php $facebookAccount = ($socialAccounts ?? collect())->firstWhere('platform', 'facebook'); @endphp
+                    @if($facebookAccount)
+                    <hr class="my-4">
+                    <h6 class="card-section-title mb-3"><i class="bi bi-send me-2"></i>Publish Now (Facebook)</h6>
+                    <form action="{{ route('marketing.social-media.publish-now') }}" method="POST">
+                        @csrf
+                        <input type="hidden" name="social_account_id" value="{{ $facebookAccount->id }}">
+                        <div class="mb-3">
+                            <label class="form-label">Content</label>
+                            <textarea name="content" class="form-control" rows="3" placeholder="Post to your Facebook Page now..." required maxlength="10000"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-success"><i class="bi bi-facebook me-1"></i>Publish to Facebook</button>
+                    </form>
+                    <p class="text-muted small mt-2 mb-0">Scheduled posts are published automatically every minute when the scheduler runs (<code>social:publish-scheduled</code>).</p>
+                    @endif
                     @else
                     <p class="text-muted mb-0">Connect at least one social account above to schedule posts.</p>
                     @endif
@@ -381,7 +401,7 @@
                             <input type="hidden" name="sched_platform" value="{{ $schedPlatform ?? '' }}">
                             <select name="sched_platform" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
                                 <option value="">All platforms</option>
-                                @foreach(['twitter','youtube','tiktok','facebook','instagram'] as $p)
+                                @foreach(['twitter','youtube','tiktok','facebook','instagram','whatsapp'] as $p)
                                 <option value="{{ $p }}" {{ ($schedPlatform ?? '') === $p ? 'selected' : '' }}>{{ ucfirst($p) }}</option>
                                 @endforeach
                             </select>
@@ -441,7 +461,7 @@
                     @foreach(request()->except(['int_platform','int_sort']) as $k => $v) @if($v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endif @endforeach
                     <select name="int_platform" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
                         <option value="">All platforms</option>
-                        @foreach(['twitter','youtube','tiktok','facebook','instagram'] as $p)
+                        @foreach(['twitter','youtube','tiktok','facebook','instagram','whatsapp'] as $p)
                         <option value="{{ $p }}" {{ ($intPlatform ?? '') === $p ? 'selected' : '' }}>{{ ucfirst($p) }}</option>
                         @endforeach
                     </select>
@@ -527,6 +547,53 @@
                 <a href="{{ route('leads.create') }}" class="btn btn-sm btn-primary-custom mt-2">Add Lead</a>
             </div>
             @endif
+        </div>
+    </div>
+
+    {{-- WHATSAPP --}}
+    <div class="tab-pane fade" id="whatsapp" role="tabpanel">
+        <div class="card p-4 mb-4 border-success">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <div>
+                    <h5 class="fw-bold mb-1"><i class="bi bi-whatsapp text-success me-2"></i>Kenya Orient WhatsApp</h5>
+                    <p class="text-muted mb-0">Staff reply to customers from Kenya Orient WhatsApp — full conversation view with inbox and send.</p>
+                </div>
+                <a href="{{ route('marketing.whatsapp') }}" class="btn btn-success btn-lg">
+                    <i class="bi bi-chat-dots-fill me-2"></i>Open Kenya Orient WhatsApp
+                </a>
+            </div>
+        </div>
+        <div class="row g-4">
+            <div class="col-lg-12">
+                <div class="card p-4 mb-4 border-warning">
+                    <h6 class="card-section-title mb-3"><i class="bi bi-currency-exchange me-2"></i>Client consultation — WhatsApp costs</h6>
+                    <p class="mb-3">{{ $whatsappConsultation['summary'] ?? 'WhatsApp uses Meta Cloud API with conversation-based pricing.' }}</p>
+                    @if(!empty($whatsappConsultation['requirements']))
+                    <p class="fw-semibold small mb-1">Requirements</p>
+                    <ul class="small text-muted mb-3">
+                        @foreach($whatsappConsultation['requirements'] as $req)
+                        <li>{{ $req }}</li>
+                        @endforeach
+                    </ul>
+                    @endif
+                    @if(!empty($whatsappConsultation['pricing_notes']))
+                    <p class="fw-semibold small mb-1">Pricing notes (share with client)</p>
+                    <ul class="small text-muted mb-3">
+                        @foreach($whatsappConsultation['pricing_notes'] as $note)
+                        <li>{{ $note }}</li>
+                        @endforeach
+                    </ul>
+                    @endif
+                    @if(!empty($whatsappConsultation['recommendation']))
+                    <div class="alert alert-info small mb-3">{{ $whatsappConsultation['recommendation'] }}</div>
+                    @endif
+                    @if(!empty($whatsappConsultation['meta_docs_url']))
+                    <a href="{{ $whatsappConsultation['meta_docs_url'] }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-box-arrow-up-right me-1"></i>Meta WhatsApp pricing
+                    </a>
+                    @endif
+                </div>
+            </div>
         </div>
     </div>
 
@@ -714,11 +781,13 @@
 .platform-twitter { background: #1da1f2; }
 .platform-youtube { background: #ff0000; }
 .platform-tiktok { background: #000; }
+.platform-whatsapp { background: #25d366; }
 .platform-facebook-bg { background-color: #1877f2 !important; }
 .platform-instagram-bg { background-color: #e4405f !important; }
 .platform-twitter-bg { background-color: #1da1f2 !important; }
 .platform-youtube-bg { background-color: #ff0000 !important; }
 .platform-tiktok-bg { background-color: #333 !important; }
+.platform-whatsapp-bg { background-color: #25d366 !important; }
 .scheduled-posts-list { padding: 0; }
 .scheduled-post-item { padding: 1rem; border-bottom: 1px solid var(--card-border); }
 .scheduled-post-item:last-child { border-bottom: none; }
@@ -734,5 +803,13 @@ document.querySelectorAll('.copy-webhook-btn').forEach(function(btn) {
         });
     });
 });
+(function() {
+    var tab = new URLSearchParams(window.location.search).get('tab');
+    if (!tab) return;
+    var btn = document.getElementById(tab + '-tab');
+    if (btn && typeof bootstrap !== 'undefined') {
+        bootstrap.Tab.getOrCreateInstance(btn).show();
+    }
+})();
 </script>
 @endsection

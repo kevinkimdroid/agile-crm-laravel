@@ -30,7 +30,7 @@
 <form method="GET" action="{{ route('marketing.credit-life-statements') }}" class="mb-4">
     <div class="row g-2 align-items-end">
         <div class="col-md-5">
-            <label class="form-label small text-muted">Search contacts</label>
+            <label class="form-label small text-muted">Search prospects</label>
             <input type="text" name="search" class="form-control" value="{{ $search ?? '' }}" placeholder="Name, policy number, email, or phone">
         </div>
         <div class="col-auto">
@@ -126,7 +126,7 @@
                                 <td><span class="{{ $phone !== '' ? '' : 'text-muted' }}">{{ $phone !== '' ? $phone : '—' }}</span></td>
                             </tr>
                         @empty
-                            <tr><td colspan="5" class="text-center text-muted py-4">No contacts found.</td></tr>
+                            <tr><td colspan="5" class="text-center text-muted py-4">No prospects found.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

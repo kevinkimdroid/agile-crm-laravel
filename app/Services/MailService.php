@@ -475,95 +475,142 @@ class MailService
     }
 
     /**
-     * Get emails for a contact: outbound (life@ → client) and inbound (client → life@geminialife.co.ke).
+     * Get emails for a contact: outbound (company → client) and inbound (client → company),
+     * plus emails linked to the contact's tickets when $contactId is provided.
      */
-    public function getEmailsForContact(object $contact, int $perPage = 20, int $offset = 0): array
+    public function getEmailsForContact(object $contact, int $perPage = 20, int $offset = 0, ?int $contactId = null): array
     {
-        $contactEmails = $this->getContactEmailAddresses($contact);
-        $sender = config('email-service.sender', config('mail.from.address', 'life@geminialife.co.ke'));
-
-        $query = DB::connection('vtiger')
-            ->table('mail_manager_emails')
-            ->select('id', 'from_address', 'from_name', 'to_addresses', 'subject', 'date', 'has_attachments');
-
-        $query->where(function ($q) use ($contactEmails, $sender) {
-            $q->where(function ($sub) use ($contactEmails, $sender) {
-                foreach ($contactEmails as $addr) {
-                    if (trim($addr) !== '') {
-                        $sub->orWhere(function ($inner) use ($addr, $sender) {
-                            $inner->where('from_address', 'like', '%' . $sender . '%')
-                                ->where(function ($to) use ($addr) {
-                                    $to->where('to_addresses', 'like', '%' . $addr . '%')
-                                        ->orWhere('cc_addresses', 'like', '%' . $addr . '%');
-                                });
-                        });
-                    }
-                }
-            });
-            if (! empty($contactEmails)) {
-                $q->orWhere(function ($sub) use ($contactEmails, $sender) {
-                    foreach ($contactEmails as $addr) {
-                        if (trim($addr) !== '') {
-                            $sub->orWhere(function ($inner) use ($addr, $sender) {
-                                $inner->where('from_address', 'like', '%' . $addr . '%')
-                                    ->where(function ($to) use ($sender) {
-                                        $to->where('to_addresses', 'like', '%' . $sender . '%')
-                                            ->orWhere('cc_addresses', 'like', '%' . $sender . '%');
-                                    });
-                            });
-                        }
-                    }
-                });
-            }
-        });
+        $query = $this->emailsForContactQuery($contact, $contactId);
+        if ($query === null) {
+            return [];
+        }
 
         return $query->orderByDesc('date')->offset($offset)->limit($perPage)->get()->all();
     }
 
     /**
-     * Count emails for a contact (outbound + inbound).
+     * Count emails for a contact (outbound + inbound + ticket-linked).
      */
-    public function getEmailsForContactCount(object $contact): int
+    public function getEmailsForContactCount(object $contact, ?int $contactId = null): int
+    {
+        $query = $this->emailsForContactQuery($contact, $contactId);
+
+        return $query === null ? 0 : $query->count();
+    }
+
+    /**
+     * @return \Illuminate\Database\Query\Builder|null Null when there is no filter criteria.
+     */
+    protected function emailsForContactQuery(object $contact, ?int $contactId = null): ?\Illuminate\Database\Query\Builder
     {
         $contactEmails = $this->getContactEmailAddresses($contact);
-        if (empty($contactEmails)) {
-            return 0;
-        }
+        $senders = $this->companySenderAddresses();
+        $ticketIds = $contactId ? $this->ticketIdsForContact($contactId) : [];
 
-        $sender = config('email-service.sender', config('mail.from.address', 'life@geminialife.co.ke'));
+        if ($contactEmails === [] && $ticketIds === []) {
+            return null;
+        }
 
         $query = DB::connection('vtiger')
             ->table('mail_manager_emails')
-            ->where(function ($q) use ($contactEmails, $sender) {
-                $q->where(function ($sub) use ($contactEmails, $sender) {
-                    foreach ($contactEmails as $addr) {
-                        if (trim($addr) !== '') {
-                            $sub->orWhere(function ($inner) use ($addr, $sender) {
-                                $inner->where('from_address', 'like', '%' . $sender . '%')
-                                    ->where(function ($to) use ($addr) {
-                                        $to->where('to_addresses', 'like', '%' . $addr . '%')
-                                            ->orWhere('cc_addresses', 'like', '%' . $addr . '%');
-                                    });
-                            });
-                        }
+            ->select('id', 'from_address', 'from_name', 'to_addresses', 'subject', 'date', 'has_attachments', 'ticket_id');
+
+        $query->where(function ($q) use ($contactEmails, $senders, $ticketIds) {
+            if ($contactEmails !== []) {
+                $q->where(function ($emailQ) use ($contactEmails, $senders) {
+                    $this->applyEmailAddressFilters($emailQ, $contactEmails, $senders);
+                });
+            }
+
+            if ($ticketIds !== []) {
+                if ($contactEmails !== []) {
+                    $q->orWhereIn('ticket_id', $ticketIds);
+                } else {
+                    $q->whereIn('ticket_id', $ticketIds);
+                }
+            }
+        });
+
+        return $query;
+    }
+
+    /**
+     * @param  array<int, string>  $contactEmails
+     * @param  array<int, string>  $senders
+     */
+    protected function applyEmailAddressFilters($query, array $contactEmails, array $senders): void
+    {
+        $query->where(function ($q) use ($contactEmails, $senders) {
+            $q->where(function ($outbound) use ($contactEmails, $senders) {
+                $outbound->where(function ($fromUs) use ($senders) {
+                    foreach ($senders as $sender) {
+                        $fromUs->orWhereRaw('LOWER(from_address) = ?', [$sender]);
                     }
                 });
-                $q->orWhere(function ($sub) use ($contactEmails, $sender) {
+                $outbound->where(function ($toClient) use ($contactEmails) {
                     foreach ($contactEmails as $addr) {
-                        if (trim($addr) !== '') {
-                            $sub->orWhere(function ($inner) use ($addr, $sender) {
-                                $inner->where('from_address', 'like', '%' . $addr . '%')
-                                    ->where(function ($to) use ($sender) {
-                                        $to->where('to_addresses', 'like', '%' . $sender . '%')
-                                            ->orWhere('cc_addresses', 'like', '%' . $sender . '%');
-                                    });
-                            });
-                        }
+                        $toClient->orWhereRaw('LOWER(to_addresses) LIKE ?', ['%' . $addr . '%'])
+                            ->orWhereRaw('LOWER(cc_addresses) LIKE ?', ['%' . $addr . '%']);
                     }
                 });
             });
+            $q->orWhere(function ($inbound) use ($contactEmails, $senders) {
+                $inbound->where(function ($fromClient) use ($contactEmails) {
+                    foreach ($contactEmails as $addr) {
+                        $fromClient->orWhereRaw('LOWER(from_address) = ?', [$addr]);
+                    }
+                });
+                $inbound->where(function ($toUs) use ($senders) {
+                    foreach ($senders as $sender) {
+                        $toUs->orWhereRaw('LOWER(to_addresses) LIKE ?', ['%' . $sender . '%'])
+                            ->orWhereRaw('LOWER(cc_addresses) LIKE ?', ['%' . $sender . '%']);
+                    }
+                });
+            });
+        });
+    }
 
-        return $query->count();
+    /**
+     * @return array<int, string>
+     */
+    protected function companySenderAddresses(): array
+    {
+        $addresses = [];
+        foreach ([
+            config('email-service.sender'),
+            config('mail.from.address'),
+            'life@geminialife.co.ke',
+            'servicinglife@geminialife.co.ke',
+            'financelife@geminialife.co.ke',
+        ] as $address) {
+            $address = strtolower(trim((string) $address));
+            if ($address !== '' && filter_var($address, FILTER_VALIDATE_EMAIL)) {
+                $addresses[] = $address;
+            }
+        }
+
+        return array_values(array_unique($addresses));
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    protected function ticketIdsForContact(int $contactId): array
+    {
+        try {
+            return DB::connection('vtiger')
+                ->table('vtiger_troubletickets as t')
+                ->join('vtiger_crmentity as e', 't.ticketid', '=', 'e.crmid')
+                ->where('e.deleted', 0)
+                ->where('t.contact_id', $contactId)
+                ->pluck('t.ticketid')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        } catch (\Throwable $e) {
+            Log::debug('MailService::ticketIdsForContact: ' . $e->getMessage());
+
+            return [];
+        }
     }
 
     /**
@@ -598,7 +645,7 @@ class MailService
     protected function getContactEmailAddresses(object $contact): array
     {
         $addresses = [];
-        $fields = ['email', 'email1', 'secondaryemail', 'otheremail', 'email2'];
+        $fields = ['email', 'email1', 'secondaryemail', 'otheremail', 'email2', 'email_adr', 'client_email'];
         foreach ($fields as $field) {
             $addr = $contact->{$field} ?? null;
             if ($addr && is_string($addr) && filter_var(trim($addr), FILTER_VALIDATE_EMAIL)) {

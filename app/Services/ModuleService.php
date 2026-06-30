@@ -33,6 +33,7 @@ class ModuleService
             ['key' => 'marketing.campaigns', 'label' => 'Campaigns', 'icon' => 'bi-megaphone', 'sort' => 11],
             ['key' => 'marketing.broadcast', 'label' => 'Email & SMS broadcast', 'icon' => 'bi-broadcast', 'sort' => 12],
             ['key' => 'marketing.social-media', 'label' => 'Webmails / Social', 'icon' => 'bi-globe', 'sort' => 13],
+            ['key' => 'marketing.whatsapp', 'label' => 'WhatsApp', 'icon' => 'bi-whatsapp', 'sort' => 13],
             ['key' => 'support.customers', 'label' => 'Clients', 'icon' => 'bi-people', 'sort' => 14],
             ['key' => 'tools.pbx-manager', 'label' => 'PBX Manager', 'icon' => 'bi-telephone', 'sort' => 15],
             ['key' => 'tools.pdf-maker', 'label' => 'PDF Maker', 'icon' => 'bi-file-pdf', 'sort' => 16],

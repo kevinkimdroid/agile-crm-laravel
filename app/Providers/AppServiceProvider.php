@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use App\Services\CrmService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Cache;
@@ -16,6 +15,27 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        if (! extension_loaded('oci8')) {
+            eval('namespace Yajra\\Pdo {
+                function oci_connect(...$args) {
+                    throw new \\RuntimeException('
+                        .var_export(
+                            'Oracle OCI8 is not installed in PHP. Enable the oci8 extension in php.ini, '
+                            .'or use ERP HTTP mode (CLIENTS_VIEW_SOURCE=erp_http) without direct Oracle.',
+                            true
+                        ).');
+                }
+                function oci_pconnect(...$args) {
+                    throw new \\RuntimeException('
+                        .var_export(
+                            'Oracle OCI8 is not installed in PHP. Enable the oci8 extension in php.ini, '
+                            .'or use ERP HTTP mode (CLIENTS_VIEW_SOURCE=erp_http) without direct Oracle.',
+                            true
+                        ).');
+                }
+            }');
+        }
+
         // Some server OCI8 builds (or OCI8-missing CLI/FPM mismatch) do not expose OCI_DEFAULT,
         // but yajra/pdo-via-oci8 still references it. Define a safe fallback to prevent fatals.
         if (! defined('OCI_DEFAULT')) {
@@ -29,6 +49,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(\App\Services\Receipts\ReceiptDataSource::class, function () {
             if (config('receipt.demo')) {
                 return new \App\Services\Receipts\DemoReceiptRepository();
+            }
+
+            if (! oracle_oci8_available()) {
+                return new \App\Services\Receipts\NullReceiptRepository();
             }
 
             return new \App\Services\Receipts\OracleReceiptRepository(
@@ -64,15 +88,8 @@ class AppServiceProvider extends ServiceProvider
         });
 
         View::composer(['layouts.app', 'dashboard', 'marketing', 'support'], function ($view) {
-            try {
-                $view->with('leadsTodayCount', Cache::remember(
-                    'agile_leads_today_' . now()->format('Y-m-d'),
-                    120,
-                    fn () => app(CrmService::class)->getLeadsTodayCount()
-                ));
-            } catch (\Throwable $e) {
-                $view->with('leadsTodayCount', 0);
-            }
+            // leadsTodayCount is loaded on the dashboard from getDashboardStats — avoid a DB query on every page.
+            $view->with('leadsTodayCount', 0);
 
             try {
                 $user = Auth::guard('vtiger')->user();
@@ -125,7 +142,7 @@ class AppServiceProvider extends ServiceProvider
                 $view->with('allowedModules', $effective);
 
                 $pbxConfig = app(\App\Services\PbxConfigService::class);
-                $view->with('pbxCanCall', $pbxConfig->isConfigured());
+                $view->with('pbxCanCall', Cache::remember('agile_pbx_configured', 600, fn () => $pbxConfig->isConfigured()));
                 $view->with('pbxDefaultExtension', config('services.pbx.default_extension', env('PBX_DEFAULT_EXTENSION', '')));
             } catch (\Throwable $e) {
                 $view->with('currentUserName', 'User');

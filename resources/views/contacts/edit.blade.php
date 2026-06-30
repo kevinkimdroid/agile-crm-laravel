@@ -4,8 +4,8 @@
 
 @section('content')
 <div class="page-header">
-    <nav class="mb-2"><a href="{{ route('contacts.index') }}" class="text-muted small">Contacts</a> / <a href="{{ route('contacts.show', $contact->contactid) }}">{{ $contact->full_name }}</a> / Edit</nav>
-    <h1 class="page-title">Edit Contact</h1>
+    <nav class="mb-2"><a href="{{ route('contacts.index') }}" class="text-muted small">Prospects</a> / <a href="{{ route('contacts.show', $contact->contactid) }}">{{ $contact->full_name }}</a> / Edit</nav>
+    <h1 class="page-title">Edit Prospect</h1>
 </div>
 
 <div class="card p-4" style="max-width: 500px;">

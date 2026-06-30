@@ -1,15 +1,15 @@
 @extends('layouts.app')
 
-@section('title', 'Contacts')
+@section('title', 'Prospects')
 
 @section('content')
 <div class="page-header d-flex flex-wrap justify-content-between align-items-start gap-3">
     <div>
-        <h1 class="page-title">Contacts</h1>
+        <h1 class="page-title">Prospects</h1>
         <p class="page-subtitle">Manage your customer and prospect contacts.</p>
     </div>
     <button class="btn btn-sm btn-primary-custom mt-2 mt-md-0">
-        <i class="bi bi-plus-lg me-1"></i> Add Contact
+        <i class="bi bi-plus-lg me-1"></i> Add Prospect
     </button>
 </div>
 
@@ -17,7 +17,7 @@
     <div class="col-lg-4">
         <div class="card p-4 h-100">
             <div class="card-header-custom">
-                <h6>Total Contacts</h6>
+                <h6>Total Prospects</h6>
                 <a href="#" class="card-arrow"><i class="bi bi-arrow-right"></i></a>
             </div>
             <h2 class="stat-value mb-1">5,758</h2>
@@ -51,7 +51,7 @@
         <div class="card p-4">
             <div class="text-center py-5">
                 <i class="bi bi-person-lines-fill text-muted" style="font-size:3rem"></i>
-                <p class="text-muted mt-2 mb-0">Contact list and management coming soon.</p>
+                <p class="text-muted mt-2 mb-0">Prospect list and management coming soon.</p>
             </div>
         </div>
     </div>

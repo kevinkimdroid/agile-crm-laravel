@@ -16,12 +16,10 @@
         <p class="reports-audit-subtitle mb-0">Created by, checked by, authorized by, and closed by for each ticket.</p>
     </div>
     <div class="d-flex flex-wrap gap-2 align-items-center no-print">
-        <a href="{{ route('reports.export.assignment-handlers', array_merge(request()->only(['date_from', 'date_to', 'status']), ['limit' => 50000, 'format' => 'xlsx'])) }}" class="btn btn-primary btn-sm">
-            <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel
-        </a>
-        <a href="{{ route('reports.export.assignment-handlers', array_merge(request()->only(['date_from', 'date_to', 'status']), ['limit' => 50000, 'format' => 'csv'])) }}" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-download me-1"></i>Export CSV
-        </a>
+        @include('partials.report-export-buttons', [
+            'route' => 'reports.export.assignment-handlers',
+            'params' => array_merge(request()->only(['date_from', 'date_to', 'status']), ['limit' => 50000]),
+        ])
         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()" title="Print report">
             <i class="bi bi-printer me-1"></i>Print
         </button>

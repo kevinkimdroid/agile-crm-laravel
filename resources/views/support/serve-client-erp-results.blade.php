@@ -18,7 +18,7 @@
     $statusClass = $status === 'A' ? 'status-active' : ($status === 'FL' ? 'status-lapsed' : '');
     $storeId = 'erp_' . $idx;
 @endphp
-<div class="serve-client-item">
+<div class="serve-client-item" @if($policy) data-open-url="{{ route('support.clients.show', ['policy' => $policy, 'from' => 'serve-client']) }}" @endif>
     <div class="serve-client-item-name">{{ $name }}</div>
     <div class="serve-client-item-meta">{{ implode(' · ', array_filter([$policy ? 'Policy: ' . $policy : '', $phone, $email])) }}</div>
     @if($product || $status || ($paidAmt !== null && $paidAmt !== '') || $maturity || $effectiveDate || $intermediary || $kraPin || $idNo || $prpDob || $schemeName || $checkoff)
@@ -38,11 +38,7 @@
     @endif
     <div class="serve-client-actions">
         @if($policy)
-        <form method="GET" action="{{ url('/support/clients/show') }}" class="d-inline">
-            <input type="hidden" name="policy" value="{{ $policy }}">
-            <input type="hidden" name="from" value="serve-client">
-            <button type="submit" class="serve-client-cta serve-client-cta-outline" title="View full details"><i class="bi bi-eye"></i> View Details</button>
-        </form>
+        <span class="serve-client-cta serve-client-cta-outline"><i class="bi bi-eye"></i> Open client record</span>
         @endif
         <button type="button" class="serve-client-cta serve-client-cta-success serve-client-create-ticket" data-erp-store="{{ $storeId }}" title="Create support ticket"><i class="bi bi-ticket-perforated"></i> Create Ticket</button>
         @if($email)<a href="{{ route('support.email-client', array_filter(['email' => $email, 'client_name' => $name, 'policy' => $policy ?: null])) }}" class="serve-client-cta serve-client-cta-outline" title="Send email from CRM"><i class="bi bi-envelope"></i> Email</a>@endif

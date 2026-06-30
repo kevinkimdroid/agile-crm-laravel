@@ -36,6 +36,8 @@ class ComplaintsExport implements FromArray, WithHeadings, WithStyles, WithColum
             'Nature',
             'Source',
             'Status',
+            'Register Status',
+            'Classification Score',
             'Priority',
             'Assigned To',
             'Date Resolved',

@@ -21,6 +21,7 @@ use App\Models\VtigerUser;
 use App\Models\WorkTicket;
 use App\Models\WorkTicketUpdate;
 use App\Services\CrmService;
+use App\Services\ReportPdfExportService;
 use App\Services\TicketSlaService;
 use App\Services\UserDepartmentService;
 use Illuminate\Http\RedirectResponse;
@@ -183,13 +184,19 @@ class ReportsController
         ])->toArray();
 
         $filename = 'tickets-'.$dateFrom.'-to-'.$dateTo;
+        $headings = ['Ticket', 'Title', 'Status', 'Priority', 'Category', 'Contact', 'Created', 'Last modified', 'Assigned to', 'User dept', 'Source'];
+        if ($request->get('format') === 'pdf') {
+            return $this->pdfTableExport('Tickets by Date', $headings, $exportRows, $filename, [
+                'Period' => $dateFrom . ' to ' . $dateTo,
+                'Status' => $status ?: 'All',
+                'orientation' => 'landscape',
+            ]);
+        }
         if ($request->get('format') === 'xlsx') {
             return Excel::download(new TicketsByDateRangeExport($exportRows), $filename.'.xlsx');
         }
 
-        return $this->csvResponse($exportRows, [
-            'Ticket', 'Title', 'Status', 'Priority', 'Category', 'Contact', 'Created', 'Last modified', 'Assigned to', 'User dept', 'Source',
-        ], $filename);
+        return $this->csvResponse($exportRows, $headings, $filename);
     }
 
     public function contactsSummary(CrmService $crm, Request $request): View
@@ -454,6 +461,15 @@ class ReportsController
 
         if ($request->get('format') === 'csv') {
             return $this->csvResponse($rows, $headings, $filename);
+        }
+        if ($request->get('format') === 'pdf') {
+            return $this->pdfTableExport(
+                $scope === 'summary' ? 'Work Activities Summary' : 'Work Activities',
+                $headings,
+                $rows,
+                $filename,
+                ['Period' => $dateFrom . ' to ' . $dateTo, 'Scope' => ucfirst($scope), 'orientation' => 'landscape']
+            );
         }
 
         return Excel::download(new WorkActivitiesExport($rows, $headings), $filename . '.xlsx');
@@ -947,6 +963,13 @@ class ReportsController
             }
 
             $filename = 'management-usage-simple-'.$dateFrom.'-to-'.$dateTo;
+            $headings = ['Section', 'Subject', 'Metric', 'Value', 'Extra 1', 'Extra 2'];
+            if ($request->get('format') === 'pdf') {
+                return $this->pdfTableExport('Management Usage Summary', $headings, $simpleRows, $filename, [
+                    'Period' => $dateFrom . ' to ' . $dateTo,
+                    'Type' => 'Simple summary',
+                ]);
+            }
             return Excel::download(new ManagementUsageExport($simpleRows), $filename.'.xlsx');
         }
 
@@ -1019,13 +1042,19 @@ class ReportsController
         }
 
         $filename = 'management-usage-'.$dateFrom.'-to-'.$dateTo;
+        $headings = ['Section', 'Subject', 'Metric', 'Value', 'Extra 1', 'Extra 2'];
+        if ($request->get('format') === 'pdf') {
+            return $this->pdfTableExport('Management Usage Report', $headings, $rows, $filename, [
+                'Period' => $dateFrom . ' to ' . $dateTo,
+            ]);
+        }
         if ($request->get('format') === 'xlsx') {
             return Excel::download(new ManagementUsageExport($rows), $filename.'.xlsx');
         }
 
         return $this->csvResponse(
             $rows,
-            ['Section', 'Subject', 'Metric', 'Value', 'Extra 1', 'Extra 2'],
+            $headings,
             $filename
         );
     }
@@ -1092,6 +1121,13 @@ class ReportsController
                 $headings,
                 $filename
             );
+        }
+        if ($request->get('format') === 'pdf') {
+            return $this->pdfTableExport('Ticket Workload Performance', $headings, $rows, $filename, [
+                'Period' => $dateFrom . ' to ' . $dateTo,
+                'Target' => $target . ' tickets/month',
+                'orientation' => 'landscape',
+            ]);
         }
 
         return Excel::download(new TicketWorkloadPerformanceExport($rows, $headings), $filename . '.xlsx');
@@ -1315,12 +1351,18 @@ class ReportsController
         })->values()->toArray();
 
         $filename = 'real-issues-backlog-' . date('Y-m-d');
+        $headings = ['Issue Theme', 'Active Volume', 'Source Mix', 'Most Impacted Owner', 'Recommended Management Action'];
         if ($request->get('format') === 'csv') {
             return $this->csvResponse(
                 $formattedRows,
-                ['Issue Theme', 'Active Volume', 'Source Mix', 'Most Impacted Owner', 'Recommended Management Action'],
+                $headings,
                 $filename
             );
+        }
+        if ($request->get('format') === 'pdf') {
+            return $this->pdfTableExport('Ticket Automation Analysis', $headings, $formattedRows, $filename, [
+                'orientation' => 'landscape',
+            ]);
         }
 
         return Excel::download(new RealIssuesBacklogExport($formattedRows), $filename . '.xlsx');
@@ -1480,12 +1522,20 @@ class ReportsController
         })->toArray();
 
         $filename = 'assignment-handlers-' . $dateFrom . '-to-' . $dateTo;
+        $headings = ['Ticket', 'Title', 'Status', 'Created by', 'Checked by', 'Authorized by', 'Closed by', 'Created at'];
         if ($request->get('format') === 'csv') {
             return $this->csvResponse(
                 $rows,
-                ['Ticket', 'Title', 'Status', 'Created by', 'Checked by', 'Authorized by', 'Closed by', 'Created at'],
+                $headings,
                 $filename
             );
+        }
+        if ($request->get('format') === 'pdf') {
+            return $this->pdfTableExport('Assignment Handlers', $headings, $rows, $filename, [
+                'Period' => $dateFrom . ' to ' . $dateTo,
+                'Status' => $status ?: 'All',
+                'orientation' => 'landscape',
+            ]);
         }
 
         return Excel::download(new AssignmentHandlersExport($rows), $filename . '.xlsx');
@@ -1555,6 +1605,12 @@ class ReportsController
             return $line;
         })->values()->toArray();
 
+        if ($request->get('format') === 'pdf') {
+            return $this->pdfTableExport('Ticket Reassignment Audit', $headings, $rows, 'ticket-reassignment-audit-' . date('Y-m-d'), [
+                'Ticket filter' => $ticketRef ?: 'All',
+                'orientation' => 'landscape',
+            ]);
+        }
         if ($request->get('format') === 'xlsx') {
             return Excel::download(new \App\Exports\ReassignmentAuditExport($rows, $headings), 'ticket-reassignment-audit-' . date('Y-m-d') . '.xlsx');
         }
@@ -1812,10 +1868,16 @@ class ReportsController
             $t->tat_hours ?? 24,
             $t->hours_overdue ?? 0,
         ])->toArray();
+        $headings = ['Ticket', 'Title', 'Department', 'Status', 'Assigned to', 'User Dept', 'Contact', 'Created', 'Due by', 'Resolved at', 'TAT (h)', 'Hours Overdue'];
+        if ($request->get('format') === 'pdf') {
+            return $this->pdfTableExport('Broken SLA Report', $headings, $rows, 'broken-sla-report-' . date('Y-m-d'), [
+                'orientation' => 'landscape',
+            ]);
+        }
         if ($request->get('format') === 'xlsx') {
             return Excel::download(new SlaBrokenExport($rows), 'broken-sla-report-' . date('Y-m-d') . '.xlsx');
         }
-        return $this->csvResponse($rows, ['Ticket', 'Title', 'Department', 'Status', 'Assigned to', 'User Dept', 'Contact', 'Created', 'Due by', 'Resolved at', 'TAT (h)', 'Hours Overdue'], 'broken-sla-report');
+        return $this->csvResponse($rows, $headings, 'broken-sla-report');
     }
 
     public function exportTicketAging(CrmService $crm, UserDepartmentService $userDept, Request $request)
@@ -1835,20 +1897,31 @@ class ReportsController
             $departments[$t->smownerid ?? 0] ?? '',
         ])->toArray();
         $filename = 'ticket-aging-' . $days . 'd-' . date('Y-m-d');
+        $headings = ['Ticket', 'Title', 'Status', 'Category', 'Contact', 'Created', 'Assigned To', 'User Dept'];
+        if ($request->get('format') === 'pdf') {
+            return $this->pdfTableExport('Ticket Aging Report', $headings, $rows, $filename, [
+                'Minimum age' => $days . ' days',
+                'orientation' => 'landscape',
+            ]);
+        }
         if ($request->get('format') === 'xlsx') {
             return Excel::download(new TicketAgingExport($rows), $filename . '.xlsx');
         }
-        return $this->csvResponse($rows, ['Ticket', 'Title', 'Status', 'Category', 'Contact', 'Created', 'Assigned To', 'User Dept'], 'ticket-aging-' . $days . 'd');
+        return $this->csvResponse($rows, $headings, 'ticket-aging-' . $days . 'd');
     }
 
     public function exportSalesByPerson(CrmService $crm, Request $request)
     {
         $data = $crm->getSalesByPerson(100);
         $rows = $data->map(fn ($r) => [trim($r->name) ?: 'Unassigned', $r->total])->toArray();
+        $headings = ['Salesperson', 'Revenue (KES)'];
+        if ($request->get('format') === 'pdf') {
+            return $this->pdfTableExport('Sales by Person', $headings, $rows, 'sales-by-person-' . date('Y-m-d'));
+        }
         if ($request->get('format') === 'xlsx') {
             return Excel::download(new SalesByPersonExport($rows), 'sales-by-person-' . date('Y-m-d') . '.xlsx');
         }
-        return $this->csvResponse(array_map(fn ($r) => [$r[0], number_format($r[1], 0)], $rows), ['Salesperson', 'Revenue (KES)']);
+        return $this->csvResponse(array_map(fn ($r) => [$r[0], number_format($r[1], 0)], $rows), $headings, 'sales-by-person');
     }
 
     public function exportPipelineByStage(CrmService $crm, Request $request)
@@ -1858,10 +1931,14 @@ class ReportsController
         foreach ($data as $stage => $d) {
             $rows[] = [$stage, $d['count'], $d['amount']];
         }
+        $headings = ['Stage', 'Count', 'Amount (KES)'];
+        if ($request->get('format') === 'pdf') {
+            return $this->pdfTableExport('Pipeline by Stage', $headings, $rows, 'pipeline-by-stage-' . date('Y-m-d'));
+        }
         if ($request->get('format') === 'xlsx') {
             return Excel::download(new PipelineByStageExport($rows), 'pipeline-by-stage-' . date('Y-m-d') . '.xlsx');
         }
-        return $this->csvResponse(array_map(fn ($r) => [$r[0], $r[1], number_format($r[2], 0)], $rows), ['Stage', 'Count', 'Amount (KES)']);
+        return $this->csvResponse(array_map(fn ($r) => [$r[0], $r[1], number_format($r[2], 0)], $rows), $headings, 'pipeline-by-stage');
     }
 
     public function exportAllExcel(CrmService $crm, TicketSlaService $sla, Request $request): \Symfony\Component\HttpFoundation\BinaryFileResponse
@@ -1870,7 +1947,185 @@ class ReportsController
         return Excel::download(new \App\Exports\ReportsAllExport($crm, $sla, (int) $request->get('days', 7)), $filename);
     }
 
-    public function bouncedEmailsReport(): \Symfony\Component\HttpFoundation\BinaryFileResponse|RedirectResponse
+    public function exportAllPdf(CrmService $crm, TicketSlaService $sla, Request $request): \Illuminate\Http\Response
+    {
+        $days = (int) $request->get('days', 7);
+        $userDept = app(UserDepartmentService::class);
+
+        $slaTickets = $sla->getBrokenSlaTickets(500);
+        $slaUserIds = $slaTickets->pluck('smownerid')->filter()->unique()->values()->all();
+        $slaDepts = $userDept->getDepartmentsForUsers($slaUserIds);
+        $slaRows = $slaTickets->map(fn ($t) => [
+            $t->ticket_no ?? 'TT' . $t->ticketid,
+            $t->title ?? '',
+            $t->category ?? 'General',
+            $t->status ?? '',
+            trim(($t->owner_first ?? '') . ' ' . ($t->owner_last ?? '')) ?: 'Unassigned',
+            $slaDepts[$t->smownerid ?? 0] ?? '',
+            $t->hours_overdue ?? 0,
+        ])->toArray();
+
+        $agingTickets = $crm->getTicketAgingReport($days, 500);
+        $agingUserIds = $agingTickets->pluck('smownerid')->filter()->unique()->values()->all();
+        $agingDepts = $userDept->getDepartmentsForUsers($agingUserIds);
+        $agingRows = $agingTickets->map(fn ($t) => [
+            $t->ticket_no ?? 'TT' . $t->ticketid,
+            $t->title ?? '',
+            $t->status ?? '',
+            $t->category ?? 'General',
+            trim(($t->owner_first ?? '') . ' ' . ($t->owner_last ?? '')) ?: 'Unassigned',
+            $agingDepts[$t->smownerid ?? 0] ?? '',
+        ])->toArray();
+
+        $salesRows = $crm->getSalesByPerson(100)->map(fn ($r) => [
+            trim($r->name) ?: 'Unassigned',
+            number_format($r->total, 0),
+        ])->toArray();
+
+        $pipelineRows = collect($crm->getPipelineByStage())->map(fn ($d, $stage) => [
+            $stage,
+            $d['count'],
+            number_format($d['amount'], 0),
+        ])->values()->toArray();
+
+        $reassignmentRows = \App\Models\TicketReassignment::orderByDesc('created_at')
+            ->limit(2000)
+            ->get()
+            ->map(fn ($r) => [
+                'TT' . $r->ticket_id,
+                $r->from_user_name ?? 'Unassigned',
+                $r->to_user_name ?? '—',
+                $r->reassigned_by_name ?? '—',
+                $r->created_at?->format('Y-m-d H:i:s') ?? '',
+            ])->toArray();
+
+        $sections = [
+            [
+                'title' => 'Executive Summary',
+                'headings' => ['Metric', 'Value', 'Notes'],
+                'rows' => [
+                    ['Won Revenue (KES)', number_format($crm->getWonRevenue(), 0), 'Closed deals total'],
+                    ['Pipeline Value (KES)', number_format($crm->getPipelineValue(), 0), 'Active opportunities'],
+                ],
+            ],
+            [
+                'title' => 'Broken SLA',
+                'headings' => ['Ticket', 'Title', 'Category', 'Status', 'Assigned to', 'Dept', 'Hours overdue'],
+                'rows' => $slaRows,
+            ],
+            [
+                'title' => 'Ticket Aging (' . $days . 'd+)',
+                'headings' => ['Ticket', 'Title', 'Status', 'Category', 'Assigned to', 'Dept'],
+                'rows' => $agingRows,
+                'meta' => ['Minimum age' => $days . ' days'],
+            ],
+            [
+                'title' => 'Sales by Person',
+                'headings' => ['Salesperson', 'Revenue (KES)'],
+                'rows' => $salesRows,
+            ],
+            [
+                'title' => 'Pipeline by Stage',
+                'headings' => ['Stage', 'Count', 'Amount (KES)'],
+                'rows' => $pipelineRows,
+            ],
+            [
+                'title' => 'Reassignment Audit',
+                'headings' => ['Ticket', 'From', 'To', 'By', 'Date'],
+                'rows' => $reassignmentRows,
+            ],
+        ];
+
+        return app(ReportPdfExportService::class)->downloadMultiSection(
+            'CRM Reports Pack',
+            $sections,
+            'reports-all-' . date('Y-m-d')
+        );
+    }
+
+    public function exportContactsSummary(CrmService $crm, Request $request)
+    {
+        $days = (int) $request->get('days', 30);
+        $summary = $crm->getContactsSummaryReport($days);
+        $rows = [
+            ['Total prospects', number_format($summary['total'] ?? 0), 'All prospects in CRM'],
+            ['New prospects', number_format($summary['new_last_days'] ?? 0), 'Created in last ' . $days . ' days'],
+        ];
+        $headings = ['Metric', 'Value', 'Notes'];
+        $filename = 'prospects-summary-' . $days . 'd';
+
+        if ($request->get('format') === 'pdf') {
+            return $this->pdfTableExport('Prospects Summary Report', $headings, $rows, $filename, [
+                'Window' => 'Last ' . $days . ' days',
+            ]);
+        }
+        if ($request->get('format') === 'xlsx') {
+            return Excel::download(new WorkActivitiesExport($rows, $headings), $filename . '.xlsx');
+        }
+
+        return $this->csvResponse($rows, $headings, $filename);
+    }
+
+    public function exportCallsSummary(CrmService $crm, Request $request)
+    {
+        $data = $crm->getCallsSummaryReport();
+        $statusRows = collect($data['by_status'] ?? [])->map(fn ($cnt, $status) => [
+            (string) $status,
+            (int) $cnt,
+        ])->values()->toArray();
+        $userRows = collect($data['by_user'] ?? [])->map(fn ($row) => [
+            (string) ($row->user_name ?? 'Unassigned'),
+            (int) ($row->cnt ?? 0),
+        ])->values()->toArray();
+
+        $filename = 'calls-summary-' . date('Y-m-d');
+        if ($request->get('format') === 'pdf') {
+            return app(ReportPdfExportService::class)->downloadMultiSection('Calls Summary Report', [
+                [
+                    'title' => 'Overview',
+                    'headings' => ['Metric', 'Value'],
+                    'rows' => [
+                        ['Total calls', number_format($data['total_calls'] ?? 0)],
+                        ['Total duration (hours)', round(((int) ($data['total_duration_sec'] ?? 0)) / 3600, 1)],
+                    ],
+                ],
+                [
+                    'title' => 'Calls by Status',
+                    'headings' => ['Status', 'Count'],
+                    'rows' => $statusRows,
+                ],
+                [
+                    'title' => 'Calls by User',
+                    'headings' => ['User', 'Count'],
+                    'rows' => $userRows,
+                ],
+            ], $filename);
+        }
+        if ($request->get('format') === 'xlsx') {
+            $rows = array_merge(
+                [
+                    ['Total calls', $data['total_calls'] ?? 0],
+                    ['Duration (hours)', round(((int) ($data['total_duration_sec'] ?? 0)) / 3600, 1)],
+                    ['—', '—'],
+                ],
+                array_map(fn ($r) => ['Status: ' . $r[0], $r[1]], $statusRows),
+                [['—', '—']],
+                array_map(fn ($r) => ['User: ' . $r[0], $r[1]], $userRows)
+            );
+
+            return Excel::download(new WorkActivitiesExport($rows, ['Metric', 'Value']), $filename . '.xlsx');
+        }
+
+        $csvRows = array_merge(
+            [['Total calls', $data['total_calls'] ?? 0], ['Duration (hours)', round(((int) ($data['total_duration_sec'] ?? 0)) / 3600, 1)]],
+            $statusRows,
+            $userRows
+        );
+
+        return $this->csvResponse($csvRows, ['Label', 'Value'], $filename);
+    }
+
+    public function bouncedEmailsReport(Request $request): \Symfony\Component\HttpFoundation\BinaryFileResponse|RedirectResponse|\Illuminate\Http\Response|\Symfony\Component\HttpFoundation\StreamedResponse
     {
         $pattern = storage_path('app/reports/bounced_emails_life_geminialife_co_ke_*.txt');
         $files = glob($pattern) ?: [];
@@ -1932,7 +2187,27 @@ class ReportsController
             ]];
         }
 
+        $headings = ['Email', 'SMTP Code', 'Reason', 'Source File', 'Generated At'];
+        if ($request->get('format') === 'pdf') {
+            return $this->pdfTableExport('Bounced Emails Report', $headings, $rows, 'bounced-emails-' . date('Y-m-d'), [
+                'orientation' => 'landscape',
+            ]);
+        }
+        if ($request->get('format') === 'csv') {
+            return $this->csvResponse($rows, $headings, 'bounced-emails');
+        }
+
         return Excel::download(new BouncedEmailsExport($rows), $filename);
+    }
+
+    /**
+     * @param  array<int, string>  $headings
+     * @param  array<int, array<int, mixed>>  $rows
+     * @param  array<string, mixed>  $meta
+     */
+    protected function pdfTableExport(string $title, array $headings, array $rows, string $filename, array $meta = []): \Illuminate\Http\Response
+    {
+        return app(ReportPdfExportService::class)->download($title, $headings, $rows, $filename, $meta);
     }
 
     protected function csvResponse(array $rows, array $headers, string $filename): \Symfony\Component\HttpFoundation\StreamedResponse

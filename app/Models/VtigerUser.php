@@ -157,7 +157,8 @@ class VtigerUser extends Authenticatable
             }
             // Non-Administrator: exclude settings (only admins can access)
             $allowed = array_values(array_diff($allowed, ['settings', 'settings.crm', 'settings.manage-users']));
-            return $allowed;
+
+            return app(\App\Services\ProfileAccessService::class)->applyAppModuleViewFilter($this, $allowed);
         } catch (\Throwable $e) {
             return $allKeys;
         }

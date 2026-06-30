@@ -22,6 +22,9 @@ class Complaint extends Model
         'description',
         'source',
         'status',
+        'register_status',
+        'classification_score',
+        'classification_reason',
         'priority',
         'assigned_to',
         'date_resolved',
@@ -67,6 +70,26 @@ class Complaint extends Model
         'Medium' => 'Medium',
         'High' => 'High',
     ];
+
+    public const REGISTER_ACTIVE = 'active';
+    public const REGISTER_REVIEW = 'review';
+    public const REGISTER_EXCLUDED = 'excluded';
+
+    public const REGISTER_STATUSES = [
+        self::REGISTER_ACTIVE => 'Complaint',
+        self::REGISTER_REVIEW => 'Needs review',
+        self::REGISTER_EXCLUDED => 'Not a complaint',
+    ];
+
+    public function isRegisterExcluded(): bool
+    {
+        return $this->register_status === self::REGISTER_EXCLUDED;
+    }
+
+    public function needsReview(): bool
+    {
+        return $this->register_status === self::REGISTER_REVIEW;
+    }
 
     public static function generateRef(): string
     {

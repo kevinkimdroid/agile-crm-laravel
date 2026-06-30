@@ -1,17 +1,17 @@
 @extends('layouts.app')
 
-@section('title', 'Contacts')
+@section('title', 'Prospects')
 
 @section('content')
 <div class="page-header d-flex flex-wrap justify-content-between align-items-start gap-3">
     <div>
-        <h1 class="page-title">Contacts</h1>
-        <p class="page-subtitle">Manage your customer and prospect contacts.</p>
+        <h1 class="page-title">Prospects</h1>
+        <p class="page-subtitle">Manage sales prospects before they become clients.</p>
     </div>
     <div class="d-flex gap-2 mt-2 mt-md-0">
-        <input type="text" id="contactsSearch" class="form-control form-control-sm" placeholder="Search contact..." style="width: 220px;">
+        <input type="text" id="contactsSearch" class="form-control form-control-sm" placeholder="Search prospect..." style="width: 220px;">
         <a href="{{ route('contacts.create') }}" class="btn btn-sm btn-primary-custom">
-            <i class="bi bi-plus-lg me-1"></i> Add Contact
+            <i class="bi bi-plus-lg me-1"></i> Add Prospect
         </a>
     </div>
 </div>
@@ -30,7 +30,7 @@
     <div class="col-sm-6 col-lg-3">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body py-3">
-                <div class="text-muted small">Total Contacts</div>
+                <div class="text-muted small">Total Prospects</div>
                 <div class="h5 mb-0">{{ number_format($contacts->total() ?? 0) }}</div>
             </div>
         </div>
@@ -69,7 +69,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="text-center py-5 text-muted">No contacts found. <a href="{{ route('contacts.create') }}">Add your first contact</a>.</td></tr>
+                    <tr><td colspan="5" class="text-center py-5 text-muted">No prospects found. <a href="{{ route('contacts.create') }}">Add your first prospect</a>.</td></tr>
                 @endforelse
             </tbody>
         </table>

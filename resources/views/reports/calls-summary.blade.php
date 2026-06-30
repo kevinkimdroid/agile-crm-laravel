@@ -16,6 +16,7 @@
             <p class="reports-audit-subtitle mb-0">PBX call volume and duration.</p>
         </div>
         <div class="d-flex flex-wrap gap-2 align-items-center no-print">
+            @include('partials.report-export-buttons', ['route' => 'reports.export.calls-summary'])
             <a href="{{ route('tools.pbx-manager') }}" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-telephone me-1"></i>PBX Manager
             </a>

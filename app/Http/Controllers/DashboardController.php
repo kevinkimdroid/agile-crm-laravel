@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\CrmService;
 use App\Services\ErpClientService;
 use App\Services\PbxConfigService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 
@@ -24,34 +25,41 @@ class DashboardController extends Controller
         $this->pbxConfig = $pbxConfig;
     }
 
-    public function index(): View
+    public function index(Request $request): View
     {
         $ownerId = config('dashboard.show_all_stats', true) ? null : crm_owner_filter();
-        $stats = $this->crm->getDashboardStats(120, $ownerId);
+        $stats = $this->crm->getDashboardStats(null, $ownerId);
 
-        // Keep Contacts card aligned with Contacts page (owner-filtered view).
-        $contactsOwnerId = crm_owner_filter();
-        $stats['contactsCount'] = (int) $this->crm->getContactsCount($contactsOwnerId);
+        $overdueScope = resolve_overdue_activity_scope($request->get('overdue_scope'));
+        $overdueCacheKey = 'dashboard_overdue:' . ($overdueScope['scope'] ?? 'mine') . ':' . ($overdueScope['ownerId'] ?? 0);
+        $stats['overdueActivities'] = Cache::remember(
+            $overdueCacheKey,
+            120,
+            fn () => $this->crm->getOverdueActivities(5, $overdueScope['ownerId'])
+        );
+        $stats['overdueScope'] = $overdueScope['scope'];
+        $stats['canViewAllOverdue'] = $overdueScope['canViewAll'];
+
+        if ($ownerId !== null) {
+            $stats['contactsCount'] = (int) $this->crm->getContactsCount($ownerId);
+        }
         $stats['contactsCountDeferred'] = false;
 
-        // Resolve Clients count on server to avoid "..." stuck state on dashboard.
+        // Clients count: use cache only on page load — never block on ERP HTTP (can take 15s+ per segment).
         $source = config('erp.clients_view_source', 'crm');
         if (in_array($source, ['erp_http', 'erp_sync'], true)) {
             $cachedClientsCount = Cache::get('agile_clients_count');
-            if ($cachedClientsCount === null) {
-                try {
-                    $cachedClientsCount = (int) ($this->erp->getClientsCount(15) ?? 0);
-                } catch (\Throwable) {
-                    $cachedClientsCount = 0;
-                }
-                Cache::put('agile_clients_count', (int) $cachedClientsCount, 120);
+            if ($cachedClientsCount !== null) {
+                $stats['clientsCount'] = (int) $cachedClientsCount;
+                $stats['clientsCountDeferred'] = false;
+            } else {
+                $stats['clientsCount'] = null;
+                $stats['clientsCountDeferred'] = true;
             }
-            $stats['clientsCount'] = (int) $cachedClientsCount;
         } else {
-            // CRM-only mode: mirror contacts count.
             $stats['clientsCount'] = (int) ($stats['contactsCount'] ?? 0);
+            $stats['clientsCountDeferred'] = false;
         }
-        $stats['clientsCountDeferred'] = false;
 
         $stats['pbxCanCall'] = $this->pbxConfig->isConfigured();
         $stats['salesByPerson'] = Cache::remember('agile_dashboard_sales_by_person_top8', 120, fn () => $this->crm->getSalesByPerson(8));
@@ -71,9 +79,9 @@ class DashboardController extends Controller
             // For CRM-only mode, Clients mirrors local contacts count.
             return response()->json(['count' => (int) ($this->crm->getContactsCount(crm_owner_filter()) ?? 0)]);
         }
-        $count = Cache::remember('agile_clients_count', 120, function () {
+        $count = Cache::remember('agile_clients_count', (int) config('performance.cache_ttl.erp_clients_count', 600), function () {
             try {
-                return (int) ($this->erp->getClientsCount(25) ?? 0);
+                return (int) ($this->erp->getClientsCount(8) ?? 0);
             } catch (\Throwable $e) {
                 return 0;
             }

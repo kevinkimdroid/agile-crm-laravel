@@ -26,6 +26,12 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+/* Bootstrap collapse (Tailwind may still emit `.collapse` if scanned from blade class lists) */
+.accordion-collapse.collapse,
+.collapse.show {
+    visibility: visible;
+}
+
 /* Cards used across the app */
 .card, .app-card {
     background: #fff;

@@ -24,12 +24,11 @@
                     <option value="30" {{ $days == 30 ? 'selected' : '' }}>30+ days old</option>
                 </select>
             </form>
-            <a href="{{ route('reports.export.ticket-aging', ['days' => $days, 'format' => 'xlsx']) }}" class="btn btn-primary btn-sm">
-                <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel
-            </a>
-            <a href="{{ route('reports.export.ticket-aging', ['days' => $days]) }}" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-download me-1"></i>Export CSV
-            </a>
+            @include('partials.report-export-buttons', [
+                'route' => 'reports.export.ticket-aging',
+                'params' => ['days' => $days],
+                'csvWithoutFormat' => true,
+            ])
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()" title="Print report">
                 <i class="bi bi-printer me-1"></i>Print
             </button>
@@ -45,7 +44,7 @@
                         <th>Title</th>
                         <th>Status</th>
                         <th>Category</th>
-                        <th>Contact</th>
+                        <th>Prospect</th>
                         <th>Created</th>
                         <th>Assigned To</th>
                         <th>User Dept</th>

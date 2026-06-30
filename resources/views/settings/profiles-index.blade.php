@@ -14,6 +14,7 @@
         <h1 class="page-title">Profiles</h1>
         <p class="page-subtitle">Manage user profiles and permissions.</p>
     </div>
+    <a href="{{ route('profiles.create') }}" class="btn btn-primary-custom btn-sm"><i class="bi bi-plus-lg me-1"></i>Create Profile</a>
 </div>
 
 <div class="row g-4">
@@ -28,7 +29,7 @@
                 @if ($profile->description)
                     <p class="text-muted small mb-3">{{ Str::limit($profile->description, 60) }}</p>
                 @endif
-                <a href="{{ route('profiles.show', $profile->profileid) }}" class="btn btn-primary-custom btn-sm w-100">View Profile</a>
+                <a href="{{ route('profiles.show', $profile->profileid) }}" class="btn btn-primary-custom btn-sm w-100">Edit Profile</a>
             </div>
         </div>
     </div>

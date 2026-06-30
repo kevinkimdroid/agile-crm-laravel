@@ -20,6 +20,7 @@ class SocialInteraction extends Model
         'content',
         'post_url',
         'lead_id',
+        'ticket_id',
         'metadata',
         'interaction_at',
     ];

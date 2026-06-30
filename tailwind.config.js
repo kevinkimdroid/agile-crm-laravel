@@ -2,9 +2,12 @@ import defaultTheme from 'tailwindcss/defaultTheme';
 
 /** @type {import('tailwindcss').Config} */
 export default {
+    // Bootstrap uses `.collapse` for accordions/modals; disable Tailwind's homonymous utility.
+    corePlugins: {
+        collapse: false,
+    },
     content: [
         './vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php',
-        './storage/framework/views/*.php',
         './resources/**/*.blade.php',
         './resources/**/*.js',
         './resources/**/*.vue',

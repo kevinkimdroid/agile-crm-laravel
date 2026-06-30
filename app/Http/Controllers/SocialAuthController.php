@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\SocialAccount;
+use App\Services\FacebookPublisherService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -10,6 +11,10 @@ use Laravel\Socialite\Facades\Socialite;
 
 class SocialAuthController extends Controller
 {
+    public function __construct(
+        private FacebookPublisherService $facebookPublisher
+    ) {}
+
     public function redirect(string $platform): RedirectResponse
     {
         $platform = strtolower($platform);
@@ -116,7 +121,7 @@ class SocialAuthController extends Controller
             // Ads not available - continue without
         }
 
-        SocialAccount::updateOrCreate(
+        $account = SocialAccount::updateOrCreate(
             ['platform' => 'facebook', 'account_id' => $user->getId()],
             [
                 'account_name' => $user->getName(),
@@ -124,6 +129,9 @@ class SocialAuthController extends Controller
                 'metadata' => $metadata,
             ]
         );
+
+        $this->facebookPublisher->attachPageToAccount($account, $user->token);
+
         return SocialAccount::where('platform', 'facebook')->first();
     }
 

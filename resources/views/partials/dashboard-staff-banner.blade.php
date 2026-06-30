@@ -72,8 +72,8 @@
     font-size: 1rem;
 }
 .dashboard-staff-banner--info .dashboard-staff-banner-icon {
-    background: rgba(51, 180, 227, 0.16);
-    color: #1a468a;
+    background: color-mix(in srgb, {{ config('branding.primary') }} 14%, white);
+    color: {{ config('branding.primary') }};
 }
 .dashboard-staff-banner--warning .dashboard-staff-banner-icon {
     background: rgba(245, 158, 11, 0.16);
@@ -103,10 +103,10 @@
     margin-top: 0.65rem;
     font-size: 0.82rem;
     font-weight: 600;
-    color: #1a468a;
+    color: {{ config('branding.primary') }};
     text-decoration: none;
 }
-.dashboard-staff-banner-link:hover { color: #133a6f; text-decoration: underline; }
+.dashboard-staff-banner-link:hover { color: {{ config('branding.accent') }}; text-decoration: underline; }
 .dashboard-staff-banner-close {
     flex-shrink: 0;
     width: 1.75rem;
@@ -144,7 +144,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var banner = document.getElementById('dashboardStaffBanner');
     if (!banner) return;
 
-    var storageKey = 'geminia-dashboard-staff-banner-dismissed-' + (banner.dataset.bannerId || 'default');
+    var storageKey = 'ko-dashboard-staff-banner-dismissed-' + (banner.dataset.bannerId || 'default');
     if (window.localStorage.getItem(storageKey) === '1') return;
 
     banner.hidden = false;

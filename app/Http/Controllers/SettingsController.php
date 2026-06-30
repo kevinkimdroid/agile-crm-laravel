@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CrmSetting;
 use App\Models\Department;
+use App\Models\UserClientAssignment;
 use App\Models\UserReportingLine;
 use App\Models\VtigerProfile;
 use App\Models\VtigerRole;
@@ -20,6 +21,18 @@ class SettingsController extends Controller
         $section = $request->get('section', 'overview');
 
         $data = ['section' => $section];
+
+        if ($section === 'overview') {
+            $moduleService = app(\App\Services\ModuleService::class);
+            $modules = $moduleService->getAllModules();
+            $enabledModules = collect($modules)->filter(fn ($m) => ! empty($m['enabled']))->count();
+            $data['overviewStats'] = [
+                'users' => VtigerUser::on('vtiger')->where('status', 'Active')->count(),
+                'roles' => VtigerRole::on('vtiger')->count(),
+                'departments' => Department::count(),
+                'modules' => $enabledModules,
+            ];
+        }
 
         if ($section === 'users') {
             $statusFilter = $request->get('status', 'active');
@@ -83,9 +96,77 @@ class SettingsController extends Controller
             }
         } elseif ($section === 'roles') {
             $data['roles'] = VtigerRole::on('vtiger')
+                ->orderBy('depth')
                 ->orderBy('rolename')
                 ->with('profiles')
                 ->get();
+            $data['allProfiles'] = VtigerProfile::on('vtiger')->orderBy('profilename')->get(['profileid', 'profilename']);
+            $data['roleUserCounts'] = DB::connection('vtiger')
+                ->table('vtiger_user2role')
+                ->selectRaw('roleid, count(*) as cnt')
+                ->groupBy('roleid')
+                ->pluck('cnt', 'roleid')
+                ->toArray();
+        } elseif ($section === 'profiles') {
+            $profileController = app(ProfileController::class);
+            $action = $request->get('action');
+            if ($action === 'create') {
+                $data = array_merge($data, $profileController->buildFormData(null, true));
+                $data['profileFormMode'] = 'create';
+            } elseif ($action === 'edit' && $request->filled('profile')) {
+                $profile = VtigerProfile::on('vtiger')->find($request->get('profile'));
+                if ($profile) {
+                    $data = array_merge($data, $profileController->buildFormData($profile, false));
+                    $data['profileFormMode'] = 'edit';
+                } else {
+                    $data['profileFormError'] = 'Profile not found.';
+                }
+            }
+            if (! isset($data['profileFormMode'])) {
+                $data['profiles'] = VtigerProfile::on('vtiger')
+                    ->orderBy('profilename')
+                    ->withCount('roles')
+                    ->get();
+            }
+        } elseif ($section === 'client-access') {
+            $data['clientAccessReady'] = UserClientAssignment::tableExists();
+            $data['clientAccessSearch'] = trim((string) $request->get('search', ''));
+            $usersQuery = VtigerUser::on('vtiger')
+                ->where('status', 'Active')
+                ->orderBy('first_name')
+                ->orderBy('last_name');
+            if ($data['clientAccessSearch'] !== '') {
+                $term = '%' . $data['clientAccessSearch'] . '%';
+                $usersQuery->where(function ($q) use ($term) {
+                    $q->where('first_name', 'like', $term)
+                        ->orWhere('last_name', 'like', $term)
+                        ->orWhere('email1', 'like', $term)
+                        ->orWhere('user_name', 'like', $term);
+                });
+            }
+            $data['clientAccessUsers'] = $usersQuery->get(['id', 'first_name', 'last_name', 'user_name', 'email1']);
+            $data['clientAccessCounts'] = $data['clientAccessReady']
+                ? UserClientAssignment::query()
+                    ->selectRaw('userid, count(*) as cnt')
+                    ->groupBy('userid')
+                    ->pluck('cnt', 'userid')
+                    ->toArray()
+                : [];
+            $selectedUserId = (int) $request->get('user', 0);
+            if (! $selectedUserId && $data['clientAccessUsers']->isNotEmpty()) {
+                $selectedUserId = (int) $data['clientAccessUsers']->first()->id;
+            }
+            $data['selectedClientAccessUserId'] = $selectedUserId ?: null;
+            $data['selectedClientAccessUser'] = $selectedUserId
+                ? VtigerUser::on('vtiger')->find($selectedUserId)
+                : null;
+            $data['clientAccessAssignments'] = ($data['clientAccessReady'] && $selectedUserId)
+                ? UserClientAssignment::query()
+                    ->where('userid', $selectedUserId)
+                    ->orderBy('policy_number')
+                    ->get()
+                : collect();
+            $data['segmentLabels'] = config('profile_modules.client_segments', []);
         } elseif ($section === 'groups') {
             $crm = app(\App\Services\CrmService::class);
             $page = max(1, (int) $request->get('page', 1));
