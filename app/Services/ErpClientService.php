@@ -508,38 +508,78 @@ class ErpClientService
         $policyNo = $contact->policy_number ?? $contact->cf_860 ?? $contact->cf_856 ?? $contact->cf_872 ?? null;
         $name = trim(($contact->firstname ?? '') . ' ' . ($contact->lastname ?? ''));
 
+        $phone = trim((string) ($contact->mobile ?? $contact->phone ?? $contact->phone_no ?? ''));
+        $email = trim((string) ($contact->email ?? $contact->email_adr ?? ''));
+        $idNo = trim((string) ($contact->id_no ?? $contact->idNo ?? ''));
+
+        // Prefer identity searches (phone/name/id) so sibling policies surface; keep policy as fallback.
+        $identityTerms = array_values(array_unique(array_filter(
+            [$phone, $idNo, $name, $email],
+            fn ($v) => $v !== null && trim((string) $v) !== ''
+        )));
+        $allTerms = array_values(array_unique(array_filter(
+            array_merge($identityTerms, [$policyNo]),
+            fn ($v) => $v !== null && trim((string) $v) !== ''
+        )));
+
         // Use cache when erp_sync – same clients used app-wide
         if (config('erp.clients_view_source') === 'erp_sync') {
-            $searchTerms = array_filter([$policyNo, $name], fn ($v) => $v !== null && $v !== '');
-            if (empty($searchTerms)) {
+            if (empty($allTerms)) {
                 return ['data' => [], 'total' => 0];
             }
-            $term = $searchTerms[0];
-            $result = $this->getClientsFromCache($limit, 0, $term);
-            $data = $result['data']->map(fn ($o) => $this->mapClientObjectToSearchResult((array) $o))->values()->all();
+            $seen = [];
+            $data = [];
+            $termsToUse = ! empty($identityTerms) ? $identityTerms : $allTerms;
+            foreach ($termsToUse as $term) {
+                $result = $this->getClientsFromCache($limit, 0, (string) $term);
+                foreach ($result['data'] as $o) {
+                    $mapped = $this->mapClientObjectToSearchResult((array) $o);
+                    $key = $mapped['policy_no'] ?? $mapped['policy_number'] ?? json_encode($mapped);
+                    if (! isset($seen[$key])) {
+                        $seen[$key] = true;
+                        $data[] = $mapped;
+                    }
+                }
+                if (count($data) >= $limit) {
+                    break;
+                }
+            }
 
-            return ['data' => $data, 'total' => count($data)];
+            return ['data' => array_slice($data, 0, $limit), 'total' => count($data)];
         }
 
         // Use HTTP API when erp_http — avoid direct Oracle (ORA-03113 connection drops)
         if (config('erp.clients_view_source') === 'erp_http') {
-            $searchTerms = array_filter([
-                $policyNo,
-                trim($contact->mobile ?? $contact->phone ?? ''),
-                trim($contact->email ?? ''),
-                $name,
-            ], fn ($v) => $v !== null && $v !== '');
-            if (empty($searchTerms)) {
+            if (empty($allTerms)) {
                 return ['data' => [], 'total' => 0];
             }
-            $term = (string) $searchTerms[0];
-            $result = $this->getClientsFromHttpApi($limit, 0, $term);
-            if ($result['error']) {
-                return ['data' => [], 'total' => 0, 'error' => $result['error']];
+            $seen = [];
+            $data = [];
+            $lastError = null;
+            $termsToUse = ! empty($identityTerms) ? $identityTerms : $allTerms;
+            foreach ($termsToUse as $term) {
+                $result = $this->getClientsFromHttpApi($limit, 0, (string) $term);
+                if ($result['error']) {
+                    $lastError = $result['error'];
+                    continue;
+                }
+                foreach ($result['data'] as $o) {
+                    $mapped = $this->mapClientObjectToSearchResult((array) $o);
+                    $key = $mapped['policy_no'] ?? $mapped['policy_number'] ?? json_encode($mapped);
+                    if (! isset($seen[$key])) {
+                        $seen[$key] = true;
+                        $data[] = $mapped;
+                    }
+                }
+                if (count($data) >= $limit) {
+                    break;
+                }
             }
-            $data = $result['data']->map(fn ($o) => $this->mapClientObjectToSearchResult((array) $o))->values()->all();
+            if (empty($data) && $lastError) {
+                return ['data' => [], 'total' => 0, 'error' => $lastError];
+            }
 
-            return ['data' => $data, 'total' => count($data)];
+            return ['data' => array_slice($data, 0, $limit), 'total' => count($data)];
         }
 
         $attempts = 0;

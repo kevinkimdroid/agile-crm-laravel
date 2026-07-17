@@ -46,20 +46,27 @@ class ContactController extends Controller
         $perPage = 25;
         $page = max(1, (int) $request->get('page', 1));
         $offset = ($page - 1) * $perPage;
+        $search = trim((string) $request->get('search', ''));
 
         $ownerId = crm_owner_filter();
-        $cacheKey = 'contacts_list_' . ($ownerId ?? 'all') . '_' . $page;
-        $ttl = 45;
 
-        $cached = Cache::remember($cacheKey, $ttl, function () use ($perPage, $offset, $ownerId) {
-            $contacts = $this->crm->getContacts($perPage, $offset, $ownerId);
-            $total = $this->crm->getContactsCount($ownerId);
-            return ['contacts' => $contacts, 'total' => $total];
-        });
+        if ($search !== '') {
+            $contactsData = $this->crm->getContacts($perPage, $offset, $ownerId, $search);
+            $total = $this->crm->getContactsCount($ownerId, $search);
+        } else {
+            $cacheKey = 'contacts_list_' . ($ownerId ?? 'all') . '_' . $page;
+            $ttl = 45;
+            $cached = Cache::remember($cacheKey, $ttl, function () use ($perPage, $offset, $ownerId) {
+                $contacts = $this->crm->getContacts($perPage, $offset, $ownerId);
+                $total = $this->crm->getContactsCount($ownerId);
+                return ['contacts' => $contacts, 'total' => $total];
+            });
+            $contactsData = $cached['contacts'];
+            $total = $cached['total'];
+        }
 
-        $total = $cached['total'];
         $contacts = new LengthAwarePaginator(
-            $cached['contacts'] instanceof Collection ? $cached['contacts'] : collect($cached['contacts']),
+            $contactsData instanceof Collection ? $contactsData : collect($contactsData),
             $total,
             $perPage,
             $page,
@@ -69,6 +76,7 @@ class ContactController extends Controller
         return view('contacts.index', [
             'contacts' => $contacts,
             'total' => $total,
+            'search' => $search,
         ]);
     }
 
@@ -137,7 +145,13 @@ class ContactController extends Controller
     /** @return View|RedirectResponse */
     public function show(Request $request, int $id)
     {
-        $contact = $this->crm->getContact($id);
+        try {
+            $contact = $this->crm->getContact($id);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Contact show failed loading contact', ['id' => $id, 'error' => $e->getMessage()]);
+
+            return redirect()->route('contacts.index')->with('error', 'Could not open this prospect. Please try again or contact support.');
+        }
         if (!$contact) {
             return redirect()->route('contacts.index')->with('error', 'Contact not found.');
         }
@@ -161,6 +175,7 @@ class ContactController extends Controller
         $campaigns = collect();
         $followups = collect();
 
+        try {
         if ($tab === 'campaigns') {
             $campaigns = $this->crm->getCampaignsForContact($id);
         }
@@ -311,23 +326,82 @@ class ContactController extends Controller
                 ['path' => route('contacts.show', $id), 'query' => array_merge($request->query(), ['tab' => 'updates'])]
             );
         }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Contact show tab data failed', ['id' => $id, 'tab' => $tab, 'error' => $e->getMessage()]);
+            $policiesError = $policiesError ?? ('Some data could not be loaded: ' . $e->getMessage());
+            $callsPaginator = $callsPaginator ?? null;
+            $pbxFromVtiger = $pbxFromVtiger ?? false;
+            $pbxCanCall = $pbxCanCall ?? false;
+            $calendarActivities = $calendarActivities ?? collect();
+            $calendarPaginator = $calendarPaginator ?? null;
+            $activityType = $activityType ?? null;
+            $activityStatus = $activityStatus ?? null;
+            $activitySearch = $activitySearch ?? null;
+            $activitySort = $activitySort ?? 'date_start';
+            $activitySortDir = $activitySortDir ?? 'desc';
+            $activityAssignedToFilter = $activityAssignedToFilter ?? null;
+            $calendarUsers = $calendarUsers ?? collect();
+            $canFilterActivitiesByAssignee = $canFilterActivitiesByAssignee ?? false;
+        }
 
         $ownerId = crm_owner_filter();
-        $adjacent = $this->crm->getAdjacentContactIds($id, $ownerId);
-        $ticketsCount = $this->crm->getTicketsForContactCount($id, null, null, $ownerId);
-        $activitiesCount = $this->crm->countActivities(null, null, null, $id, null, $ownerId);
-        $commentsCount = ContactComment::where('contact_id', $id)->count();
+        $adjacent = ['prev' => null, 'next' => null];
+        $ticketsCount = 0;
+        $activitiesCount = 0;
+        $commentsCount = 0;
+        $emailsCount = 0;
+        $allCampaigns = collect();
+
+        try {
+            $adjacent = $this->crm->getAdjacentContactIds($id, $ownerId);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Contact adjacent ids failed', ['id' => $id, 'error' => $e->getMessage()]);
+        }
+        try {
+            $ticketsCount = $this->crm->getTicketsForContactCount($id, null, null, $ownerId);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Contact tickets count failed', ['id' => $id, 'error' => $e->getMessage()]);
+        }
+        try {
+            $activitiesCount = $this->crm->countActivities(null, null, null, $id, null, $ownerId);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Contact activities count failed', ['id' => $id, 'error' => $e->getMessage()]);
+        }
+        try {
+            $commentsCount = ContactComment::where('contact_id', $id)->count();
+        } catch (\Throwable $e) {
+            $commentsCount = 0;
+        }
 
         $deals = $activities = $comments = $contactComments = collect();
         if ($tab === 'summary') {
-            $deals = $this->crm->getContactDeals($id, 5);
-            $activities = $this->crm->getContactActivities($id, 5);
+            try {
+                $deals = $this->crm->getContactDeals($id, 5);
+                $activities = $this->crm->getContactActivities($id, 5);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Contact summary data failed', ['id' => $id, 'error' => $e->getMessage()]);
+            }
         }
         if ($tab === 'updates') {
-            $comments = $this->crm->getContactComments($id, 100);
-            $contactComments = ContactComment::where('contact_id', $id)
-                ->orderByDesc('created_at')
-                ->get();
+            try {
+                $comments = $this->crm->getContactComments($id, 100);
+                $contactComments = ContactComment::where('contact_id', $id)
+                    ->orderByDesc('created_at')
+                    ->get();
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Contact updates data failed', ['id' => $id, 'error' => $e->getMessage()]);
+            }
+        }
+
+        try {
+            $emailsCount = (int) Cache::remember('agile_emails_contact_' . $id, 120, fn () => $this->mailService->getEmailsForContactCount($contact, $id));
+        } catch (\Throwable $e) {
+            $emailsCount = 0;
+        }
+        try {
+            $allCampaigns = Cache::remember('agile_all_campaigns', 300, fn () => Campaign::orderBy('campaign_name')->get());
+        } catch (\Throwable $e) {
+            $allCampaigns = collect();
         }
 
         return view('contacts.show', [
@@ -354,10 +428,10 @@ class ContactController extends Controller
             'ticketsCount' => $ticketsCount,
             'emails' => $emails ?? [],
             'emailsPaginator' => $emailsPaginator ?? null,
-            'emailsCount' => (int) Cache::remember('agile_emails_contact_' . $id, 120, fn () => $this->mailService->getEmailsForContactCount($contact, $id)),
+            'emailsCount' => $emailsCount,
             'campaigns' => $campaigns ?? collect(),
             'followups' => $followups ?? collect(),
-            'allCampaigns' => Cache::remember('agile_all_campaigns', 300, fn () => Campaign::orderBy('campaign_name')->get()),
+            'allCampaigns' => $allCampaigns,
             'calendarActivities' => $calendarActivities,
             'calendarPaginator' => $calendarPaginator,
             'activityType' => $activityType,

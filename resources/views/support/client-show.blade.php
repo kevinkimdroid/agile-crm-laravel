@@ -84,13 +84,12 @@ $mpesaSandboxSimulate = $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushS
                 <a href="tel:{{ tel_href($clientPhone) }}" class="btn btn-sm btn-success"><i class="bi bi-telephone me-1"></i>Call</a>
                 @endif
                 @if($canSendEmailToClient)
-                <a href="{{ route('support.email-client', $emailClientRouteParams) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-envelope me-1"></i>Email</a>
+                <a href="{{ route('support.email-client', array_merge($emailClientRouteParams, ['return_policy' => ($clientPolicy && $clientPolicy !== '—') ? $clientPolicy : null])) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-envelope me-1"></i>Email</a>
                 @endif
                 @if($clientPhone)
-                <a href="{{ route('support.sms-notifier', $contact ? ['contact_id' => $contact->contactid] : ['phone' => $clientPhone]) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chat-dots me-1"></i>SMS</a>
+                <a href="{{ route('support.sms-notifier', array_filter($contact ? ['contact_id' => $contact->contactid, 'return_policy' => $clientPolicy] : ['phone' => $clientPhone, 'return_policy' => $clientPolicy])) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chat-dots me-1"></i>SMS</a>
                 @endif
                 <a href="{{ route('support.clients.create-ticket', ['policy' => $clientPolicy]) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-ticket-perforated me-1"></i>Create Ticket</a>
-                <a href="{{ route('support.serve-client', ['search' => $clientPolicy]) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-person-plus me-1"></i>Serve Client</a>
                 @if($contact ?? null)
                 <a href="{{ route('contacts.show', $contact->contactid) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-person me-1"></i>CRM Prospect</a>
                 @endif
@@ -140,7 +139,7 @@ $mpesaSandboxSimulate = $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushS
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {{ $tab === 'summary' ? 'active' : '' }}" href="{{ $clientTabUrl('summary') }}#client-documents" title="Documents">
+                <a class="nav-link {{ $tab === 'documents' ? 'active' : '' }}" href="{{ $clientTabUrl('documents') }}" title="Documents">
                     <i class="bi bi-file-earmark"></i>
                     @if(($documentsCount ?? 0) > 0)
                     <span class="badge bg-primary ms-1">{{ $documentsCount }}</span>
@@ -254,7 +253,7 @@ $mpesaSandboxSimulate = $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushS
         </div>
         @endif
 
-        @include('support.partials.client-summary-notes')
+        {{-- Documents moved to Documents tab --}}
     </div>
 
     <div class="col-lg-4">
@@ -264,13 +263,12 @@ $mpesaSandboxSimulate = $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushS
                 <div class="d-flex flex-column gap-2">
                     @if($clientPhone)
                     <a href="tel:{{ tel_href($clientPhone) }}" class="btn btn-outline-primary"><i class="bi bi-telephone me-2"></i>Call</a>
-                    <a href="{{ route('support.sms-notifier', $contact ? ['contact_id' => $contact->contactid] : ['phone' => $clientPhone]) }}" class="btn btn-outline-primary"><i class="bi bi-chat-dots me-2"></i>Send Text</a>
+                    <a href="{{ route('support.sms-notifier', array_filter($contact ? ['contact_id' => $contact->contactid, 'return_policy' => $clientPolicy] : ['phone' => $clientPhone, 'return_policy' => $clientPolicy])) }}" class="btn btn-outline-primary"><i class="bi bi-chat-dots me-2"></i>Send Text</a>
                     @endif
                     @if($canSendEmailToClient)
-                    <a href="{{ route('support.email-client', $emailClientRouteParams) }}" class="btn btn-outline-primary"><i class="bi bi-envelope me-2"></i>Send Email</a>
+                    <a href="{{ route('support.email-client', array_merge($emailClientRouteParams, ['return_policy' => ($clientPolicy && $clientPolicy !== '—') ? $clientPolicy : null])) }}" class="btn btn-outline-primary"><i class="bi bi-envelope me-2"></i>Send Email</a>
                     @endif
                     <a href="{{ route('support.clients.create-ticket', ['policy' => $clientPolicy]) }}" class="btn btn-outline-success"><i class="bi bi-ticket-perforated me-2"></i>Create Ticket</a>
-                    <a href="{{ route('support.serve-client', ['search' => $clientPolicy]) }}" class="btn btn-outline-primary"><i class="bi bi-person-plus me-2"></i>Serve Client</a>
                     @if($contact ?? null)
                     <a href="{{ route('contacts.show', $contact->contactid) }}" class="btn btn-outline-secondary"><i class="bi bi-person me-2"></i>View CRM Prospect</a>
                     @endif
@@ -380,6 +378,9 @@ $mpesaSandboxSimulate = $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushS
 
 @elseif($tab === 'details')
 @include('support.partials.client-details-tab')
+
+@elseif($tab === 'documents')
+@include('support.partials.client-summary-notes')
 
 @elseif($tab === 'updates')
 @include('support.partials.client-comments')

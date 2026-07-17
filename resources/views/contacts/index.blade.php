@@ -3,17 +3,14 @@
 @section('title', 'Prospects')
 
 @section('content')
-<div class="page-header d-flex flex-wrap justify-content-between align-items-start gap-3">
+<div class="page-header d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
     <div>
         <h1 class="page-title">Prospects</h1>
         <p class="page-subtitle">Manage sales prospects before they become clients.</p>
     </div>
-    <div class="d-flex gap-2 mt-2 mt-md-0">
-        <input type="text" id="contactsSearch" class="form-control form-control-sm" placeholder="Search prospect..." style="width: 220px;">
-        <a href="{{ route('contacts.create') }}" class="btn btn-sm btn-primary-custom">
-            <i class="bi bi-plus-lg me-1"></i> Add Prospect
-        </a>
-    </div>
+    <a href="{{ route('contacts.create') }}" class="btn btn-primary-custom">
+        <i class="bi bi-plus-lg me-1"></i> Add Prospect
+    </a>
 </div>
 
 @if (session('success'))
@@ -25,6 +22,28 @@
 @if (session('info'))
     <div class="alert alert-info alert-dismissible fade show">{{ session('info') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 @endif
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body p-3 p-md-4">
+        <label class="form-label fw-semibold mb-2" for="contactsSearch"><i class="bi bi-search me-1"></i>Search prospects</label>
+        <form action="{{ route('contacts.index') }}" method="GET" class="d-flex flex-column flex-md-row gap-2">
+            <input type="text" id="contactsSearch" name="search" class="form-control form-control-lg" placeholder="Search by name, email, phone or mobile…" value="{{ $search ?? '' }}" autocomplete="off">
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary-custom btn-lg px-4"><i class="bi bi-search me-1"></i>Search</button>
+                @if (!empty($search))
+                    <a href="{{ route('contacts.index') }}" class="btn btn-outline-secondary btn-lg">Clear</a>
+                @endif
+            </div>
+        </form>
+        <p class="text-muted small mb-0 mt-2">
+            @if (!empty($search))
+                Showing results for “{{ $search }}”. Filter the results below as you type.
+            @else
+                Searches all prospects. Start typing to filter the current page instantly.
+            @endif
+        </p>
+    </div>
+</div>
 
 <div class="row g-3 mb-3">
     <div class="col-sm-6 col-lg-3">
@@ -65,11 +84,16 @@
                         <td>{{ $contact->phone ?: '—' }}</td>
                         <td>{{ $contact->mobile ?: '—' }}</td>
                         <td>
+                            <a href="{{ route('contacts.show', $contact->contactid) }}" class="btn btn-sm btn-outline-primary me-1">Open</a>
                             <a href="{{ route('contacts.edit', $contact->contactid) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="text-center py-5 text-muted">No prospects found. <a href="{{ route('contacts.create') }}">Add your first prospect</a>.</td></tr>
+                    @if (!empty($search))
+                        <tr><td colspan="5" class="text-center py-5 text-muted">No prospects match “{{ $search }}”. <a href="{{ route('contacts.index') }}">Clear search</a>.</td></tr>
+                    @else
+                        <tr><td colspan="5" class="text-center py-5 text-muted">No prospects found. <a href="{{ route('contacts.create') }}">Add your first prospect</a>.</td></tr>
+                    @endif
                 @endforelse
             </tbody>
         </table>

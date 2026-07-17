@@ -352,16 +352,16 @@ class CrmService
         }
     }
 
-    public function getContactsCount(?int $ownerId = null): int
+    public function getContactsCount(?int $ownerId = null, ?string $search = null): int
     {
         $ttl = (int) config('performance.cache_ttl.counts', 300);
-        if ($ownerId === null) {
-            return (int) Cache::remember('agile_contacts_count', $ttl, fn () => $this->fetchContactsCount(null));
+        if ($ownerId === null && (trim((string) $search) === '')) {
+            return (int) Cache::remember('agile_contacts_count', $ttl, fn () => $this->fetchContactsCount(null, null));
         }
-        return $this->fetchContactsCount($ownerId);
+        return $this->fetchContactsCount($ownerId, $search);
     }
 
-    protected function fetchContactsCount(?int $ownerId = null): int
+    protected function fetchContactsCount(?int $ownerId = null, ?string $search = null): int
     {
         try {
             $query = DB::connection('vtiger')
@@ -372,6 +372,7 @@ class CrmService
             if ($ownerId !== null && $ownerId > 0) {
                 $query->where('e.smownerid', $ownerId);
             }
+            $this->applyContactSearch($query, $search);
             return $query->count();
         } catch (\Throwable $e) {
             Log::warning('CrmService::fetchContactsCount: ' . $e->getMessage());
@@ -379,26 +380,40 @@ class CrmService
         }
     }
 
-    public function getLeadsCount(?string $search = null, ?int $ownerId = null): int
+    public function getLeadsCount(?string $search = null, ?int $ownerId = null, ?string $status = null): int
     {
         $ttl = (int) config('performance.cache_ttl.counts', 300);
-        if ((!$search || trim($search) === '') && $ownerId === null) {
-            return (int) Cache::remember('agile_leads_count', $ttl, fn () => $this->fetchLeadsCount(null, null));
+        if ((!$search || trim($search) === '') && $ownerId === null && ($status === null || trim((string) $status) === '')) {
+            return (int) Cache::remember('agile_leads_count', $ttl, fn () => $this->fetchLeadsCount(null, null, null));
         }
-        return $this->fetchLeadsCount($search, $ownerId);
+        return $this->fetchLeadsCount($search, $ownerId, $status);
     }
 
-    protected function fetchLeadsCount(?string $search, ?int $ownerId = null): int
+    protected function fetchLeadsCount(?string $search, ?int $ownerId = null, ?string $status = null): int
     {
         try {
             $query = DB::connection('vtiger')
                 ->table('vtiger_leaddetails')
                 ->join('vtiger_crmentity as e', 'vtiger_leaddetails.leadid', '=', 'e.crmid')
+                ->leftJoin('vtiger_leadaddress as la', 'vtiger_leaddetails.leadid', '=', 'la.leadaddressid')
                 ->where('e.deleted', 0)
                 ->whereIn('e.setype', ['Leads', 'Lead']);
 
             if ($ownerId !== null && $ownerId > 0) {
                 $query->where('e.smownerid', $ownerId);
+            }
+
+            if ($status !== null && trim($status) !== '') {
+                $status = trim($status);
+                if (strcasecmp($status, 'New') === 0) {
+                    $query->where(function ($q) {
+                        $q->whereNull('vtiger_leaddetails.leadstatus')
+                            ->orWhere('vtiger_leaddetails.leadstatus', '')
+                            ->orWhere('vtiger_leaddetails.leadstatus', 'New');
+                    });
+                } else {
+                    $query->where('vtiger_leaddetails.leadstatus', $status);
+                }
             }
 
             if ($search && trim($search) !== '') {
@@ -407,7 +422,9 @@ class CrmService
                     $q->where('vtiger_leaddetails.firstname', 'like', $term)
                         ->orWhere('vtiger_leaddetails.lastname', 'like', $term)
                         ->orWhere('vtiger_leaddetails.company', 'like', $term)
-                        ->orWhere('vtiger_leaddetails.email', 'like', $term);
+                        ->orWhere('vtiger_leaddetails.email', 'like', $term)
+                        ->orWhere('la.mobile', 'like', $term)
+                        ->orWhere('la.phone', 'like', $term);
                 });
             }
 
@@ -673,13 +690,14 @@ class CrmService
         }
     }
 
-    public function getContacts(int $limit = 50, int $offset = 0, ?int $ownerId = null)
+    public function getContacts(int $limit = 50, int $offset = 0, ?int $ownerId = null, ?string $search = null)
     {
         try {
             $query = Contact::listQuery();
             if ($ownerId !== null) {
                 $query->where('e.smownerid', $ownerId);
             }
+            $this->applyContactSearch($query, $search);
             return $query->orderByDesc('e.createdtime')
                 ->offset($offset)
                 ->limit($limit)
@@ -688,6 +706,26 @@ class CrmService
             Log::warning('CrmService::getContacts: ' . $e->getMessage());
             return collect();
         }
+    }
+
+    /**
+     * Apply a free-text search filter to a contacts query (name, email, phone, mobile).
+     */
+    protected function applyContactSearch($query, ?string $search): void
+    {
+        $term = trim((string) $search);
+        if ($term === '') {
+            return;
+        }
+        $like = '%' . str_replace(['%', '_'], ['\%', '\_'], $term) . '%';
+        $query->where(function ($q) use ($like) {
+            $q->where('vtiger_contactdetails.firstname', 'like', $like)
+                ->orWhere('vtiger_contactdetails.lastname', 'like', $like)
+                ->orWhere('vtiger_contactdetails.email', 'like', $like)
+                ->orWhere('vtiger_contactdetails.phone', 'like', $like)
+                ->orWhere('vtiger_contactdetails.mobile', 'like', $like)
+                ->orWhereRaw("CONCAT(COALESCE(vtiger_contactdetails.firstname,''), ' ', COALESCE(vtiger_contactdetails.lastname,'')) like ?", [$like]);
+        });
     }
 
     /**
@@ -1500,12 +1538,24 @@ class CrmService
         }
     }
 
-    public function getLeads(int $limit = 50, int $offset = 0, ?string $search = null, ?int $ownerId = null)
+    public function getLeads(int $limit = 50, int $offset = 0, ?string $search = null, ?int $ownerId = null, ?string $status = null)
     {
         try {
             $query = Lead::listQuery();
             if ($ownerId !== null && $ownerId > 0) {
                 $query->where('e.smownerid', $ownerId);
+            }
+            if ($status !== null && trim($status) !== '') {
+                $status = trim($status);
+                if (strcasecmp($status, 'New') === 0) {
+                    $query->where(function ($q) {
+                        $q->whereNull('vtiger_leaddetails.leadstatus')
+                            ->orWhere('vtiger_leaddetails.leadstatus', '')
+                            ->orWhere('vtiger_leaddetails.leadstatus', 'New');
+                    });
+                } else {
+                    $query->where('vtiger_leaddetails.leadstatus', $status);
+                }
             }
             if ($search && trim($search) !== '') {
                 $term = '%' . trim($search) . '%';
@@ -1513,7 +1563,9 @@ class CrmService
                     $q->where('vtiger_leaddetails.firstname', 'like', $term)
                         ->orWhere('vtiger_leaddetails.lastname', 'like', $term)
                         ->orWhere('vtiger_leaddetails.company', 'like', $term)
-                        ->orWhere('vtiger_leaddetails.email', 'like', $term);
+                        ->orWhere('vtiger_leaddetails.email', 'like', $term)
+                        ->orWhere('la.mobile', 'like', $term)
+                        ->orWhere('la.phone', 'like', $term);
                 });
             }
             return $query->orderByDesc('e.createdtime')
@@ -2058,7 +2110,6 @@ class CrmService
                     'e.modifiedtime',
                     'e.smownerid',
                     'e.source',
-                    'cf.idNumber',
                     'cf.cf_856',
                     'cf.cf_852',
                     'cf.cf_860',
@@ -2073,7 +2124,7 @@ class CrmService
 
             $contact = new Contact((array) $row);
             $contact->contactid = $row->contactid;
-            $contact->idNumber = $row->idNumber ?? null;
+            $contact->idNumber = $row->idNumber ?? $row->cf_856 ?? null;
             // cf_852 = KRA PIN; cf_860, cf_856, cf_872 = policy fields. Exclude cf_852 and reject any value that looks like PIN (e.g. A006533554X)
             $contact->policy_number = $this->pickPolicyExcludingPin(
                 $row->cf_860 ?? null,
@@ -4037,7 +4088,13 @@ class CrmService
      */
     public function createContactFromErpClient(array $erpClient): ?int
     {
-        $name = trim($erpClient['name'] ?? $erpClient['client_name'] ?? (($erpClient['first_name'] ?? '') . ' ' . ($erpClient['last_name'] ?? '')));
+        $name = trim(
+            $erpClient['name']
+            ?? $erpClient['client_name']
+            ?? $erpClient['life_assur']
+            ?? $erpClient['life_assured']
+            ?? (($erpClient['first_name'] ?? '') . ' ' . ($erpClient['last_name'] ?? ''))
+        );
         $firstName = $erpClient['first_name'] ?? explode(' ', $name, 2)[0] ?? 'Client';
         $lastName = $erpClient['last_name'] ?? (explode(' ', $name, 2)[1] ?? '');
         if ($lastName === '' && strpos($name, ' ') !== false) {
@@ -4046,8 +4103,8 @@ class CrmService
             $lastName = $parts[1] ?? '';
         }
         $email = $erpClient['email'] ?? $erpClient['email_adr'] ?? '';
-        $mobile = $erpClient['mobile'] ?? $erpClient['phone'] ?? '';
-        $phone = $erpClient['phone'] ?? $erpClient['mobile'] ?? '';
+        $mobile = $erpClient['mobile'] ?? $erpClient['phone'] ?? $erpClient['phone_no'] ?? '';
+        $phone = $erpClient['phone'] ?? $erpClient['mobile'] ?? $erpClient['phone_no'] ?? '';
         $policyNumber = $erpClient['policy_number'] ?? $erpClient['policy_no'] ?? $erpClient['POLICY_NUMBER'] ?? $erpClient['POLICY_NO'] ?? '';
 
         $ownerId = \Illuminate\Support\Facades\Auth::guard('vtiger')->id() ?? 1;

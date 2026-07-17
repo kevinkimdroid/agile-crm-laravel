@@ -247,4 +247,56 @@
         </a>
     </div>
     @endif
+
+    {{-- Editable CRM contact details (ERP fields above remain read-only) --}}
+    @php
+        $editFirst = old('firstname', $contact->firstname ?? (explode(' ', trim($clientName ?? ''), 2)[0] ?? ''));
+        $editLast = old('lastname', $contact->lastname ?? (explode(' ', trim($clientName ?? ''), 2)[1] ?? ''));
+        $editEmail = old('email', $contact->email ?? $clientEmail ?? '');
+        $editPhone = old('phone', $contact->phone ?? $clientPhone ?? '');
+        $editMobile = old('mobile', $contact->mobile ?? $clientPhone ?? '');
+    @endphp
+    <div class="card contact-detail-card mt-4">
+        <div class="card-body p-4">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <div class="client-details-block-icon"><i class="bi bi-pencil-square"></i></div>
+                <div>
+                    <h6 class="text-uppercase small fw-bold text-muted mb-0">Edit client details</h6>
+                    <p class="text-muted small mb-0">Updates the CRM contact linked to this policy. ERP policy data stays read-only.</p>
+                </div>
+            </div>
+            <form method="POST" action="{{ route('support.clients.details.update') }}" class="row g-3">
+                @csrf
+                <input type="hidden" name="policy" value="{{ $clientPolicy ?? $policy }}">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small">First name</label>
+                    <input type="text" name="firstname" class="form-control @error('firstname') is-invalid @enderror" value="{{ $editFirst }}" required>
+                    @error('firstname')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small">Last name</label>
+                    <input type="text" name="lastname" class="form-control @error('lastname') is-invalid @enderror" value="{{ $editLast }}">
+                    @error('lastname')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small">Email</label>
+                    <input type="email" name="email" class="form-control @error('email') is-invalid @enderror" value="{{ $editEmail }}">
+                    @error('email')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small">Phone</label>
+                    <input type="text" name="phone" class="form-control @error('phone') is-invalid @enderror" value="{{ $editPhone }}">
+                    @error('phone')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small">Mobile</label>
+                    <input type="text" name="mobile" class="form-control @error('mobile') is-invalid @enderror" value="{{ $editMobile }}">
+                    @error('mobile')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check-lg me-1"></i>Save details</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>

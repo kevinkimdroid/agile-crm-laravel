@@ -15,6 +15,7 @@ class SmsNotifierController extends Controller
     {
         $contactId = $request->filled('contact_id') ? (int) $request->get('contact_id') : null;
         $ticketId = $request->filled('ticket_id') ? (int) $request->get('ticket_id') : null;
+        $returnPolicy = $request->filled('return_policy') ? trim((string) $request->get('return_policy')) : null;
         $presetPhone = $request->filled('phone') ? preg_replace('/\D/', '', trim($request->get('phone'))) : null;
         if ($presetPhone !== null && strlen($presetPhone) < 9) {
             $presetPhone = null;
@@ -37,6 +38,7 @@ class SmsNotifierController extends Controller
             'presetContact' => $presetContact,
             'presetPhone' => $presetPhone,
             'presetPhoneDisplay' => $request->filled('phone') ? trim($request->get('phone')) : null,
+            'returnPolicy' => $returnPolicy,
         ]);
     }
 
@@ -46,6 +48,8 @@ class SmsNotifierController extends Controller
             'message' => 'required|string|max:1600',
             'recipients' => 'required|array|min:1',
             'recipients.*' => 'required|string|max:20',
+            'return_policy' => 'nullable|string|max:64',
+            'return_contact_id' => 'nullable|integer',
         ]);
 
         $recipients = $request->input('recipients');
@@ -54,6 +58,7 @@ class SmsNotifierController extends Controller
         $successCount = count(array_filter($results, fn ($r) => $r['success'] ?? false));
         $failCount = count($results) - $successCount;
 
+        $returnPolicy = $request->filled('return_policy') ? trim((string) $request->get('return_policy')) : null;
         $userId = \Illuminate\Support\Facades\Auth::guard('vtiger')->id();
         foreach ($results as $r) {
             $phone = $r['mobile'] ?? '';
@@ -69,22 +74,26 @@ class SmsNotifierController extends Controller
                 'error_message' => ($r['success'] ?? false) ? null : ($r['error'] ?? null),
                 'user_id' => $userId,
                 'sent_at' => now(),
+                'erp_policy_no' => $returnPolicy,
             ]);
         }
 
+        $redirect = $returnPolicy
+            ? redirect()->route('support.clients.show', ['policy' => $returnPolicy, 'tab' => 'sms'])
+            : redirect()->route('support.sms-notifier', array_filter([
+                'contact_id' => $request->get('return_contact_id'),
+                'phone' => $request->input('recipients.0'),
+            ]));
+
         if ($failCount === 0) {
-            return redirect()->route('support.sms-notifier')
-                ->with('success', "SMS sent successfully to {$successCount} recipient(s).");
+            return $redirect->with('success', "SMS sent successfully to {$successCount} recipient(s).");
         }
 
         if ($successCount > 0) {
-            return redirect()->route('support.sms-notifier')
-                ->with('warning', "Sent to {$successCount} recipient(s). {$failCount} failed.");
+            return $redirect->with('warning', "Sent to {$successCount} recipient(s). {$failCount} failed.");
         }
 
         $firstError = $results[0]['error'] ?? 'Unknown error';
-        return redirect()->route('support.sms-notifier')
-            ->withInput()
-            ->with('error', 'SMS failed: ' . $firstError);
+        return $redirect->withInput()->with('error', 'SMS failed: ' . $firstError);
     }
 }

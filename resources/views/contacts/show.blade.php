@@ -89,42 +89,36 @@
     </li>
     <li class="nav-item">
         <a class="nav-link {{ ($activeTab ?? '') === 'tickets' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=tickets" title="Tickets">
-            <i class="bi bi-ticket-perforated"></i>
+            <i class="bi bi-ticket-perforated me-1"></i>Tickets
             @if(($ticketsCount ?? 0) > 0)
             <span class="badge bg-primary ms-1">{{ $ticketsCount }}</span>
             @endif
         </a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" href="#deals" title="Deals"><i class="bi bi-briefcase"></i></a>
-    </li>
-    <li class="nav-item">
         <a class="nav-link {{ ($activeTab ?? '') === 'emails' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=emails" title="Emails from life@geminialife.co.ke">
-            <i class="bi bi-envelope"></i>
+            <i class="bi bi-envelope me-1"></i>Emails
             @if(($emailsCount ?? 0) > 0)
             <span class="badge bg-primary ms-1">{{ $emailsCount }}</span>
             @endif
         </a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" href="#" title="Documents"><i class="bi bi-file-earmark"></i></a>
+        <a class="nav-link {{ ($activeTab ?? '') === 'policies' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=policies" title="Policies"><i class="bi bi-box me-1"></i>Policies</a>
     </li>
     <li class="nav-item">
-        <a class="nav-link {{ ($activeTab ?? '') === 'policies' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=policies" title="Policies"><i class="bi bi-box"></i></a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link {{ ($activeTab ?? '') === 'calls' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=calls" title="Calls (PBX)"><i class="bi bi-telephone"></i></a>
+        <a class="nav-link {{ ($activeTab ?? '') === 'calls' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=calls" title="Calls (PBX)"><i class="bi bi-telephone me-1"></i>Calls</a>
     </li>
     <li class="nav-item">
         <a class="nav-link {{ ($activeTab ?? '') === 'campaigns' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=campaigns" title="Campaigns">
-            <i class="bi bi-megaphone"></i>
+            <i class="bi bi-megaphone me-1"></i>Campaigns
             @if(($campaigns ?? collect())->isNotEmpty())
             <span class="badge bg-primary ms-1">{{ ($campaigns ?? collect())->count() }}</span>
             @endif
         </a>
     </li>
     <li class="nav-item">
-        <a class="nav-link {{ ($activeTab ?? '') === 'sms' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=sms" title="SMS sent"><i class="bi bi-chat-dots"></i></a>
+        <a class="nav-link {{ ($activeTab ?? '') === 'sms' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=sms" title="SMS sent"><i class="bi bi-chat-dots me-1"></i>SMS</a>
     </li>
 </ul>
 

@@ -57,6 +57,12 @@ ADVANTA_SHORTCODE=your_shortcode</pre>
             <div class="card-body p-4">
                 <form method="POST" action="{{ route('support.sms-notifier.send') }}" id="smsForm">
                     @csrf
+                    @if($returnPolicy ?? null)
+                    <input type="hidden" name="return_policy" value="{{ $returnPolicy }}">
+                    @endif
+                    @if(($presetContact->contactid ?? null))
+                    <input type="hidden" name="return_contact_id" value="{{ $presetContact->contactid }}">
+                    @endif
                     <div class="mb-4">
                         <label class="form-label fw-semibold text-uppercase small" style="letter-spacing: 0.06em; color: var(--primary);">Recipients</label>
                         @if($presetContact ?? null)
@@ -69,7 +75,7 @@ ADVANTA_SHORTCODE=your_shortcode</pre>
                                 <span class="text-muted ms-2 font-monospace">{{ $phone }}</span>
                             </div>
                             <input type="hidden" name="recipients[]" value="{{ $phone }}">
-                            <a href="{{ route('support.sms-notifier') }}" class="btn btn-sm btn-outline-secondary ms-auto">Change recipient</a>
+                            <a href="{{ ($returnPolicy ?? null) ? route('support.clients.show', ['policy' => $returnPolicy]) : route('support.sms-notifier') }}" class="btn btn-sm btn-outline-secondary ms-auto">{{ ($returnPolicy ?? null) ? 'Back to client' : 'Change recipient' }}</a>
                         </div>
                         <p class="small text-muted mt-1 mb-0">Sending to this client only.</p>
                         @else

@@ -162,6 +162,7 @@ Route::get('/support/clients/mpesa-stk/{transaction}', [\App\Http\Controllers\Mp
 Route::post('/support/clients/consent', [\App\Http\Controllers\CustomerController::class, 'updateConsent'])->name('support.clients.consent');
 Route::post('/support/clients/comments', [\App\Http\Controllers\CustomerController::class, 'storeComment'])->name('support.clients.comments.store');
 Route::post('/support/clients/documents', [\App\Http\Controllers\CustomerController::class, 'uploadDocument'])->name('support.clients.documents.store');
+Route::post('/support/clients/details', [\App\Http\Controllers\CustomerController::class, 'updateClientDetails'])->name('support.clients.details.update');
 Route::get('/support/clients/documents/{document}/download', [\App\Http\Controllers\CustomerController::class, 'downloadDocument'])->name('support.clients.documents.download');
 Route::get('/support/clients/debug-api', [\App\Http\Controllers\CustomerController::class, 'debugApi'])->name('support.clients.debug-api');
 Route::get('/support/clients/debug-products', [\App\Http\Controllers\CustomerController::class, 'debugProducts'])->name('support.clients.debug-products');

@@ -151,7 +151,8 @@ class ServeClientController extends Controller
                     'contact_id' => $contact->contactid,
                     'policy' => $policy,
                     'organization_id' => $orgLineForHint,
-                    'from' => 'serve-client',
+                    'from' => 'client',
+                    'return_policy' => $policy,
                 ])->with('info', "Policy \"{$policy}\" could not be retrieved from ERP. Using existing CRM contact.");
             }
             $minimalClient = [
@@ -167,7 +168,8 @@ class ServeClientController extends Controller
                     'contact_id' => $contactId,
                     'policy' => $policy,
                     'organization_id' => $orgLineForHint,
-                    'from' => 'serve-client',
+                    'from' => 'client',
+                    'return_policy' => $policy,
                 ])->with('info', "Policy \"{$policy}\" could not be retrieved from ERP. A placeholder contact was created — update client details in Contacts when you have them.");
             }
             return redirect()->route('support.serve-client', ['search' => $policy])
@@ -205,7 +207,8 @@ class ServeClientController extends Controller
         $params = [
             'contact_id' => $contactId,
             'client_name' => $clientName,
-            'from' => 'serve-client',
+            'from' => 'client',
+            'return_policy' => $policyNumber !== '' ? $policyNumber : $policy,
         ];
         if ($policyNumber !== '' && ! looks_like_kra_pin($policyNumber)) {
             $params['policy'] = $policyNumber;

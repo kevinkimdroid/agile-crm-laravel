@@ -124,12 +124,14 @@
                 <li class="mb-2">Plain text only — no attachments from this screen.</li>
                 <li class="mb-0">To add a password to a PDF, use <a href="{{ route('tools.pdf-protect') }}">Tools → Protect PDF</a>.</li>
             </ul>
-            <a href="{{ route('support.serve-client') }}" class="btn btn-outline-secondary w-100 mb-2">
-                <i class="bi bi-person-plus me-2"></i>Serve Client
+            <a href="{{ ($returnPolicy ?? null) ? route('support.clients.show', ['policy' => $returnPolicy]) : route('support.customers') }}" class="btn btn-outline-secondary w-100 mb-2">
+                <i class="bi bi-arrow-left me-2"></i>{{ ($returnPolicy ?? null) ? 'Back to Client' : 'Clients' }}
             </a>
+            @if(!($returnPolicy ?? null))
             <a href="{{ route('support.customers') }}" class="btn btn-outline-secondary w-100">
                 <i class="bi bi-people me-2"></i>Clients
             </a>
+            @endif
         </div>
     </div>
 </div>

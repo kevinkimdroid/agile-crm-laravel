@@ -73,7 +73,7 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74,#34d399,#a78bfa\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --timeout=660\" \"php artisan schedule:work\" \"npm run dev\" \"python erp-clients-api/app.py\" --names=server,queue,scheduler,vite,erp-api"
+            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74,#34d399,#a78bfa\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --timeout=660\" \"php artisan schedule:work\" \"npm run dev\" \"py -3 erp-clients-api/app.py\" --names=server,queue,scheduler,vite,erp-api"
         ]
     },
     "extra": {

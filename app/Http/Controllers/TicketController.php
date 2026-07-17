@@ -226,8 +226,53 @@ class TicketController extends Controller
             $contactDisplay = $contactDisplay ?: $clientNameParam;
         }
         $presetPolicy = $request->filled('policy') ? trim($request->get('policy')) : null;
+        $returnToPolicy = $request->filled('return_policy') ? trim($request->get('return_policy')) : $presetPolicy;
+        $fromClient = $request->get('from') === 'client' || $request->filled('return_policy');
         $authUser = \Illuminate\Support\Facades\Auth::guard('vtiger')->user();
         $userRole = ($authUser && $authUser->primary_role) ? $authUser->primary_role->rolename : null;
+
+        $policyOptions = [];
+        if ($presetPolicy || $contactId) {
+            try {
+                $erp = app(\App\Services\ErpClientService::class);
+                $lookup = null;
+                if ($presetPolicy) {
+                    $details = $erp->getPolicyDetails($presetPolicy);
+                    if ($details) {
+                        $lookup = (object) array_merge($details, [
+                            'policy_number' => $presetPolicy,
+                            'policy_no' => $presetPolicy,
+                            'mobile' => $details['phone_no'] ?? $details['mobile'] ?? $details['phone'] ?? '',
+                            'phone' => $details['phone_no'] ?? $details['mobile'] ?? $details['phone'] ?? '',
+                            'firstname' => explode(' ', trim($details['life_assur'] ?? $details['client_name'] ?? $details['name'] ?? ''), 2)[0] ?? '',
+                            'lastname' => explode(' ', trim($details['life_assur'] ?? $details['client_name'] ?? $details['name'] ?? ''), 2)[1] ?? '',
+                            'email' => $details['email_adr'] ?? $details['email'] ?? '',
+                            'id_no' => $details['id_no'] ?? '',
+                        ]);
+                    }
+                }
+                if (! $lookup && $contactId) {
+                    $lookup = $crm->getContact($contactId);
+                }
+                if ($lookup) {
+                    $policyOptions = $erp->getPoliciesForContact($lookup, 50)['data'] ?? [];
+                }
+                if ($presetPolicy && empty($policyOptions)) {
+                    $policyOptions = [['policy_no' => $presetPolicy]];
+                } elseif ($presetPolicy) {
+                    $hasPreset = collect($policyOptions)->contains(function ($row) use ($presetPolicy) {
+                        $p = $row['policy_no'] ?? $row['policy_number'] ?? '';
+
+                        return (string) $p === (string) $presetPolicy;
+                    });
+                    if (! $hasPreset) {
+                        array_unshift($policyOptions, ['policy_no' => $presetPolicy]);
+                    }
+                }
+            } catch (\Throwable $e) {
+                $policyOptions = $presetPolicy ? [['policy_no' => $presetPolicy]] : [];
+            }
+        }
 
         try {
             $accounts = $this->sortAccountsForTickets(safe_cache_remember('ticket_accounts', 300, fn () => $crm->getAccounts(100)));
@@ -249,6 +294,9 @@ class TicketController extends Controller
             'presetContactId' => $contactId,
             'presetContactDisplay' => $contactDisplay ?: $clientNameParam,
             'presetPolicy' => $presetPolicy,
+            'policyOptions' => $policyOptions,
+            'returnToPolicy' => $returnToPolicy,
+            'fromClient' => $fromClient,
             'presetOrganizationId' => $request->get('organization_id'),
             'presetTitle' => $presetTitle,
             'presetDescription' => $presetDescription,
@@ -282,6 +330,8 @@ class TicketController extends Controller
             'policy_number' => 'nullable|string|max:100',
             'return_to_mail_manager' => 'nullable',
             'return_to_lead' => 'nullable|integer',
+            'return_to_policy' => 'nullable|string|max:100',
+            'return_to_clients' => 'nullable',
             'email_id' => 'nullable|integer',
             'send_email_to_client' => 'nullable|boolean',
             'client_email_message' => 'nullable|string|max:2000',
@@ -370,6 +420,19 @@ class TicketController extends Controller
                     'hours' => $validated['hours'] ?? null,
                     'days' => $validated['days'] ?? null,
                 ]);
+
+                // This Vtiger ticketcf schema has no policy CF (only cf_862/cf_866); policy stays in description as "Related policy: …"
+                try {
+                    $exists = \DB::connection('vtiger')->table('vtiger_ticketcf')->where('ticketid', $id)->exists();
+                    if (! $exists) {
+                        \DB::connection('vtiger')->table('vtiger_ticketcf')->insert([
+                            'ticketid' => $id,
+                            'from_portal' => 0,
+                        ]);
+                    }
+                } catch (\Throwable $cfEx) {
+                    \Illuminate\Support\Facades\Log::warning('Ticket cf row insert failed', ['ticket' => $id, 'error' => $cfEx->getMessage()]);
+                }
             });
 
             $this->forgetTicketListCaches();
@@ -402,8 +465,14 @@ class TicketController extends Controller
                 \DB::connection('vtiger')->table('mail_manager_emails')->where('id', (int) $request->get('email_id'))->update(['ticket_id' => $id]);
                 return redirect()->route('tools.mail-manager', ['selected' => $request->get('email_id')])->with('success', 'Ticket created and linked to this email.');
             }
-            if ($request->filled('return_to_serve_client')) {
-                return redirect()->route('support.serve-client')->with('success', 'Ticket created. You can create another or search for a different client.');
+            $returnToPolicy = trim((string) $request->get('return_to_policy', ''));
+            if ($returnToPolicy !== '') {
+                return redirect()
+                    ->route('support.clients.show', ['policy' => $returnToPolicy, 'tab' => 'tickets'])
+                    ->with('success', 'Ticket TT' . $id . ' created.');
+            }
+            if ($request->filled('return_to_clients') || $request->filled('return_to_serve_client')) {
+                return redirect()->route('support.customers')->with('success', 'Ticket TT' . $id . ' created.');
             }
             if ($request->filled('return_to_lead')) {
                 return redirect()->route('leads.show', (int) $request->get('return_to_lead'))->with('success', 'Ticket created.');
@@ -412,11 +481,7 @@ class TicketController extends Controller
             if ($returnToContact) {
                 return redirect()->to(route('contacts.show', $returnToContact) . '?tab=tickets')->with('success', 'Ticket created.');
             }
-            $returnToLead = $request->filled('return_to_lead') ? (int) $request->get('return_to_lead') : null;
-            if ($returnToLead) {
-                return redirect()->route('leads.show', $returnToLead)->with('success', 'Ticket created.');
-            }
-            return redirect()->route('tickets.index')->with('success', 'Ticket created.');
+            return redirect()->route('tickets.show', $id)->with('success', 'Ticket created.');
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Failed to create ticket: ' . $e->getMessage());
         }

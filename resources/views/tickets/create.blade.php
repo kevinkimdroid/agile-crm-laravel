@@ -4,9 +4,16 @@
 
 
 @section('content')
+@php
+    $returnPolicy = $returnToPolicy ?? ($presetPolicy ?? null);
+    $fromClientLanding = ($fromClient ?? false) || filled($returnPolicy);
+@endphp
 <nav class="mb-3">
-    @if($fromServeClient ?? false)
-    <a href="{{ route('support.serve-client') }}" class="text-muted small text-decoration-none">Serve Client</a>
+    @if($fromClientLanding && $returnPolicy)
+    <a href="{{ route('support.clients.show', ['policy' => $returnPolicy]) }}" class="text-muted small text-decoration-none">Client</a>
+    <span class="text-muted mx-2">/</span>
+    @elseif($fromServeClient ?? false)
+    <a href="{{ route('support.customers') }}" class="text-muted small text-decoration-none">Clients</a>
     <span class="text-muted mx-2">/</span>
     @elseif($fromMailManager ?? false)
     <a href="{{ route('tools.mail-manager') }}" class="text-muted small text-decoration-none">Mail Manager</a>
@@ -39,8 +46,10 @@
 
 <form method="POST" action="{{ route('tickets.store') }}">
     @csrf
-    @if($fromServeClient ?? false)
-    <input type="hidden" name="return_to_serve_client" value="1">
+    @if($returnPolicy)
+    <input type="hidden" name="return_to_policy" value="{{ $returnPolicy }}">
+    @elseif($fromServeClient ?? false)
+    <input type="hidden" name="return_to_clients" value="1">
     @elseif($fromMailManager ?? false)
     <input type="hidden" name="return_to_mail_manager" value="1">
     <input type="hidden" name="email_id" value="{{ $emailId ?? '' }}">
@@ -76,14 +85,14 @@
                     <label class="form-label fw-semibold">Prospect / Client <span class="text-danger">*</span></label>
                     <div class="input-group contact-select-wrapper">
                         <span class="input-group-text bg-white border-end-0"><i class="bi bi-person-fill text-muted"></i></span>
-                        <input type="text" id="contactSearch" class="form-control contact-select-input" placeholder="Type name or policy number to search" autocomplete="off" value="{{ old('contact_display', $presetContactDisplay ?? '') }}" {{ ($presetContactId ?? null) && ($fromServeClient ?? false) ? 'readonly' : '' }} aria-autocomplete="list" aria-expanded="false" aria-controls="contactDropdown" role="combobox">
+                        <input type="text" id="contactSearch" class="form-control contact-select-input" placeholder="Type name or policy number to search" autocomplete="off" value="{{ old('contact_display', $presetContactDisplay ?? '') }}" {{ ($presetContactId ?? null) && (($fromServeClient ?? false) || $fromClientLanding) ? 'readonly' : '' }} aria-autocomplete="list" aria-expanded="false" aria-controls="contactDropdown" role="combobox">
                         <input type="hidden" name="contact_id" id="contactId" value="{{ old('contact_id', $presetContactId ?? '') }}" required>
-                        @if(($presetContactId ?? null) && ($fromServeClient ?? false))
-                        <a href="{{ route('support.serve-client') }}" class="btn btn-outline-secondary" title="Change client">Change</a>
+                        @if(($presetContactId ?? null) && (($fromServeClient ?? false) || $fromClientLanding))
+                        <a href="{{ $returnPolicy ? route('support.clients.show', ['policy' => $returnPolicy]) : route('support.customers') }}" class="btn btn-outline-secondary" title="Change client">Change</a>
                         @else
                         <button type="button" id="contactBrowse" class="btn btn-outline-primary" title="Browse all clients"><i class="bi bi-list-ul me-1"></i>Browse</button>
                         <button type="button" id="contactChange" class="btn btn-outline-secondary d-none" title="Choose different client"><i class="bi bi-arrow-repeat me-1"></i>Change</button>
-                        <a href="{{ route('contacts.create') }}" class="btn btn-outline-secondary" title="Add new client"><i class="bi bi-plus-lg"></i></a>
+                        <a href="{{ route('contacts.create') }}" class="btn btn-outline-secondary" title="Add new prospect"><i class="bi bi-plus-lg"></i></a>
                         @endif
                     </div>
                     <small class="text-muted d-block mt-1" id="contactSearchHint">Type to search or click Browse to select a client</small>
@@ -92,7 +101,19 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label fw-semibold">Policy Number</label>
+                    @if(!empty($policyOptions) && count($policyOptions) > 1)
+                    <select name="policy_number" id="policy_number" class="form-select font-monospace">
+                        @foreach($policyOptions as $opt)
+                        @php $optVal = is_array($opt) ? ($opt['policy_no'] ?? $opt['policy_number'] ?? '') : (string) $opt; @endphp
+                        @if($optVal !== '')
+                        <option value="{{ $optVal }}" {{ old('policy_number', $presetPolicy ?? '') == $optVal ? 'selected' : '' }}>{{ $optVal }}@if(is_array($opt) && !empty($opt['product'])) — {{ Str::limit($opt['product'], 40) }}@endif</option>
+                        @endif
+                        @endforeach
+                    </select>
+                    <p class="text-muted small mb-0 mt-1">This client has multiple policies — choose which one this ticket relates to.</p>
+                    @else
                     <input type="text" name="policy_number" id="policy_number" class="form-control font-monospace" value="{{ old('policy_number', $presetPolicy ?? '') }}" placeholder="Auto-fills when client selected">
+                    @endif
                 </div>
                 <style>
                 .contact-select-dropdown { max-height: 320px; overflow-y: auto; display: none; z-index: 1050; border: 1px solid var(--agile-border, #e2e8f0); background: #fff; }
@@ -114,18 +135,6 @@
                     <label class="form-label fw-semibold">Description <span class="text-muted fw-normal">(optional)</span></label>
                     <textarea name="description" class="form-control" rows="2" placeholder="Brief details if needed">{{ old('description', $presetDescription ?? '') }}</textarea>
                 </div>
-                <div class="col-12">
-                    <div class="form-check mb-2">
-                        <input type="checkbox" name="send_email_to_client" id="send_email_to_client" value="1" class="form-check-input" {{ old('send_email_to_client', true) ? 'checked' : '' }}>
-                        <label class="form-check-label" for="send_email_to_client">Send email notification to client</label>
-                    </div>
-                    <div class="ms-4" id="client-email-options">
-                        <label class="form-label fw-normal text-muted small mb-1">Custom message for client email <span class="text-muted">(optional)</span></label>
-                        <textarea name="client_email_message" class="form-control form-control-sm" rows="3" placeholder="e.g. We will process your policy renewal notice within 3 business days." maxlength="2000">{{ old('client_email_message') }}</textarea>
-                        <p class="text-muted small mb-0 mt-1">Leave blank for the default message. When provided, this is inserted into the email sent to the client.</p>
-                    </div>
-                    <p class="text-muted small mb-0 mt-1">When checked, the client will receive an email with the ticket number after creation.</p>
-                </div>
             </div>
         </div>
     </div>
@@ -133,13 +142,13 @@
     <input type="hidden" name="status" value="Open">
     <input type="hidden" name="priority" value="Normal">
     @php
-        $presetSource = ($fromServeClient ?? false) ? 'Phone' : (($fromMailManager ?? false) ? 'Email' : 'CRM');
+        $presetSource = ($fromServeClient ?? false) || $fromClientLanding ? 'Phone' : (($fromMailManager ?? false) ? 'Email' : 'CRM');
     @endphp
 
-    {{-- More options: Product Line, Policy, Severity, Ticket Source --}}
+    {{-- Ticket source / product / severity before email options --}}
     <div class="app-card mb-4">
         <div class="p-4">
-            <p class="small fw-semibold text-muted mb-3">Product Line, Policy, Severity, Ticket Source</p>
+            <p class="small fw-semibold text-muted mb-3">Ticket Source, Product Line, Severity</p>
             <div class="row g-4">
                 <div class="col-md-6">
                     <label class="form-label fw-semibold">Ticket Source</label>
@@ -185,10 +194,29 @@
         </div>
     </div>
 
+    {{-- Email client last --}}
+    <div class="app-card mb-4">
+        <div class="p-4">
+            <p class="small fw-semibold text-muted mb-3">Email client</p>
+            <div class="form-check mb-2">
+                <input type="checkbox" name="send_email_to_client" id="send_email_to_client" value="1" class="form-check-input" {{ old('send_email_to_client', true) ? 'checked' : '' }}>
+                <label class="form-check-label" for="send_email_to_client">Send email notification to client</label>
+            </div>
+            <div class="ms-4" id="client-email-options">
+                <label class="form-label fw-normal text-muted small mb-1">Custom message for client email <span class="text-muted">(optional)</span></label>
+                <textarea name="client_email_message" class="form-control form-control-sm" rows="3" placeholder="e.g. We will process your policy renewal notice within 3 business days." maxlength="2000">{{ old('client_email_message') }}</textarea>
+                <p class="text-muted small mb-0 mt-1">Leave blank for the default message. When provided, this is inserted into the email sent to the client.</p>
+            </div>
+            <p class="text-muted small mb-0 mt-1">When checked, the client will receive an email with the ticket number after creation.</p>
+        </div>
+    </div>
+
     <div class="d-flex gap-2">
         <button type="submit" class="btn app-btn-primary"><i class="bi bi-check-lg me-1"></i> Save Ticket</button>
-        @if($fromServeClient ?? false)
-        <a href="{{ route('support.serve-client') }}" class="btn btn-outline-secondary">Back to Serve Client</a>
+        @if($returnPolicy)
+        <a href="{{ route('support.clients.show', ['policy' => $returnPolicy]) }}" class="btn btn-outline-secondary">Back to Client</a>
+        @elseif($fromServeClient ?? false)
+        <a href="{{ route('support.customers') }}" class="btn btn-outline-secondary">Back to Clients</a>
         @elseif($fromMailManager ?? false)
         <a href="{{ route('tools.mail-manager') }}" class="btn btn-outline-secondary">Back to Mail Manager</a>
         @elseif($presetContactId ?? null)
@@ -224,7 +252,7 @@
         if (browseBtn) browseBtn.classList.toggle('d-none', selected);
         if (changeBtn) changeBtn.classList.toggle('d-none', !selected);
         if (hintEl) hintEl.textContent = selected ? 'Client selected. Click Change to pick a different one.' : 'Type to search or click Browse to select a client';
-        searchInput.readOnly = selected;
+        if (searchInput && !searchInput.hasAttribute('data-locked')) searchInput.readOnly = selected;
     }
     function renderDropdown(items, isLoading, noResults) {
         currentItems = items || [];
@@ -256,8 +284,8 @@
         justSelected = true;
         contactIdInput.value = item.dataset.id;
         searchInput.value = item.dataset.name;
-        const policyInput = document.getElementById('policy_number') || document.querySelector('input[name="policy_number"]');
-        if (policyInput) {
+        const policyInput = document.getElementById('policy_number') || document.querySelector('[name="policy_number"]');
+        if (policyInput && policyInput.tagName === 'INPUT') {
             const policy = (item.dataset.policy || '').trim();
             policyInput.value = policy;
             fetch('{{ route("api.tickets.contact.policy", ["contact" => ":id"]) }}'.replace(':id', item.dataset.id), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
@@ -280,6 +308,8 @@
         })
         .catch(() => renderFromLocal());
     }
+
+    if (!searchInput || !contactIdInput || !dropdown) return;
 
     searchInput.addEventListener('focus', function() {
         if (this.readOnly) return;
@@ -347,7 +377,7 @@
             contactIdInput.value = '';
             searchInput.value = '';
             const policyInput = document.getElementById('policy_number') || document.querySelector('input[name="policy_number"]');
-            if (policyInput) policyInput.value = '';
+            if (policyInput && policyInput.tagName === 'INPUT') policyInput.value = '';
             setSelectedMode(false);
             searchInput.focus();
             fetchContacts(true);
@@ -360,13 +390,12 @@
         if (c) searchInput.value = c.name;
         setSelectedMode(true);
         const policyInput = document.getElementById('policy_number') || document.querySelector('input[name="policy_number"]');
-        if (policyInput && (!policyInput.value || !policyInput.value.trim())) {
+        if (policyInput && policyInput.tagName === 'INPUT' && (!policyInput.value || !policyInput.value.trim())) {
             fetch('{{ route("api.tickets.contact.policy", ["contact" => ":id"]) }}'.replace(':id', oldId), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
                 .then(r => r.json()).then(d => { policyInput.value = (d.policy_number || d.policy || '').trim(); }).catch(() => {});
         }
     }
 
-    // Toggle custom message field visibility based on send-email checkbox
     const sendEmailCb = document.getElementById('send_email_to_client');
     const emailOptions = document.getElementById('client-email-options');
     if (sendEmailCb && emailOptions) {

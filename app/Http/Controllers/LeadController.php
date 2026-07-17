@@ -25,13 +25,16 @@ class LeadController extends Controller
     public function index(Request $request): View
     {
         $search = $request->get('q');
+        $status = $request->filled('status') ? trim((string) $request->get('status')) : null;
         $perPage = 25;
         $page = max(1, (int) $request->get('page', 1));
         $offset = ($page - 1) * $perPage;
 
         $ownerId = crm_owner_filter();
-        $leads = $this->crm->getLeads($perPage, $offset, $search, $ownerId);
-        $total = $this->crm->getLeadsCount($search, $ownerId);
+        $leads = $this->crm->getLeads($perPage, $offset, $search, $ownerId, $status);
+        $total = $this->crm->getLeadsCount($search, $ownerId, $status);
+        $statusCounts = $this->crm->getLeadsByStatus();
+        $todayCount = $this->crm->getLeadsTodayCount($ownerId);
 
         $leads = new LengthAwarePaginator(
             $leads instanceof Collection ? $leads : collect($leads),
@@ -44,6 +47,11 @@ class LeadController extends Controller
         return view('leads.index', [
             'leads' => $leads,
             'total' => $total,
+            'search' => $search,
+            'currentStatus' => $status,
+            'statusCounts' => $statusCounts,
+            'todayCount' => $todayCount,
+            'grandTotal' => array_sum($statusCounts) ?: ($total ?: 0),
         ]);
     }
 

@@ -29,7 +29,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CustomerController extends Controller
 {
-    private const CLIENTS_API_CACHE_VERSION = 'v3';
+    private const CLIENTS_API_CACHE_VERSION = 'v4';
 
     /** @var CrmService */
     protected $crm;
@@ -92,6 +92,14 @@ class CustomerController extends Controller
         }
 
             $contact = $this->findCachedContactByPolicy($policy);
+            if (! $contact) {
+                // Ensure a CRM contact exists so tickets/activities link back to this client.
+                $contactIdCreated = $this->crm->createContactFromErpClient(is_array($client) ? $client : (array) $client);
+                if ($contactIdCreated) {
+                    Cache::forget('crm:contact_by_policy:' . sha1(trim($policy)));
+                    $contact = $this->crm->getContact((int) $contactIdCreated);
+                }
+            }
             $client['policy_no'] = $policy;
             $client['policy_number'] = $policy;
 
@@ -159,8 +167,10 @@ class CustomerController extends Controller
                 'lastname' => $nameParts[1] ?? '',
                 'mobile' => $clientPhone,
                 'phone' => $clientPhone,
+                'phone_no' => $clientPhone,
                 'email' => $clientEmail,
                 'email_adr' => $clientEmail,
+                'id_no' => $client['id_no'] ?? $client['idNo'] ?? $client['ID_NO'] ?? '',
             ];
             $mailSubject = $this->buildClientMailLookup($contact, $erpLookup, $policy, $clientEmail);
             $callSubject = $contact ?? $erpLookup;
@@ -1054,7 +1064,8 @@ class CustomerController extends Controller
                 'status', 'STATUS', 'mendr_status', 'MENDR_STATUS', 'endr_status', 'ENDR_STATUS', 'policy_status', 'POLICY_STATUS',
             ]));
             $email = $this->pickFirstNonEmpty($row, ['email', 'EMAIL', 'email_adr', 'EMAIL_ADR']) ?? null;
-            $mobile = $this->pickFirstNonEmpty($row, ['mobile', 'phone', 'phone_no', 'PHONE_NO']) ?? null;
+            $mobile = $this->pickFirstNonEmpty($row, ['mobile', 'phone', 'phone_no', 'PHONE_NO', 'client_contact']) ?? null;
+            $idNo = $this->pickFirstNonEmpty($row, ['id_no', 'idNo', 'ID_NO', 'id_number']) ?? null;
 
             $isErp = ($c->_erp_source ?? false) && in_array($source, ['erp_sync', 'erp_http']);
             $lifeSystem = $c->life_system ?? $this->erp->getLifeSystemFromProduct($product ?: null);
@@ -1069,6 +1080,8 @@ class CustomerController extends Controller
                 'product' => $product !== '' ? $product : '—',
                 'life_system' => $lifeSystem,
                 'status' => $status !== '' ? $status : '—',
+                'id_no' => $idNo ?: '—',
+                'phone_no' => $mobile ?: '—',
                 'is_erp' => $isErp,
                 'name' => trim(($c->firstname ?? '') . ' ' . ($c->lastname ?? '')) ?: '—',
                 'email' => personal_email_only($email) ?? '—',
@@ -1097,7 +1110,7 @@ class CustomerController extends Controller
     }
 
     /**
-     * @return array{policy:string,prepared:string,intermediary:string,name:string,product:string,status:string}
+     * @return array{policy:string,prepared:string,intermediary:string,name:string,product:string,status:string,id:string,phone:string}
      */
     private function parseColumnFilters(Request $request): array
     {
@@ -1110,11 +1123,13 @@ class CustomerController extends Controller
             'name' => trim((string) ($request->get('f_name', '') ?: $legacy)),
             'product' => trim((string) $request->get('f_product', '')),
             'status' => trim((string) $request->get('f_status', '')),
+            'id' => trim((string) $request->get('f_id', '')),
+            'phone' => trim((string) $request->get('f_phone', '')),
         ];
     }
 
     /**
-     * @param  array{policy:string,prepared:string,intermediary:string,name:string,product:string,status:string}  $filters
+     * @param  array{policy:string,prepared:string,intermediary:string,name:string,product:string,status:string,id:string,phone:string}  $filters
      */
     private function hasActiveColumnFilters(array $filters): bool
     {
@@ -1128,11 +1143,11 @@ class CustomerController extends Controller
     }
 
     /**
-     * @param  array{policy:string,prepared:string,intermediary:string,name:string,product:string,status:string}  $filters
+     * @param  array{policy:string,prepared:string,intermediary:string,name:string,product:string,status:string,id:string,phone:string}  $filters
      */
     private function primarySearchFromColumnFilters(array $filters): ?string
     {
-        foreach (['policy', 'name', 'prepared', 'intermediary'] as $key) {
+        foreach (['name', 'id', 'phone', 'policy', 'prepared', 'intermediary'] as $key) {
             $value = trim($filters[$key] ?? '');
             if ($value !== '' && mb_strlen($value) >= 2) {
                 return $value;
@@ -1144,7 +1159,7 @@ class CustomerController extends Controller
 
     /**
      * @param  Collection<int, mixed>  $customers
-     * @param  array{policy:string,prepared:string,intermediary:string,name:string,product:string,status:string}  $filters
+     * @param  array{policy:string,prepared:string,intermediary:string,name:string,product:string,status:string,id:string,phone:string}  $filters
      * @return Collection<int, mixed>
      */
     private function applyColumnFilters(Collection $customers, array $filters): Collection
@@ -1162,7 +1177,7 @@ class CustomerController extends Controller
 
     /**
      * @param  array<string,mixed>  $row
-     * @param  array{policy:string,prepared:string,intermediary:string,name:string,product:string,status:string}  $filters
+     * @param  array{policy:string,prepared:string,intermediary:string,name:string,product:string,status:string,id:string,phone:string}  $filters
      */
     private function rowMatchesColumnFilters(array $row, array $filters): bool
     {
@@ -1173,13 +1188,15 @@ class CustomerController extends Controller
             'name' => ['life_assur', 'life_assured', 'client_name', 'CLIENT_NAME', 'name', 'NAME', 'member_name', 'mem_surname'],
             'product' => ['product', 'PRODUCT', 'prod_desc', 'PROD_DESC', 'scheme_name', 'SCHEME_NAME'],
             'status' => ['status', 'STATUS', 'mendr_status', 'MENDR_STATUS', 'policy_status', 'POLICY_STATUS'],
+            'id' => ['id_no', 'idNo', 'ID_NO', 'id_number'],
+            'phone' => ['phone_no', 'phone', 'mobile', 'PHONE_NO', 'client_contact', 'mem_teleph'],
         ];
 
         foreach ($filters as $key => $term) {
             if ($term === '') {
                 continue;
             }
-            $haystack = strtolower((string) ($this->pickFirstNonEmpty($row, $map[$key]) ?? ''));
+            $haystack = strtolower((string) ($this->pickFirstNonEmpty($row, $map[$key] ?? []) ?? ''));
 
             if (! str_contains($haystack, strtolower($term))) {
                 return false;
@@ -1275,22 +1292,95 @@ class CustomerController extends Controller
 
         [$userId, $authorName] = $this->resolveStaffAuthor();
         $file = $request->file('document');
-        $storagePath = $file->store('erp-client-documents/' . $policy, 'public');
 
-        ErpClientDocument::create([
-            'policy_number' => $policy,
-            'title' => trim((string) ($validated['title'] ?? '')) ?: null,
-            'original_filename' => $file->getClientOriginalName(),
-            'storage_path' => $storagePath,
-            'mime_type' => $file->getClientMimeType(),
-            'file_size' => $file->getSize() ?: 0,
-            'uploaded_by_user_id' => $userId,
-            'uploaded_by_name' => $authorName,
-        ]);
+        try {
+            if (! Storage::disk('public')->exists('erp-client-documents')) {
+                Storage::disk('public')->makeDirectory('erp-client-documents');
+            }
+            $storagePath = $file->store('erp-client-documents/' . preg_replace('/[^A-Za-z0-9_-]/', '_', $policy), 'public');
+            if (! $storagePath) {
+                return redirect()->back()->withInput()->with('error', 'Could not store the uploaded file. Check storage permissions and that public/storage is linked.');
+            }
+
+            ErpClientDocument::create([
+                'policy_number' => $policy,
+                'title' => trim((string) ($validated['title'] ?? '')) ?: null,
+                'original_filename' => $file->getClientOriginalName(),
+                'storage_path' => $storagePath,
+                'mime_type' => $file->getClientMimeType(),
+                'file_size' => $file->getSize() ?: 0,
+                'uploaded_by_user_id' => $userId,
+                'uploaded_by_name' => $authorName,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Client document upload failed', ['policy' => $policy, 'error' => $e->getMessage()]);
+
+            return redirect()->back()->withInput()->with('error', 'Document upload failed: ' . $e->getMessage());
+        }
 
         return redirect()
-            ->to(route('support.clients.show', ['policy' => $policy, 'tab' => 'summary']) . '#client-documents')
+            ->route('support.clients.show', ['policy' => $policy, 'tab' => 'documents'])
             ->with('success', 'Document uploaded.');
+    }
+
+    /**
+     * Update CRM contact details linked to an ERP client (ERP itself is read-only).
+     */
+    public function updateClientDetails(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'policy' => 'required|string|max:64',
+            'firstname' => 'required|string|max:255',
+            'lastname' => 'nullable|string|max:255',
+            'email' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:50',
+            'mobile' => 'nullable|string|max:50',
+        ]);
+
+        $policy = trim($validated['policy']);
+        if ($policy === '' || ! user_can_access_client_policy($policy)) {
+            return redirect()->route('support.customers')->with('error', 'You do not have access to this client.');
+        }
+
+        $contact = $this->crm->findContactByPolicyNumber($policy);
+        $contactId = $contact?->contactid;
+        if (! $contactId) {
+            $erp = $this->erp->getPolicyDetails($policy) ?? [];
+            $erp = is_array($erp) ? $erp : (array) $erp;
+            $erp['first_name'] = $validated['firstname'];
+            $erp['last_name'] = $validated['lastname'] ?? '';
+            $erp['email'] = $validated['email'] ?? ($erp['email'] ?? '');
+            $erp['mobile'] = $validated['mobile'] ?? $validated['phone'] ?? ($erp['mobile'] ?? '');
+            $erp['phone'] = $validated['phone'] ?? $validated['mobile'] ?? ($erp['phone'] ?? '');
+            $erp['policy_no'] = $policy;
+            $erp['policy_number'] = $policy;
+            $contactId = $this->crm->createContactFromErpClient($erp);
+            if (! $contactId) {
+                return redirect()->back()->withInput()->with('error', 'Could not create CRM contact for this client.');
+            }
+        } else {
+            try {
+                \DB::connection('vtiger')->table('vtiger_contactdetails')->where('contactid', $contactId)->update([
+                    'firstname' => $validated['firstname'],
+                    'lastname' => $validated['lastname'] ?? '',
+                    'email' => $validated['email'] ?? '',
+                    'phone' => $validated['phone'] ?? '',
+                    'mobile' => $validated['mobile'] ?? $validated['phone'] ?? '',
+                ]);
+                \DB::connection('vtiger')->table('vtiger_crmentity')->where('crmid', $contactId)->update([
+                    'label' => trim($validated['firstname'] . ' ' . ($validated['lastname'] ?? '')),
+                    'modifiedtime' => now()->format('Y-m-d H:i:s'),
+                ]);
+            } catch (\Throwable $e) {
+                return redirect()->back()->withInput()->with('error', 'Failed to update details: ' . $e->getMessage());
+            }
+        }
+
+        Cache::forget('crm:contact_by_policy:' . sha1(trim($policy)));
+
+        return redirect()
+            ->route('support.clients.show', ['policy' => $policy, 'tab' => 'details'])
+            ->with('success', 'Client details updated.');
     }
 
     public function downloadDocument(Request $request, int $document): StreamedResponse|RedirectResponse

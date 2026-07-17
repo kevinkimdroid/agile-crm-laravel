@@ -19,9 +19,11 @@
         <h1 class="page-title">{{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Prospects' : 'Clients' }}</h1>
         <p class="page-subtitle">{{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Manage sales prospects before they become clients.' : 'Manage your clients and policy assignments.' }}</p>
     </div>
+    @if(($listRoute ?? 'support.customers') === 'contacts.index')
     <a href="{{ route('contacts.create') }}" class="btn btn-primary-custom">
-        <i class="bi bi-plus-lg me-2"></i>Add {{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Prospect' : 'Client' }}
+        <i class="bi bi-plus-lg me-2"></i>Add Prospect
     </a>
+    @endif
 </div>
 
 @if (session('error'))
@@ -116,17 +118,19 @@
 @php
     $isErpList = in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http']);
     $columnFilters = $columnFilters ?? [
-        'policy' => request('f_policy', ''),
-        'prepared' => request('f_prepared', ''),
-        'intermediary' => request('f_intermediary', ''),
         'name' => request('f_name', request('search', '')),
+        'id' => request('f_id', ''),
+        'phone' => request('f_phone', ''),
+        'intermediary' => request('f_intermediary', ''),
+        'prepared' => request('f_prepared', ''),
         'product' => request('f_product', ''),
         'status' => request('f_status', ''),
+        'policy' => request('f_policy', ''),
     ];
     $clientsStatTotal = ($clientsGrandTotal !== null && ! ($system ?? '') && ($clientsSource ?? '') === 'erp_http')
         ? (int) $clientsGrandTotal
         : (int) ($clientsGrandTotal ?? $total ?? 0);
-    $tableColspan = $isErpList ? 8 : (in_array($clientsSource ?? 'crm', ['erp']) ? 6 : 5);
+    $tableColspan = $isErpList ? 9 : (in_array($clientsSource ?? 'crm', ['erp']) ? 6 : 5);
 @endphp
 
 {{-- Clients Table --}}
@@ -157,20 +161,22 @@
             <thead>
                 @if($isErpList)
                 <tr class="clients-table-head-labels">
-                    <th>Policy Number</th>
-                    <th>Who Prepared Policy</th>
+                    <th>Client</th>
+                    <th>ID Number</th>
+                    <th>Telephone</th>
                     <th>Intermediary (Agent)</th>
-                    <th>Life Assured (Client)</th>
+                    <th>Who Prepared</th>
                     <th>Product</th>
                     <th>System</th>
                     <th>Policy Status</th>
                     <th class="text-end">Actions</th>
                 </tr>
                 <tr class="clients-table-head-filters">
-                    <th><input type="search" class="clients-col-filter" data-col-filter="policy" placeholder="Policy…" value="{{ $columnFilters['policy'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
-                    <th><input type="search" class="clients-col-filter" data-col-filter="prepared" placeholder="Prepared by…" value="{{ $columnFilters['prepared'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
-                    <th><input type="search" class="clients-col-filter" data-col-filter="intermediary" placeholder="Agent…" value="{{ $columnFilters['intermediary'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
                     <th><input type="search" class="clients-col-filter" data-col-filter="name" placeholder="Name…" value="{{ $columnFilters['name'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="id" placeholder="ID…" value="{{ $columnFilters['id'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="phone" placeholder="Phone…" value="{{ $columnFilters['phone'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="intermediary" placeholder="Agent…" value="{{ $columnFilters['intermediary'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="prepared" placeholder="Prepared by…" value="{{ $columnFilters['prepared'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
                     <th><input type="search" class="clients-col-filter" data-col-filter="product" placeholder="Product…" value="{{ $columnFilters['product'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
                     <th><span class="clients-col-filter-spacer" aria-hidden="true"></span></th>
                     <th><input type="search" class="clients-col-filter" data-col-filter="status" placeholder="Status…" value="{{ $columnFilters['status'] ?? '' }}" autocomplete="off" spellcheck="false"></th>
@@ -226,17 +232,24 @@
                     <tr @if($rowIdentifier && ($customer->_erp_source ?? false) && in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http'])) class="clients-row-open" data-client-open="{{ route('support.clients.show', array_filter(['policy' => $rowIdentifier, 'system' => $system ?? null])) }}" @endif>
                         @if(($customer->_erp_source ?? false) && in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http']))
                         <td>
-                            <a href="{{ route('support.clients.show', array_filter(['policy' => $rowIdentifier, 'system' => $system ?? null])) }}" class="clients-policy-link">
-                                {{ $rowPolicy ?: '—' }}
-                            </a>
-                        </td>
-                        <td>{{ $customer->pol_prepared_by ?? '—' }}</td>
-                        <td>{{ Str::limit($customer->intermediary ?? '—', 25) }}</td>
-                        <td>
                             <a href="{{ route('support.clients.show', array_filter(['policy' => $rowIdentifier, 'system' => $system ?? null])) }}" class="clients-name-link text-decoration-none">
                                 <span class="clients-name">{{ $customer->life_assur ?? $customer->client_name ?? '—' }}</span>
                             </a>
+                            @if($rowIdentifier)
+                            <div class="small text-muted font-monospace">{{ $rowIdentifier }}</div>
+                            @endif
                         </td>
+                        <td class="font-monospace small">{{ $customer->id_no ?? $customer->idNo ?? '—' }}</td>
+                        <td>
+                            @php $rowPhone = $customer->phone_no ?? $customer->mobile ?? $customer->phone ?? null; @endphp
+                            @if($rowPhone)
+                            <a href="tel:{{ tel_href($rowPhone) }}" class="text-decoration-none">{{ $rowPhone }}</a>
+                            @else
+                            <span class="text-muted">—</span>
+                            @endif
+                        </td>
+                        <td>{{ Str::limit($customer->intermediary ?? '—', 25) }}</td>
+                        <td>{{ $customer->pol_prepared_by ?? '—' }}</td>
                         <td class="clients-product">{{ Str::limit($customer->product ?? '—', 40) }}</td>
                         <td>
                             @php
@@ -259,9 +272,6 @@
                                 </a>
                                 <a href="{{ route('support.clients.show', array_filter(['policy' => $rowIdentifier, 'system' => $system ?? null])) }}" class="btn btn-sm clients-btn-view" title="View full details">
                                     <i class="bi bi-eye"></i> View
-                                </a>
-                                <a href="{{ route('support.serve-client', ['search' => $rowIdentifier]) }}" class="btn btn-sm clients-btn-serve" title="Serve client">
-                                    <i class="bi bi-person-plus"></i> Serve
                                 </a>
                                 @else
                                 <span class="text-muted small">—</span>
@@ -301,7 +311,6 @@
                         <td class="text-end">
                             @if(($customer->_erp_source ?? false))
                             <a href="{{ route('support.clients.show', array_filter(['policy' => $rowPolicy, 'system' => $system ?? null])) }}" class="btn btn-sm clients-btn-view" title="View full details"><i class="bi bi-eye"></i></a>
-                            <a href="{{ route('support.serve-client', ['search' => $rowPolicy]) }}" class="btn btn-sm clients-btn-serve" title="Serve client"><i class="bi bi-person-plus"></i></a>
                             @else
                             <a href="{{ route('contacts.show', ['contact' => $customer->contactid, 'tab' => 'summary']) }}" class="btn btn-sm clients-btn-view"><i class="bi bi-eye"></i></a>
                             @endif
@@ -321,15 +330,15 @@
                                     <br><a href="{{ route('support.clients.debug-api', ['policy' => $search, 'search' => $search, 'system' => 'group', 'debug' => '1']) }}" target="_blank" class="small">Debug API response</a>
                                     @endif
                                     @else
-                                    Get started by adding your first {{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'prospect' : 'client' }}.
+                                    Get started by searching for a client above.
                                     @if(in_array($clientsSource ?? 'crm', ['erp_http', 'erp_sync']) && in_array(($system ?? ''), ['group', 'mortgage', 'group_pension'], true))
                                     <br><span class="small text-muted">ERP list empty: confirm <code>erp-clients-api</code> is running and <code>ERP_CLIENTS_…_VIEW</code> matches Oracle.</span>
                                     <br><a href="{{ route('support.clients.debug-api', array_filter(['system' => $system ?? null])) }}" target="_blank" rel="noopener" class="small">Debug ERP API response</a>
                                     @endif
                                     @endif
                                 </p>
-                                @if(!($search ?? ''))
-                                <a href="{{ route('contacts.create') }}" class="btn btn-primary-custom"><i class="bi bi-plus-lg me-1"></i>Add {{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Prospect' : 'Client' }}</a>
+                                @if(!($search ?? '') && ($listRoute ?? 'support.customers') === 'contacts.index')
+                                <a href="{{ route('contacts.create') }}" class="btn btn-primary-custom"><i class="bi bi-plus-lg me-1"></i>Add Prospect</a>
                                 @endif
                             </div>
                         </td>
@@ -564,7 +573,7 @@
     var systemLabels = @json(config('clients_ui.tab_labels'));
     var grandTotalOnAll = @json(($clientsGrandTotal !== null && ! ($system ?? '') && ($clientsSource ?? '') === 'erp_http'));
     var filterKeys = isErpList
-        ? ['policy', 'prepared', 'intermediary', 'name', 'product', 'status']
+        ? ['name', 'id', 'phone', 'intermediary', 'prepared', 'product', 'status', 'policy']
         : ['name', 'email', 'mobile', 'product'];
 
     var statusEl = document.getElementById('clientsFilterStatus');
@@ -584,7 +593,7 @@
     var localBatch = [];
     var batchFetchKey = '';
     var perPage = 25;
-    var erpFilterKeys = ['policy', 'name', 'prepared', 'intermediary'];
+    var erpFilterKeys = ['name', 'id', 'phone', 'policy', 'prepared', 'intermediary'];
     var minFilterChars = 2;
     var fetchDebounceMs = 600;
     var localFilterDebounceMs = 150;
@@ -616,7 +625,9 @@
             intermediary: (row.intermediary || '').toString(),
             name: (row.life_assur || '').toString(),
             product: (row.product || '').toString(),
-            status: (row.status || '').toString()
+            status: (row.status || '').toString(),
+            id: (row.id_no || '').toString(),
+            phone: (row.phone_no || row.mobile || '').toString()
         };
         var key, term, hay;
         for (key in filters) {
@@ -711,19 +722,22 @@
         var systemLabel = systemLabels[ls] || systemLabels.individual || 'Individual Life';
         var sysQ = system ? '&system=' + encodeURIComponent(system) : '';
         var showLink = showUrl + '?policy=' + encodeURIComponent(policy) + sysQ;
+        var phone = (c.phone_no || c.mobile || '').toString().trim();
+        var idNo = (c.id_no || '').toString().trim();
         return '<tr class="clients-row-open" data-client-open="' + esc(showLink) + '">' +
-            '<td><a href="' + esc(showLink) + '" class="clients-policy-link">' + esc(policy || '—') + '</a></td>' +
-            '<td>' + esc(c.pol_prepared_by || '—') + '</td>' +
+            '<td><a href="' + esc(showLink) + '" class="clients-name-link text-decoration-none"><span class="clients-name">' + esc(c.life_assur || '—') + '</span></a>' +
+            (policy ? '<div class="small text-muted font-monospace">' + esc(policy) + '</div>' : '') + '</td>' +
+            '<td class="font-monospace small">' + esc(idNo || '—') + '</td>' +
+            '<td>' + (phone ? '<a href="tel:' + esc(phone) + '" class="text-decoration-none">' + esc(phone) + '</a>' : '<span class="text-muted">—</span>') + '</td>' +
             '<td>' + esc((c.intermediary || '—').substring(0, 25)) + '</td>' +
-            '<td><a href="' + esc(showLink) + '" class="clients-name-link text-decoration-none"><span class="clients-name">' + esc(c.life_assur || '—') + '</span></a></td>' +
+            '<td>' + esc(c.pol_prepared_by || '—') + '</td>' +
             '<td class="clients-product">' + esc((c.product || '—').substring(0, 40)) + '</td>' +
             '<td><span class="clients-system-badge clients-system-' + esc(ls) + '">' + esc(systemLabel) + '</span></td>' +
             '<td><span class="clients-status-badge clients-status-' + statusClass + '">' + esc(c.status || '—') + '</span></td>' +
             '<td class="text-end"><div class="clients-actions">' +
             (policy ? (
                 '<a href="' + ticketUrl + '?policy=' + encodeURIComponent(policy) + '" class="btn btn-sm btn-success" title="Create ticket"><i class="bi bi-ticket-perforated"></i> Ticket</a> ' +
-                '<a href="' + esc(showLink) + '" class="btn btn-sm clients-btn-view" title="View full details"><i class="bi bi-eye"></i> View</a> ' +
-                '<a href="' + serveUrl + '?search=' + encodeURIComponent(policy) + '" class="btn btn-sm clients-btn-serve" title="Serve client"><i class="bi bi-person-plus"></i> Serve</a>'
+                '<a href="' + esc(showLink) + '" class="btn btn-sm clients-btn-view" title="View full details"><i class="bi bi-eye"></i> View</a>'
             ) : '<span class="text-muted small">—</span>') +
             '</div></td></tr>';
     }

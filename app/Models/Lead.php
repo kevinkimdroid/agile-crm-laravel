@@ -36,7 +36,13 @@ class Lead extends Model
      */
     public function getPhoneAttribute(): ?string
     {
-        return $this->attributes['mobile'] ?? null;
+        $mobile = trim((string) ($this->attributes['mobile'] ?? ''));
+        if ($mobile !== '') {
+            return $mobile;
+        }
+        $phone = trim((string) ($this->attributes['phone'] ?? ''));
+
+        return $phone !== '' ? $phone : null;
     }
 
     public static function listQuery()
@@ -46,6 +52,6 @@ class Lead extends Model
             ->leftJoin('vtiger_leadaddress as la', 'vtiger_leaddetails.leadid', '=', 'la.leadaddressid')
             ->where('e.deleted', 0)
             ->whereIn('e.setype', ['Leads', 'Lead'])
-            ->select('vtiger_leaddetails.*', 'e.createdtime', 'e.modifiedtime', 'e.smownerid', 'la.mobile');
+            ->select('vtiger_leaddetails.*', 'e.createdtime', 'e.modifiedtime', 'e.smownerid', 'la.mobile', 'la.phone');
     }
 }

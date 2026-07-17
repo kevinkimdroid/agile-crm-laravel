@@ -3,11 +3,24 @@
 @section('title', ($ticket->title ?? 'Ticket') . ' — Ticket')
 
 @section('content')
+    @php
+        $ticketPolicy = pick_policy_excluding_pin($ticket->cf_860 ?? null, $ticket->cf_856 ?? null, $ticket->cf_872 ?? null);
+        if (! $ticketPolicy && ! empty($ticket->description ?? '') && preg_match('/Related policy:\s*([^\n]+)/i', (string) $ticket->description, $m)) {
+            $p = trim($m[1]);
+            $cid = (string) ($ticket->contact_id ?? '');
+            if ($p !== '' && $p !== $cid && ! looks_like_kra_pin($p) && ! looks_like_client_id($p)) {
+                $ticketPolicy = $p;
+            }
+        }
+    @endphp
 <nav class="breadcrumb-nav mb-3">
     <a href="{{ route('tickets.index') }}" class="text-muted small text-decoration-none">Tickets</a>
     <span class="text-muted mx-2">/</span>
-    @if($ticket->contact_id ?? null)
-    <a href="{{ route('contacts.show', $ticket->contact_id) }}?tab=tickets" class="text-muted small text-decoration-none">Client</a>
+    @if($ticketPolicy)
+    <a href="{{ route('support.clients.show', ['policy' => $ticketPolicy, 'tab' => 'tickets']) }}" class="text-muted small text-decoration-none">Client</a>
+    <span class="text-muted mx-2">/</span>
+    @elseif($ticket->contact_id ?? null)
+    <a href="{{ route('contacts.show', $ticket->contact_id) }}?tab=tickets" class="text-muted small text-decoration-none">Prospect</a>
     <span class="text-muted mx-2">/</span>
     @endif
     <span class="text-dark small fw-semibold">{{ $ticket->ticket_no ?? $ticket->ticketid }}</span>
@@ -21,14 +34,23 @@
             @if($ticket->priority ?? null)
             <span class="text-muted small">• {{ $ticket->priority }} priority</span>
             @endif
+            @if($ticketPolicy)
+            <span class="text-muted small font-monospace">• {{ $ticketPolicy }}</span>
+            @endif
         </div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        @if($ticket->contact_id ?? null)
-        <a href="{{ route('contacts.show', $ticket->contact_id) }}?tab=tickets" class="btn btn-sm btn-outline-secondary">
+        @if($ticketPolicy)
+        <a href="{{ route('support.clients.show', ['policy' => $ticketPolicy, 'tab' => 'tickets']) }}" class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-person me-1"></i> View Client
         </a>
-        <a href="{{ route('support.sms-notifier', ['contact_id' => $ticket->contact_id]) }}" class="btn btn-sm btn-outline-primary">
+        @elseif($ticket->contact_id ?? null)
+        <a href="{{ route('contacts.show', $ticket->contact_id) }}?tab=tickets" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-person me-1"></i> View Prospect
+        </a>
+        @endif
+        @if($ticket->contact_id ?? null)
+        <a href="{{ route('support.sms-notifier', array_filter(['contact_id' => $ticket->contact_id, 'return_policy' => $ticketPolicy])) }}" class="btn btn-sm btn-outline-primary">
             <i class="bi bi-chat-dots me-1"></i> Send SMS
         </a>
         @endif

@@ -39,6 +39,7 @@ class SupportClientEmailController extends Controller
             $presetName = trim((string) $request->get('client_name')) ?: $presetName;
         }
         $presetPolicy = $request->filled('policy') ? trim((string) $request->get('policy')) : null;
+        $returnPolicy = $request->filled('return_policy') ? trim((string) $request->get('return_policy')) : $presetPolicy;
 
         $hideCrmPicker = ($presetContact && $presetEmail) || ($presetContact === null && $queryEmailValid);
         $customers = $hideCrmPicker
@@ -52,6 +53,7 @@ class SupportClientEmailController extends Controller
             'email' => $queryEmailValid ? $queryEmail : null,
             'client_name' => $request->filled('client_name') ? trim((string) $request->get('client_name')) : null,
             'policy' => $presetPolicy,
+            'return_policy' => $returnPolicy,
         ], fn ($v) => $v !== null && $v !== '');
 
         return view('support.client-email', [
@@ -60,6 +62,7 @@ class SupportClientEmailController extends Controller
             'presetEmail' => $presetEmail,
             'presetName' => $presetName,
             'presetPolicy' => $presetPolicy,
+            'returnPolicy' => $returnPolicy,
             'composeContext' => $composeContext,
         ]);
     }
@@ -80,18 +83,35 @@ class SupportClientEmailController extends Controller
             $validated['body']
         );
 
+        $returnPolicy = $request->filled('compose_return_policy')
+            ? trim((string) $request->get('compose_return_policy'))
+            : ($request->filled('compose_policy') ? trim((string) $request->get('compose_policy')) : null);
+
         $redirectQuery = array_filter([
             'contact_id' => $request->filled('compose_contact_id') ? (int) $request->get('compose_contact_id') : null,
             'ticket_id' => $request->filled('compose_ticket_id') ? (int) $request->get('compose_ticket_id') : null,
             'email' => $request->filled('compose_email') ? trim((string) $request->get('compose_email')) : null,
             'client_name' => $request->filled('compose_client_name') ? trim((string) $request->get('compose_client_name')) : null,
             'policy' => $request->filled('compose_policy') ? trim((string) $request->get('compose_policy')) : null,
+            'return_policy' => $returnPolicy,
         ], fn ($v) => $v !== null && $v !== '');
 
         if (! $ok) {
+            $detail = $mail->getLastError();
+            $msg = 'Could not send the email. Check mail configuration (Microsoft Graph or SMTP) and logs.';
+            if ($detail) {
+                $msg .= ' ' . $detail;
+            }
+
             return redirect()->route('support.email-client', $redirectQuery)
                 ->withInput()
-                ->with('error', 'Could not send the email. Check mail configuration (Microsoft Graph or SMTP) and logs.');
+                ->with('error', $msg);
+        }
+
+        if ($returnPolicy) {
+            return redirect()
+                ->route('support.clients.show', ['policy' => $returnPolicy, 'tab' => 'emails'])
+                ->with('success', 'Email sent to ' . $validated['to_email'] . '.');
         }
 
         return redirect()->route('support.email-client', $redirectQuery)

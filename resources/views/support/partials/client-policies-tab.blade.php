@@ -1,7 +1,7 @@
 <div class="card contact-detail-card mb-4">
     <div class="card-body p-0">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 p-3 border-bottom bg-light">
-            <h6 class="text-uppercase small fw-bold text-muted mb-0">Other policies</h6>
+            <h6 class="text-uppercase small fw-bold text-muted mb-0">My policies</h6>
             <a href="{{ route('support.serve-client', ['search' => $clientPolicy ?? $policy ?? '']) }}" class="btn btn-outline-primary btn-sm">
                 <i class="bi bi-search me-1"></i> Search more in ERP
             </a>
@@ -15,7 +15,7 @@
         @elseif(empty($policies ?? []))
         <div class="p-5 text-center text-muted">
             <i class="bi bi-box display-6 d-block mb-2 opacity-50"></i>
-            <p class="mb-2">No other policies found for this client in the ERP.</p>
+            <p class="mb-2">No policies found for this client in the ERP.</p>
             <a href="{{ route('support.serve-client', ['search' => $clientPolicy ?? $policy ?? '']) }}" class="btn btn-primary btn-sm">Search in Serve Client</a>
         </div>
         @else
