@@ -54,8 +54,8 @@
                 <li><code>status</code>: {{ collect($statuses)->map(fn($l,$k) => "$k ($l)")->implode(', ') }}</li>
                 <li><code>date_of_birth</code>: any clear date, e.g. <code>1990-05-14</code></li>
                 <li><code>gender</code>: Male / Female (m / f accepted)</li>
-                <li><code>policy_no</code>: leave blank — auto-generated. Existing numbers are skipped.</li>
-                <li>Comma, semicolon or tab delimited; Excel files export fine.</li>
+                <li><code>policy_no</code>: include for POC policies (e.g. <code>KOL-IND-10001</code>). Blank = auto-generated. Existing numbers are skipped.</li>
+                <li>Upload <strong>CSV</strong> (Excel: File → Save As → CSV UTF-8).</li>
             </ul>
 
             <details class="mb-3">
@@ -68,7 +68,11 @@
                 </div>
             </details>
 
-            <a href="{{ route('support.clients.import.template') }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-download me-1"></i>Download template</a>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{{ route('support.clients.import.template') }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-download me-1"></i>Download sample CSV (Excel)</a>
+                <a href="{{ asset('samples/clients-import-sample.csv') }}" class="btn btn-sm btn-outline-secondary" download><i class="bi bi-file-earmark-spreadsheet me-1"></i>Static sample file</a>
+            </div>
+            <p class="text-muted small mt-2 mb-0">Sample includes 10 clients across Individual, Group, Mortgage and Pension with policy numbers for ticket testing.</p>
         </div>
     </div>
 </div>

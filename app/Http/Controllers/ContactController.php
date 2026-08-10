@@ -248,9 +248,23 @@ class ContactController extends Controller
         }
 
         if ($tab === 'policies') {
-            $result = $this->erp->getPoliciesForContact($contact);
-            $policies = $result['data'] ?? [];
-            $policiesError = $result['error'] ?? null;
+            if (! config('erp.enabled', true)) {
+                $policies = [];
+                $policiesError = null;
+                if (! empty($contact->policy_number)) {
+                    $policies = [[
+                        'policy_no' => $contact->policy_number,
+                        'POLICY_NO' => $contact->policy_number,
+                        'name' => $contact->full_name ?? null,
+                        'phone' => $contact->mobile ?? $contact->phone ?? null,
+                        'email' => $contact->email ?? null,
+                    ]];
+                }
+            } else {
+                $result = $this->erp->getPoliciesForContact($contact);
+                $policies = $result['data'] ?? [];
+                $policiesError = $result['error'] ?? null;
+            }
         }
 
         if ($tab === 'tickets') {

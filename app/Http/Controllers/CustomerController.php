@@ -142,18 +142,7 @@ class CustomerController extends Controller
             'email', 'phone', 'address', 'city', 'postal_code', 'occupation',
             'product', 'intermediary', 'system', 'status', 'policy_no',
         ];
-        $samples = [
-            [
-                'Jane', 'Wanjiku', '12345678', 'A001234567X', '1990-05-14', 'Female',
-                'jane@example.com', '0712345678', 'Kimathi St', 'Nairobi', '00100', 'Teacher',
-                'Orient Endowment', 'Grace Njeri (AG-1001)', 'individual', 'A', '',
-            ],
-            [
-                'Peter', 'Omondi', '23456789', 'A002345678Y', '1985-11-02', 'Male',
-                'peter@example.com', '0722333444', 'Moi Ave', 'Mombasa', '80100', 'Business Owner',
-                'Orient Group Mortgage', 'Direct / Head Office (DIR-0000)', 'mortgage', 'A', '',
-            ],
-        ];
+        $samples = $this->sampleClientImportRows();
 
         return response()->streamDownload(function () use ($headers, $samples) {
             $out = fopen('php://output', 'w');
@@ -163,7 +152,28 @@ class CustomerController extends Controller
                 fputcsv($out, $sample);
             }
             fclose($out);
-        }, 'clients-import-template.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+        }, 'clients-import-sample.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * Sample CSV rows for client import testing (Excel-friendly).
+     *
+     * @return list<list<string>>
+     */
+    private function sampleClientImportRows(): array
+    {
+        return [
+            ['Amina', 'Hassan', '29876543', 'A012345678B', '1988-03-12', 'Female', 'amina.hassan@orient-demo.ke', '0711111001', 'Ngong Road', 'Nairobi', '00100', 'Teacher', 'Orient Endowment Plan', 'Grace Njeri (AG-1001)', 'individual', 'A', 'KOL-IND-10001'],
+            ['Brian', 'Otieno', '28765432', 'A023456789C', '1992-07-21', 'Male', 'brian.otieno@orient-demo.ke', '0711111002', 'Tom Mboya St', 'Kisumu', '40100', 'Engineer', 'Orient Educator', 'Direct / Head Office (DIR-0000)', 'individual', 'A', 'KOL-IND-10002'],
+            ['Carol', 'Wambui', '27654321', 'A034567890D', '1985-11-05', 'Female', 'carol.wambui@orient-demo.ke', '0711111003', 'Moi Avenue', 'Mombasa', '80100', 'Accountant', 'Orient 4 Life', 'Grace Njeri (AG-1001)', 'individual', 'A', 'KOL-IND-10003'],
+            ['David', 'Kiptoo', '26543210', 'A045678901E', '1979-01-30', 'Male', 'david.kiptoo@orient-demo.ke', '0722222001', 'Kenyatta Ave', 'Nakuru', '20100', 'Business Owner', 'Orient Group Life', 'Agency East (AG-2200)', 'group', 'A', 'KOL-GRP-20001'],
+            ['Esther', 'Nyambura', '25432109', 'A056789012F', '1990-09-18', 'Female', 'esther.nyambura@orient-demo.ke', '0722222002', 'Industrial Area', 'Nairobi', '00500', 'Civil Servant', 'Group Last Expense', 'Agency East (AG-2200)', 'group', 'A', 'KOL-GRP-20002'],
+            ['Francis', 'Mwangi', '24321098', 'A067890123G', '1983-04-09', 'Male', 'francis.mwangi@orient-demo.ke', '0733333001', 'Thika Road', 'Thika', '01000', 'Farmer', 'Orient Group Mortgage', 'Mortgage Desk (AG-3300)', 'mortgage', 'A', 'KOL-MOR-30001'],
+            ['Grace', 'Achieng', '23210987', 'A078901234H', '1995-12-01', 'Female', 'grace.achieng@orient-demo.ke', '0733333002', 'Kisii Town', 'Kisii', '40200', 'Medical Practitioner', 'Orient Group Mortgage', 'Mortgage Desk (AG-3300)', 'mortgage', 'A', 'KOL-MOR-30002'],
+            ['Henry', 'Mutua', '22109876', 'A089012345J', '1975-06-22', 'Male', 'henry.mutua@orient-demo.ke', '0744444001', 'Upper Hill', 'Nairobi', '00200', 'Accountant', 'Orient Personal Retirement Plan', 'Pension Desk (AG-4400)', 'group_pension', 'A', 'KOL-PEN-40001'],
+            ['Irene', 'Chebet', '21098765', 'A090123456K', '1987-08-14', 'Female', 'irene.chebet@orient-demo.ke', '0744444002', 'Eldoret CBD', 'Eldoret', '30100', 'Teacher', 'Orient Umbrella Plan', 'Pension Desk (AG-4400)', 'group_pension', 'A', 'KOL-PEN-40002'],
+            ['John', 'Kamau', '20987654', 'A101234567L', '1991-02-28', 'Male', 'john.kamau@orient-demo.ke', '0711111004', 'Westlands', 'Nairobi', '00600', 'Engineer', 'Orient Smart Asset', 'Grace Njeri (AG-1001)', 'individual', 'FL', 'KOL-IND-10004'],
+        ];
     }
 
     /**
@@ -413,6 +423,130 @@ class CustomerController extends Controller
     }
 
     /**
+     * Locally-created POC clients — same tab shell as ERP/prospect screens.
+     */
+    protected function showLocalClient(Request $request, Client $client, bool $fromServeClient = false): View
+    {
+        $policy = $client->policy_no;
+        $tab = (string) $request->get('tab', 'summary');
+        $allowedTabs = ['summary', 'details', 'updates', 'premiums', 'mpesa', 'tickets', 'emails', 'documents', 'policies', 'calls', 'sms'];
+        if (! in_array($tab, $allowedTabs, true)) {
+            $tab = 'summary';
+        }
+        if ($tab === 'mpesa') {
+            $tab = 'premiums';
+        }
+
+        $contact = null;
+        try {
+            $contact = $this->crm->findContactByPolicyNumber($policy);
+        } catch (\Throwable $e) {
+            Log::debug('Local client CRM contact lookup failed', ['policy' => $policy, 'error' => $e->getMessage()]);
+        }
+
+        $tickets = collect();
+        $ticketsCount = 0;
+        $activities = collect();
+        $activitiesCount = 0;
+        $commentsCount = 0;
+        $emails = collect();
+        $emailsCount = 0;
+        $smsLogs = collect();
+        $smsCount = 0;
+        $calls = collect();
+
+        if ($contact) {
+            $contactId = (int) $contact->contactid;
+            try {
+                if ($tab === 'tickets') {
+                    $tickets = $this->crm->getTicketsForContact($contactId, 50);
+                    $ticketsCount = $tickets->count();
+                } else {
+                    $ticketsCount = $this->crm->getTicketsForContactCount($contactId);
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
+            try {
+                $activities = collect($this->crm->getContactActivities($contactId, $tab === 'updates' ? 50 : 5) ?? []);
+                $activitiesCount = $activities->count();
+            } catch (\Throwable $e) {
+                // ignore
+            }
+            try {
+                if ($tab === 'sms') {
+                    $smsLogs = $this->crm->getSmsForContact($contactId, 50);
+                    $smsCount = $this->crm->getSmsForContactCount($contactId);
+                } else {
+                    $smsCount = $this->crm->getSmsForContactCount($contactId);
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
+        } elseif ($tab === 'sms' && $client->phone) {
+            try {
+                $digits = preg_replace('/\D+/', '', (string) $client->phone);
+                $smsLogs = SmsLog::query()
+                    ->where(function ($q) use ($client, $digits, $policy) {
+                        $q->where('erp_policy_no', $policy);
+                        if ($digits !== '') {
+                            $q->orWhere('phone', 'like', '%'.substr($digits, -9).'%');
+                        }
+                    })
+                    ->orderByDesc('id')
+                    ->limit(50)
+                    ->get();
+                $smsCount = $smsLogs->count();
+            } catch (\Throwable $e) {
+                // ignore
+            }
+        }
+
+        $mpesaService = app(MpesaStkPushService::class);
+        $mpesaConfigured = $mpesaService->isConfigured();
+        $mpesaSandboxSimulate = $mpesaService->isSandboxSimulate();
+        $mpesaTransactions = collect();
+        $mpesaCount = 0;
+        if ($mpesaConfigured && \Illuminate\Support\Facades\Schema::hasTable('mpesa_stk_transactions')) {
+            $mpesaQuery = MpesaStkTransaction::query()->where('policy_number', $policy)->orderByDesc('id');
+            $mpesaCount = (clone $mpesaQuery)->count();
+            $mpesaTransactions = $mpesaQuery->limit($tab === 'premiums' ? 50 : 8)->get();
+        }
+
+        $clientShowBase = array_filter([
+            'policy' => $policy,
+            'system' => $client->system ?: null,
+            'from' => $fromServeClient ? 'serve-client' : null,
+        ]);
+
+        return view('support.client-local-show', [
+            'client' => $client,
+            'policy' => $policy,
+            'contact' => $contact,
+            'activeTab' => $tab,
+            'fromServeClient' => $fromServeClient,
+            'clientShowBase' => $clientShowBase,
+            'tickets' => $tickets,
+            'ticketsCount' => $ticketsCount,
+            'activities' => $activities,
+            'activitiesCount' => $activitiesCount,
+            'commentsCount' => $commentsCount,
+            'emails' => $emails,
+            'emailsCount' => $emailsCount,
+            'smsLogs' => $smsLogs,
+            'smsCount' => $smsCount,
+            'calls' => $calls,
+            'mpesaConfigured' => $mpesaConfigured,
+            'mpesaSandboxSimulate' => $mpesaSandboxSimulate,
+            'mpesaTransactions' => $mpesaTransactions,
+            'mpesaCount' => $mpesaCount,
+            'premiumsCount' => $mpesaCount,
+            'documentsCount' => 0,
+            'policiesCount' => 1,
+        ]);
+    }
+
+    /**
      * Show client details by policy number (ERP clients) or redirect to contact (CRM).
      */
     /** @return \Illuminate\View\View|\Illuminate\Http\RedirectResponse */
@@ -440,7 +574,7 @@ class CustomerController extends Controller
                     ]);
                 }
 
-                return view('support.client-local-show', ['client' => $localClient]);
+                return $this->showLocalClient($request, $localClient, $fromServeClient);
             }
         }
 

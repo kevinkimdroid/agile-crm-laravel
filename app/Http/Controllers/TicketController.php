@@ -287,6 +287,42 @@ class TicketController extends Controller
         }
         $users = safe_cache_remember('ticket_assign_users', 300, fn () => $crm->getActiveUsers());
 
+        $presetClientDetails = null;
+        if ($contactId) {
+            $presetClientDetails = $this->clientSnapshotForContact($contactId);
+            if ($presetPolicy && empty($presetClientDetails['policy_number'])) {
+                $presetClientDetails['policy_number'] = $presetPolicy;
+            }
+        } elseif ($presetPolicy && class_exists(\App\Models\Client::class) && \App\Models\Client::tableExists()) {
+            $local = \App\Models\Client::where('policy_no', $presetPolicy)->first();
+            if ($local) {
+                $system = (string) ($local->system ?: '');
+                $presetClientDetails = [
+                    'contact_id' => null,
+                    'policy_number' => $presetPolicy,
+                    'full_name' => $local->fullName(),
+                    'phone' => $local->phone ?: '',
+                    'mobile' => $local->phone ?: '',
+                    'email' => $local->email ?: '',
+                    'id_number' => $local->id_no ?: '',
+                    'kra_pin' => $local->kra_pin ?: '',
+                    'title' => '',
+                    'department' => '',
+                    'leadsource' => '',
+                    'city' => $local->city ?: '',
+                    'address' => $local->address ?: '',
+                    'product' => $local->product ?: '',
+                    'system' => $system,
+                    'system_label' => \App\Models\Client::SYSTEMS[$system] ?? $system,
+                    'status' => \App\Models\Client::STATUSES[$local->status] ?? ($local->status ?: ''),
+                    'intermediary' => $local->intermediary ?: '',
+                    'birthday' => $local->date_of_birth?->format('Y-m-d') ?: '',
+                    'open_tickets' => 0,
+                    'source' => 'local',
+                ];
+            }
+        }
+
         return view('tickets.create', [
             'clients' => $clients,
             'accounts' => $accounts,
@@ -300,6 +336,7 @@ class TicketController extends Controller
             'presetOrganizationId' => $request->get('organization_id'),
             'presetTitle' => $presetTitle,
             'presetDescription' => $presetDescription,
+            'presetClientDetails' => $presetClientDetails,
             'fromServeClient' => $fromServeClient,
             'fromMailManager' => $fromMailManager,
             'fromLead' => $fromLead,
@@ -521,12 +558,19 @@ class TicketController extends Controller
                 // Table may not exist yet
             }
         }
+        $tab = (string) request()->get('tab', 'summary');
+        $allowedTabs = ['summary', 'details', 'updates', 'kb'];
+        if (! in_array($tab, $allowedTabs, true)) {
+            $tab = 'summary';
+        }
+
         return view('tickets.show', [
             'ticket' => $ticket,
             'feedback' => $feedback,
             'comments' => $comments,
             'reassignments' => $reassignments,
             'canCloseTickets' => $this->sla->canUserCloseThisTicket($id),
+            'activeTab' => $tab,
         ]);
     }
 
@@ -559,9 +603,9 @@ class TicketController extends Controller
                 'author_name' => $authorName,
                 'body' => $validated['body'],
             ]);
-            return redirect()->route('tickets.show', $ticket)->with('success', 'Comment added.');
+            return redirect()->route('tickets.show', ['ticket' => $ticket, 'tab' => 'updates'])->with('success', 'Comment added.');
         } catch (\Throwable $e) {
-            return redirect()->route('tickets.show', $ticket)->with('error', 'Failed to add comment: ' . $e->getMessage());
+            return redirect()->route('tickets.show', ['ticket' => $ticket, 'tab' => 'updates'])->with('error', 'Failed to add comment: ' . $e->getMessage());
         }
     }
 
@@ -1073,6 +1117,8 @@ class TicketController extends Controller
                         'id' => $id,
                         'name' => trim(($c->firstname ?? '') . ' ' . ($c->lastname ?? '')) ?: 'Contact #' . $id,
                         'policy_number' => $c->policy_number ?? null,
+                        'phone' => trim((string) ($c->mobile ?? $c->phone ?? '')) ?: null,
+                        'email' => personal_email_only($c->email ?? null) ?: ($c->email ?? null),
                     ];
                 }
             }
@@ -1108,6 +1154,65 @@ class TicketController extends Controller
                 }
             }
 
+            // Local POC clients (with policies) — ensure a CRM contact exists for ticket linking
+            if (class_exists(\App\Models\Client::class) && \App\Models\Client::tableExists()) {
+                try {
+                    $localQuery = \App\Models\Client::query()->orderByDesc('id');
+                    if (! $browse && $q !== '') {
+                        $like = '%'.$q.'%';
+                        $localQuery->where(function ($query) use ($like) {
+                            $query->where('first_name', 'like', $like)
+                                ->orWhere('last_name', 'like', $like)
+                                ->orWhere('policy_no', 'like', $like)
+                                ->orWhere('phone', 'like', $like)
+                                ->orWhere('email', 'like', $like)
+                                ->orWhere('id_no', 'like', $like);
+                        });
+                    }
+                    $locals = $localQuery->limit($browse ? min(40, $limit) : min(30, $limit))->get();
+                    foreach ($locals as $local) {
+                        $policy = trim((string) $local->policy_no);
+                        if ($policy === '') {
+                            continue;
+                        }
+                        $contact = $this->crm->findContactByPolicyNumber($policy);
+                        $contactId = $contact
+                            ? (int) $contact->contactid
+                            : $this->crm->createContactFromErpClient([
+                                'first_name' => $local->first_name,
+                                'last_name' => $local->last_name,
+                                'email' => $local->email,
+                                'phone' => $local->phone,
+                                'mobile' => $local->phone,
+                                'policy_number' => $policy,
+                                'policy_no' => $policy,
+                                'id_no' => $local->id_no,
+                                'product' => $local->product,
+                            ]);
+                        if (! $contactId || isset($seen[$contactId])) {
+                            continue;
+                        }
+                        $seen[$contactId] = true;
+                        $systemLabel = \App\Models\Client::SYSTEMS[$local->system] ?? $local->system;
+                        $name = $local->fullName();
+                        $label = $name.' ('.$policy.')';
+                        if ($systemLabel) {
+                            $label .= ' — '.$systemLabel;
+                        }
+                        $results[] = [
+                            'id' => $contactId,
+                            'name' => $label,
+                            'policy_number' => $policy,
+                            'phone' => $local->phone ?: null,
+                            'email' => $local->email ?: null,
+                            'is_client' => true,
+                        ];
+                    }
+                } catch (\Throwable $e) {
+                    // keep CRM results
+                }
+            }
+
             return array_slice(array_values($results), 0, $limit);
         });
         return response()->json($data);
@@ -1118,9 +1223,117 @@ class TicketController extends Controller
      */
     public function contactPolicy(int $contactId): JsonResponse
     {
-        $policy = $this->crm->getContactPolicyNumber($contactId);
+        return response()->json($this->clientSnapshotForContact($contactId));
+    }
 
-        return response()->json(['policy_number' => $policy ?: '']);
+    /**
+     * Client/prospect details for ticket create auto-fill.
+     *
+     * @return array<string, mixed>
+     */
+    protected function clientSnapshotForContact(int $contactId): array
+    {
+        $empty = [
+            'contact_id' => $contactId,
+            'policy_number' => '',
+            'full_name' => '',
+            'phone' => '',
+            'mobile' => '',
+            'email' => '',
+            'id_number' => '',
+            'kra_pin' => '',
+            'title' => '',
+            'department' => '',
+            'leadsource' => '',
+            'city' => '',
+            'address' => '',
+            'product' => '',
+            'system' => '',
+            'system_label' => '',
+            'status' => '',
+            'intermediary' => '',
+            'birthday' => '',
+            'open_tickets' => 0,
+            'source' => 'crm',
+        ];
+
+        if ($contactId <= 0) {
+            return $empty;
+        }
+
+        $contact = null;
+        try {
+            $contact = $this->crm->getContact($contactId) ?? $this->crm->getContactById($contactId);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        $policy = '';
+        try {
+            $policy = trim((string) ($this->crm->getContactPolicyNumber($contactId) ?: ''));
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        $snapshot = $empty;
+        if ($contact) {
+            $policy = $policy !== '' ? $policy : trim((string) ($contact->policy_number ?? ''));
+            $snapshot = array_merge($snapshot, [
+                'policy_number' => $policy,
+                'full_name' => trim((string) ($contact->full_name ?? (trim(($contact->firstname ?? '').' '.($contact->lastname ?? ''))))) ?: '',
+                'phone' => trim((string) ($contact->phone ?? '')),
+                'mobile' => trim((string) ($contact->mobile ?? $contact->homephone ?? '')),
+                'email' => trim((string) (personal_email_only($contact->email ?? null) ?? $contact->email ?? '')),
+                'id_number' => trim((string) ($contact->idNumber ?? $contact->id_number ?? $contact->cf_856 ?? '')),
+                'kra_pin' => trim((string) ($contact->kra_pin ?? $contact->pin ?? $contact->cf_852 ?? '')),
+                'title' => trim((string) ($contact->title ?? '')),
+                'department' => trim((string) ($contact->department ?? '')),
+                'leadsource' => trim((string) ($contact->leadsource ?? '')),
+                'city' => trim((string) ($contact->mailingcity ?? '')),
+                'address' => trim((string) ($contact->mailingstreet ?? '')),
+                'birthday' => ! empty($contact->birthday) ? (string) $contact->birthday : '',
+                'source' => 'crm',
+            ]);
+        } else {
+            $snapshot['policy_number'] = $policy;
+        }
+
+        // Enrich from local POC clients table when policy matches.
+        if ($policy !== '' && class_exists(\App\Models\Client::class) && \App\Models\Client::tableExists()) {
+            try {
+                $local = \App\Models\Client::where('policy_no', $policy)->first();
+                if ($local) {
+                    $system = (string) ($local->system ?: '');
+                    $snapshot = array_merge($snapshot, array_filter([
+                        'full_name' => $snapshot['full_name'] !== '' ? $snapshot['full_name'] : $local->fullName(),
+                        'phone' => $snapshot['phone'] !== '' ? $snapshot['phone'] : ($local->phone ?: ''),
+                        'mobile' => $snapshot['mobile'] !== '' ? $snapshot['mobile'] : ($local->phone ?: ''),
+                        'email' => $snapshot['email'] !== '' ? $snapshot['email'] : ($local->email ?: ''),
+                        'id_number' => $snapshot['id_number'] !== '' ? $snapshot['id_number'] : ($local->id_no ?: ''),
+                        'kra_pin' => $snapshot['kra_pin'] !== '' ? $snapshot['kra_pin'] : ($local->kra_pin ?: ''),
+                        'city' => $snapshot['city'] !== '' ? $snapshot['city'] : ($local->city ?: ''),
+                        'address' => $snapshot['address'] !== '' ? $snapshot['address'] : ($local->address ?: ''),
+                        'product' => $local->product ?: '',
+                        'system' => $system,
+                        'system_label' => \App\Models\Client::SYSTEMS[$system] ?? $system,
+                        'status' => \App\Models\Client::STATUSES[$local->status] ?? ($local->status ?: ''),
+                        'intermediary' => $local->intermediary ?: '',
+                        'birthday' => $snapshot['birthday'] !== '' ? $snapshot['birthday'] : ($local->date_of_birth?->format('Y-m-d') ?: ''),
+                        'source' => $snapshot['full_name'] !== '' ? $snapshot['source'] : 'local',
+                    ], fn ($v) => $v !== null && $v !== ''));
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
+        }
+
+        try {
+            $snapshot['open_tickets'] = (int) $this->crm->getTicketsForContactCount($contactId, 'Open');
+        } catch (\Throwable $e) {
+            $snapshot['open_tickets'] = 0;
+        }
+
+        return $snapshot;
     }
 
     /**

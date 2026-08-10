@@ -109,12 +109,12 @@ class AppServiceProvider extends ServiceProvider
                 $view->with('pbxCanCall', false);
                 $view->with('pbxDefaultExtension', '');
                 $allowed = $view->getData()['allowedModules'] ?? [];
-            $view->with('can', function ($k) use ($allowed) {
-                if ($k === 'finance.payments') {
-                    return false;
-                }
-                return empty($allowed) || in_array($k, $allowed);
-            });
+                $view->with('can', function ($k) use ($allowed) {
+                    if (str_starts_with((string) $k, 'finance.') && ! config('modules.finance_enabled', true)) {
+                        return false;
+                    }
+                    return empty($allowed) || in_array($k, $allowed);
+                });
                 return;
             }
 
@@ -160,6 +160,10 @@ class AppServiceProvider extends ServiceProvider
 
             $allowed = $view->getData()['allowedModules'] ?? [];
             $view->with('can', function ($k) use ($allowed, $user) {
+                if (str_starts_with((string) $k, 'finance.') && ! config('modules.finance_enabled', true)) {
+                    return false;
+                }
+
                 $isAllowedByModule = empty($allowed) || in_array($k, $allowed, true);
                 if (!$isAllowedByModule) {
                     return false;

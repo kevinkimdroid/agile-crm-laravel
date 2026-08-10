@@ -402,47 +402,34 @@
     </div>
     @endif
 
-    {{-- Policies tab content (from ERP) --}}
+    {{-- Policies tab content --}}
     @if($tab === 'policies')
+    @php
+        $erpDisabled = ! config('erp.enabled', true);
+        $policiesErrorIsDisabled = $erpDisabled
+            || str_contains((string) ($policiesError ?? ''), 'ERP integration is disabled');
+    @endphp
     <div class="mb-4">
         <div class="card contact-detail-card">
             <div class="card-body p-0">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 p-3 border-bottom bg-light">
                     <h6 class="text-uppercase small fw-bold text-muted mb-0">Policies</h6>
+                    @if(! $erpDisabled)
                     <a href="{{ route('support.serve-client') }}" class="btn btn-outline-primary btn-sm">
                         <i class="bi bi-search me-1"></i> Search more in ERP
                     </a>
+                    @endif
                 </div>
-                @if($policiesError ?? null)
+                @if(($policiesError ?? null) && ! $policiesErrorIsDisabled)
                 <div class="p-4">
                     <div class="alert alert-warning mb-0">
                         <i class="bi bi-exclamation-triangle me-2"></i>{{ $policiesError }}
-                        @if(str_contains($policiesError, 'ORA-01017') || str_contains($policiesError, 'invalid username/password'))
-                        <p class="mb-1 mt-2 small fw-semibold">Oracle login denied (ORA-01017). Check:</p>
-                        <ul class="mb-0 small ps-3">
-                            <li><strong>ERP_USERNAME</strong> and <strong>ERP_PASSWORD</strong> in <code>.env</code> — verify with your DBA or test in SQL*Plus/SQL Developer.</li>
-                            <li>If the password contains <code>#</code> or special chars, use <code>ERP_CREDENTIALS_FILE</code> (JSON) instead — see <code>config/erp-credentials.php</code>.</li>
-                            <li>Account may be locked or password expired on the Oracle server.</li>
-                        </ul>
-                        <p class="mb-0 mt-2 small">To temporarily disable ERP: set <code>ERP_ENABLED=false</code> in <code>.env</code>.</p>
-                        @elseif(str_contains($policiesError, 'Lost connection') || str_contains($policiesError, 'no reconnector'))
-                        <p class="mb-1 mt-2 small fw-semibold">Oracle connection lost. This usually means:</p>
-                        <ul class="mb-0 small ps-3">
-                            <li>Network unreachable — verify the app can reach <code>ERP_HOST</code> (<code>10.1.4.101</code>) and <code>ERP_PORT</code> (<code>18032</code>).</li>
-                            <li>Oracle closed idle connections — try refreshing the page; the app will retry once.</li>
-                            <li>Firewall/VPN — ensure traffic to the Oracle server is allowed.</li>
-                        </ul>
-                        <p class="mb-0 mt-2 small">To temporarily disable ERP: set <code>ERP_ENABLED=false</code> in <code>.env</code>.</p>
-                        @else
-                        <p class="mb-0 mt-2 small">Ensure ERP credentials and <code>ERP_CLIENTS_TABLE</code> are configured.</p>
-                        @endif
                     </div>
                 </div>
                 @elseif(empty($policies ?? []))
                 <div class="p-5 text-center text-muted">
                     <i class="bi bi-box display-6 d-block mb-2 opacity-50"></i>
-                    <p class="mb-2">No policies found for this client in the ERP.</p>
-                    <a href="{{ route('support.serve-client') }}" class="btn btn-primary btn-sm">Search in Serve Client</a>
+                    <p class="mb-0">{{ $erpDisabled ? 'No policy number on this prospect yet.' : 'No policies found for this prospect.' }}</p>
                 </div>
                 @else
                 <div class="table-responsive">

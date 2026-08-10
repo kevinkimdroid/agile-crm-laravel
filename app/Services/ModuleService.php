@@ -77,22 +77,33 @@ class ModuleService
             $allKeys = array_keys(config('modules.app_to_vtiger', []));
             $rows = DB::table('app_modules')->pluck('enabled', 'module_key')->toArray();
             if (empty($rows)) {
-                return $allKeys;
-            }
-            $alwaysOn = ['dashboard', 'marketing', 'support', 'tools', 'settings', 'settings.crm', 'settings.manage-users', 'compliance.complaints'];
-            $enabled = [];
-            foreach ($allKeys as $key) {
-                if (in_array($key, $alwaysOn, true)) {
-                    $enabled[] = $key;
-                } elseif (array_key_exists($key, $rows)) {
-                    if ($rows[$key]) {
+                $enabled = $allKeys;
+            } else {
+                $alwaysOn = ['dashboard', 'marketing', 'support', 'tools', 'settings', 'settings.crm', 'settings.manage-users', 'compliance.complaints'];
+                $enabled = [];
+                foreach ($allKeys as $key) {
+                    if (in_array($key, $alwaysOn, true)) {
                         $enabled[] = $key;
+                    } elseif (array_key_exists($key, $rows)) {
+                        if ($rows[$key]) {
+                            $enabled[] = $key;
+                        }
+                    } else {
+                        $enabled[] = $key; // not in DB = default on
                     }
-                } else {
-                    $enabled[] = $key; // not in DB = default on
                 }
+                $enabled = array_values(array_unique($enabled));
             }
-            return array_values(array_unique($enabled));
+
+            // Global kill-switch for Finance (POC / no ERP finance connectivity)
+            if (! config('modules.finance_enabled', true)) {
+                $enabled = array_values(array_filter(
+                    $enabled,
+                    fn ($key) => ! str_starts_with((string) $key, 'finance.')
+                ));
+            }
+
+            return $enabled;
         });
     }
 

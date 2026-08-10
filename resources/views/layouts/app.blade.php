@@ -344,7 +344,7 @@
                     @endif
                 </div>
                 @endif
-                @if($can('finance.payments') || $can('finance.receipts') || $can('marketing.campaigns') || $can('marketing.social-media') || $can('marketing.broadcast'))
+                @if($can('finance.payments') || $can('finance.receipts'))
                 <div class="app-nav-group">
                     <div class="app-nav-label">Finance</div>
                     @if($can('finance.payments'))
@@ -360,11 +360,14 @@
                         <i class="bi bi-receipt"></i><span>Receipt reprint</span>
                     </a>
                     @endif
-                    @if($can('marketing.campaigns') || $can('marketing.social-media') || $can('marketing.broadcast') || $can('finance.payments') || $can('finance.receipts'))
+                </div>
+                @endif
+                @if($can('marketing.campaigns') || $can('marketing.social-media') || $can('marketing.broadcast'))
+                <div class="app-nav-group">
+                    <div class="app-nav-label">Statements</div>
                     <a href="{{ route('marketing.credit-life-statements') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.credit-life-statements*') ? 'active' : '' }}">
                         <i class="bi bi-file-earmark-text"></i><span>Credit Life Statements</span>
                     </a>
-                    @endif
                 </div>
                 @endif
                 @if($can('work-tickets'))

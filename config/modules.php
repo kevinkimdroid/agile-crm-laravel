@@ -3,6 +3,15 @@
 return [
     /*
     |--------------------------------------------------------------------------
+    | Finance module (cheques / agency advances / receipt reprint)
+    |--------------------------------------------------------------------------
+    | Set FINANCE_MODULE_ENABLED=false for POCs without ERP finance connectivity.
+    | Hides nav links and blocks /finance/* routes.
+    */
+    'finance_enabled' => filter_var(env('FINANCE_MODULE_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+
+    /*
+    |--------------------------------------------------------------------------
     | App modules mapped to Vtiger tab names
     |--------------------------------------------------------------------------
     | Keys are our route/module identifiers. Values are vtiger_tab.name values.

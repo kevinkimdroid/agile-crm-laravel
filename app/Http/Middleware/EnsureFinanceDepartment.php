@@ -19,6 +19,11 @@ class EnsureFinanceDepartment
      */
     public function handle(Request $request, Closure $next): Response
     {
+        if (! config('modules.finance_enabled', true)) {
+            return redirect()->route('dashboard')
+                ->with('info', 'The Finance module is turned off for this environment.');
+        }
+
         $user = Auth::guard('vtiger')->user();
         if (!$user) {
             return redirect()->route('login');

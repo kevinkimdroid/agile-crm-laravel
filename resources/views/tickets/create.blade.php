@@ -139,6 +139,72 @@
         </div>
     </div>
 
+    {{-- Auto-loaded client snapshot --}}
+    <div class="app-card mb-4" id="clientSnapshotCard" @if(empty($presetClientDetails)) style="display:none" @endif>
+        <div class="p-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <div>
+                    <p class="small fw-semibold text-muted mb-0 text-uppercase" style="letter-spacing:0.06em">Client details</p>
+                    <p class="text-muted small mb-0" id="clientSnapshotHint">Loaded automatically when a prospect/client is selected.</p>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="clientSnapshotInsertBtn" title="Add a short client summary into the description">
+                    <i class="bi bi-clipboard-plus me-1"></i>Add to description
+                </button>
+            </div>
+            <div class="row g-3" id="clientSnapshotGrid">
+                <div class="col-sm-6 col-lg-3">
+                    <div class="client-snap-field"><span class="client-snap-label">Name</span><span class="client-snap-value" data-snap="full_name">—</span></div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="client-snap-field"><span class="client-snap-label">Policy</span><span class="client-snap-value font-monospace" data-snap="policy_number">—</span></div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="client-snap-field"><span class="client-snap-label">Mobile</span><span class="client-snap-value" data-snap="mobile">—</span></div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="client-snap-field"><span class="client-snap-label">Phone</span><span class="client-snap-value" data-snap="phone">—</span></div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="client-snap-field"><span class="client-snap-label">Email</span><span class="client-snap-value" data-snap="email">—</span></div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="client-snap-field"><span class="client-snap-label">ID / Passport</span><span class="client-snap-value font-monospace" data-snap="id_number">—</span></div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="client-snap-field"><span class="client-snap-label">KRA PIN</span><span class="client-snap-value font-monospace" data-snap="kra_pin">—</span></div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="client-snap-field"><span class="client-snap-label">Product</span><span class="client-snap-value" data-snap="product">—</span></div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="client-snap-field"><span class="client-snap-label">System</span><span class="client-snap-value" data-snap="system_label">—</span></div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="client-snap-field"><span class="client-snap-label">Status</span><span class="client-snap-value" data-snap="status">—</span></div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="client-snap-field"><span class="client-snap-label">City</span><span class="client-snap-value" data-snap="city">—</span></div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="client-snap-field"><span class="client-snap-label">Intermediary</span><span class="client-snap-value" data-snap="intermediary">—</span></div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="client-snap-field"><span class="client-snap-label">Lead source</span><span class="client-snap-value" data-snap="leadsource">—</span></div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="client-snap-field"><span class="client-snap-label">Open tickets</span><span class="client-snap-value" data-snap="open_tickets">—</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <style>
+    .client-snap-field { display:flex; flex-direction:column; gap:0.15rem; padding:0.65rem 0.75rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; min-height:3.6rem; }
+    .client-snap-label { font-size:0.65rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:#64748b; }
+    .client-snap-value { font-size:0.9rem; font-weight:600; color:#1e293b; word-break:break-word; }
+    .client-snap-value.is-empty { color:#94a3b8; font-weight:500; }
+    </style>
+    <script type="application/json" id="presetClientDetailsData">@json($presetClientDetails ?? null)</script>
+
     <input type="hidden" name="status" value="Open">
     <input type="hidden" name="priority" value="Normal">
     @php
@@ -249,7 +315,7 @@
     </div>
 </form>
 
-<script id="clientsData" type="application/json">@json(collect($clients ?? [])->map(fn($c) => ['id' => $c->contactid, 'name' => trim(($c->firstname ?? '') . ' ' . ($c->lastname ?? '')) ?: 'Client #' . $c->contactid, 'policy' => $c->policy_number ?? ''])->values())</script>
+<script id="clientsData" type="application/json">@json(collect($clients ?? [])->map(fn($c) => ['id' => $c->contactid, 'name' => trim(($c->firstname ?? '') . ' ' . ($c->lastname ?? '')) ?: 'Client #' . $c->contactid, 'policy' => $c->policy_number ?? '', 'phone' => $c->mobile ?? $c->phone ?? '', 'email' => personal_email_only($c->email ?? null) ?? ($c->email ?? '')])->values())</script>
 <script>
 (function() {
     const initialClients = JSON.parse(document.getElementById('clientsData').textContent || '[]');
@@ -260,6 +326,10 @@
     const browseBtn = document.getElementById('contactBrowse');
     const changeBtn = document.getElementById('contactChange');
     const hintEl = document.getElementById('contactSearchHint');
+    const snapshotCard = document.getElementById('clientSnapshotCard');
+    const snapshotHint = document.getElementById('clientSnapshotHint');
+    const insertSnapBtn = document.getElementById('clientSnapshotInsertBtn');
+    let lastSnapshot = null;
     let fetchTimer;
     let highlightedIdx = -1;
     let currentItems = [];
@@ -276,6 +346,79 @@
         if (hintEl) hintEl.textContent = selected ? 'Client selected. Click Change to pick a different one.' : 'Type to search or click Browse to select a client';
         if (searchInput && !searchInput.hasAttribute('data-locked')) searchInput.readOnly = selected;
     }
+    function clearSnapshot() {
+        lastSnapshot = null;
+        if (snapshotCard) snapshotCard.style.display = 'none';
+        document.querySelectorAll('[data-snap]').forEach(el => {
+            el.textContent = '—';
+            el.classList.add('is-empty');
+        });
+    }
+    function fillSnapshot(d) {
+        if (!d || typeof d !== 'object') { clearSnapshot(); return; }
+        lastSnapshot = d;
+        if (snapshotCard) snapshotCard.style.display = '';
+        if (snapshotHint) {
+            const src = d.source === 'local' ? 'local client record' : 'CRM prospect record';
+            snapshotHint.textContent = 'Loaded from ' + src + (d.open_tickets ? (' · ' + d.open_tickets + ' open ticket(s)') : '');
+        }
+        const map = {
+            full_name: d.full_name,
+            policy_number: d.policy_number,
+            mobile: d.mobile || d.phone,
+            phone: d.phone,
+            email: d.email,
+            id_number: d.id_number,
+            kra_pin: d.kra_pin,
+            product: d.product,
+            system_label: d.system_label || d.system,
+            status: d.status,
+            city: d.city,
+            intermediary: d.intermediary,
+            leadsource: d.leadsource,
+            open_tickets: (d.open_tickets != null && d.open_tickets !== '') ? String(d.open_tickets) : ''
+        };
+        Object.keys(map).forEach(key => {
+            const el = document.querySelector('[data-snap="' + key + '"]');
+            if (!el) return;
+            const val = (map[key] == null || String(map[key]).trim() === '') ? '' : String(map[key]).trim();
+            el.textContent = val || '—';
+            el.classList.toggle('is-empty', !val);
+        });
+
+        // Suggest product line from client system when empty
+        const orgSelect = document.getElementById('organizationSelect');
+        if (orgSelect && !orgSelect.value && d.system_label) {
+            const label = String(d.system_label).toLowerCase();
+            Array.from(orgSelect.options).forEach(opt => {
+                const t = (opt.textContent || '').toLowerCase();
+                if (!orgSelect.value && t && label && (t.includes(label) || label.includes(t.replace(/\s*life\s*$/, '').trim()))) {
+                    orgSelect.value = opt.value;
+                }
+            });
+        }
+    }
+    function loadClientDetails(contactId, fallbackPolicy) {
+        if (!contactId) { clearSnapshot(); return; }
+        if (snapshotHint) snapshotHint.textContent = 'Loading client details…';
+        if (snapshotCard) snapshotCard.style.display = '';
+        fetch('{{ route("api.tickets.contact.policy", ["contact" => ":id"]) }}'.replace(':id', contactId), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin'
+        })
+        .then(r => r.json())
+        .then(d => {
+            const policyInput = document.getElementById('policy_number') || document.querySelector('[name="policy_number"]');
+            const policy = (d.policy_number || d.policy || fallbackPolicy || '').trim();
+            if (policyInput && policyInput.tagName === 'INPUT' && policy) {
+                policyInput.value = policy;
+            }
+            fillSnapshot(d);
+        })
+        .catch(() => {
+            if (snapshotHint) snapshotHint.textContent = 'Could not load extra client details.';
+        });
+    }
     function renderDropdown(items, isLoading, noResults) {
         currentItems = items || [];
         highlightedIdx = -1;
@@ -288,7 +431,8 @@
         } else if (currentItems.length) {
             dropdown.innerHTML = currentItems.slice(0, 60).map((c, i) => {
                 const policy = String(c.policy || c.policy_number || '').trim();
-                return `<a href="#" class="list-group-item list-group-item-action py-2" data-id="${c.id}" data-name="${escapeHtml(c.name)}" data-policy="${escapeHtml(policy)}" role="option" data-index="${i}"><i class="bi bi-person me-2 text-muted"></i>${escapeHtml(c.name)}</a>`;
+                const meta = [policy, c.phone, c.email].filter(Boolean).map(escapeHtml).join(' · ');
+                return `<a href="#" class="list-group-item list-group-item-action py-2" data-id="${c.id}" data-name="${escapeHtml(c.name)}" data-policy="${escapeHtml(policy)}" role="option" data-index="${i}"><i class="bi bi-person me-2 text-muted"></i><span><span class="fw-semibold">${escapeHtml(c.name)}</span>${meta ? `<span class="d-block small text-muted">${meta}</span>` : ''}</span></a>`;
             }).join('');
             dropdown.style.display = 'block';
         } else {
@@ -298,7 +442,7 @@
     }
     function renderFromLocal() {
         const term = (searchInput.value || '').trim().toLowerCase();
-        const filtered = term ? clients.filter(c => (c.name || '').toLowerCase().includes(term)) : clients.slice(0, 100);
+        const filtered = term ? clients.filter(c => (c.name || '').toLowerCase().includes(term) || String(c.policy || '').toLowerCase().includes(term) || String(c.phone || '').includes(term)) : clients.slice(0, 100);
         renderDropdown(filtered);
     }
     function selectItem(item) {
@@ -307,12 +451,11 @@
         contactIdInput.value = item.dataset.id;
         searchInput.value = item.dataset.name;
         const policyInput = document.getElementById('policy_number') || document.querySelector('[name="policy_number"]');
-        if (policyInput && policyInput.tagName === 'INPUT') {
-            const policy = (item.dataset.policy || '').trim();
+        const policy = (item.dataset.policy || '').trim();
+        if (policyInput && policyInput.tagName === 'INPUT' && policy) {
             policyInput.value = policy;
-            fetch('{{ route("api.tickets.contact.policy", ["contact" => ":id"]) }}'.replace(':id', item.dataset.id), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
-                .then(r => r.json()).then(d => { policyInput.value = (d.policy_number || d.policy || policy || '').trim(); }).catch(() => {});
         }
+        loadClientDetails(item.dataset.id, policy);
         dropdown.style.display = 'none';
         searchInput.setAttribute('aria-expanded', 'false');
         setSelectedMode(true);
@@ -347,6 +490,7 @@
         clearTimeout(fetchTimer);
         setSelectedMode(false);
         contactIdInput.value = '';
+        clearSnapshot();
         const policyInput = document.getElementById('policy_number') || document.querySelector('input[name="policy_number"]');
         if (policyInput) policyInput.value = '';
         if (q.length >= 1) fetchTimer = setTimeout(() => fetchContacts(false), 200);
@@ -398,6 +542,7 @@
         changeBtn.addEventListener('click', function() {
             contactIdInput.value = '';
             searchInput.value = '';
+            clearSnapshot();
             const policyInput = document.getElementById('policy_number') || document.querySelector('input[name="policy_number"]');
             if (policyInput && policyInput.tagName === 'INPUT') policyInput.value = '';
             setSelectedMode(false);
@@ -406,16 +551,45 @@
         });
     }
 
+    if (insertSnapBtn) {
+        insertSnapBtn.addEventListener('click', function () {
+            if (!lastSnapshot) return;
+            const d = lastSnapshot;
+            const lines = [
+                'Client: ' + (d.full_name || '—'),
+                d.policy_number ? ('Policy: ' + d.policy_number) : null,
+                (d.mobile || d.phone) ? ('Phone: ' + (d.mobile || d.phone)) : null,
+                d.email ? ('Email: ' + d.email) : null,
+                d.id_number ? ('ID: ' + d.id_number) : null,
+                d.product ? ('Product: ' + d.product) : null,
+                d.system_label ? ('System: ' + d.system_label) : null,
+            ].filter(Boolean).join('\n');
+            const box = document.getElementById('ticketDescriptionBox');
+            if (!box || !lines) return;
+            box.value = box.value ? (box.value.replace(/\s*$/, '') + '\n\n' + lines) : lines;
+            box.focus();
+        });
+    }
+
     const oldId = contactIdInput.value;
+    const presetSnapEl = document.getElementById('presetClientDetailsData');
+    let presetSnap = null;
+    try { presetSnap = JSON.parse(presetSnapEl ? presetSnapEl.textContent : 'null'); } catch (e) { presetSnap = null; }
     if (oldId) {
         const c = clients.find(x => String(x.id) === String(oldId));
         if (c) searchInput.value = c.name;
         setSelectedMode(true);
-        const policyInput = document.getElementById('policy_number') || document.querySelector('input[name="policy_number"]');
-        if (policyInput && policyInput.tagName === 'INPUT' && (!policyInput.value || !policyInput.value.trim())) {
-            fetch('{{ route("api.tickets.contact.policy", ["contact" => ":id"]) }}'.replace(':id', oldId), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
-                .then(r => r.json()).then(d => { policyInput.value = (d.policy_number || d.policy || '').trim(); }).catch(() => {});
+        if (presetSnap) {
+            fillSnapshot(presetSnap);
+            const policyInput = document.getElementById('policy_number') || document.querySelector('input[name="policy_number"]');
+            if (policyInput && policyInput.tagName === 'INPUT' && !policyInput.value && presetSnap.policy_number) {
+                policyInput.value = presetSnap.policy_number;
+            }
+        } else {
+            loadClientDetails(oldId);
         }
+    } else if (presetSnap) {
+        fillSnapshot(presetSnap);
     }
 
     const sendEmailCb = document.getElementById('send_email_to_client');
