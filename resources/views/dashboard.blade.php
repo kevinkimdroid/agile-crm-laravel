@@ -95,7 +95,7 @@
         </a>
         @if(($clientsCountDeferred ?? false) || (isset($clientsCount) && $clientsCount !== null))
         <div class="dashboard-kpi dashboard-kpi-static" id="clientsStatCard">
-            <span class="dashboard-kpi-value" id="clientsCountValue">{{ ($clientsCountDeferred ?? false) ? '...' : number_format($clientsCount ?? 0) }}</span>
+            <span class="dashboard-kpi-value" id="clientsCountValue" data-local-count="{{ (int) ($clientsCount ?? 0) }}">{{ number_format($clientsCount ?? 0) }}</span>
             <span class="dashboard-kpi-label">Clients</span>
             <a href="{{ route('support.customers') }}" class="dashboard-kpi-link">View</a>
         </div>
@@ -717,7 +717,8 @@ a.dashboard-list-row-overdue:hover {
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     var clientsEl = document.getElementById('clientsCountValue');
-    if (clientsEl && (clientsEl.textContent === '...' || clientsEl.textContent.trim() === '')) {
+    @if($clientsCountDeferred ?? false)
+    if (clientsEl) {
         fetch('{{ route("api.dashboard.clients-count") }}', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
             .then(function(r) { return r.json(); })
             .then(function(d) {
@@ -725,12 +726,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     clientsEl.textContent = Number(d.count).toLocaleString();
                 }
             })
-            .catch(function() {
-                if (clientsEl.textContent === '...') {
-                    clientsEl.textContent = '—';
-                }
-            });
+            .catch(function() { /* keep local count already shown */ });
     }
+    @endif
     if (window.Echo) window.Echo.channel('dashboard').listen('.stats.updated', function() { location.reload(); });
 });
 </script>

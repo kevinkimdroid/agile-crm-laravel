@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Client;
 use App\Services\CrmService;
 use App\Services\ErpClientService;
 use App\Services\PbxConfigService;
@@ -45,19 +46,21 @@ class DashboardController extends Controller
         }
         $stats['contactsCountDeferred'] = false;
 
-        // Clients count: use cache only on page load — never block on ERP HTTP (can take 15s+ per segment).
+        // Clients = local KYC clients (+ ERP when configured). Prospects stay on Vtiger contacts.
+        $localClientsCount = $this->localClientsCount();
         $source = config('erp.clients_view_source', 'crm');
         if (in_array($source, ['erp_http', 'erp_sync'], true)) {
-            $cachedClientsCount = Cache::get('agile_clients_count');
-            if ($cachedClientsCount !== null) {
-                $stats['clientsCount'] = (int) $cachedClientsCount;
+            $cachedErpCount = Cache::get('agile_clients_count');
+            if ($cachedErpCount !== null) {
+                $stats['clientsCount'] = $localClientsCount + (int) $cachedErpCount;
                 $stats['clientsCountDeferred'] = false;
             } else {
-                $stats['clientsCount'] = null;
+                // Show local count immediately; AJAX adds ERP when ready.
+                $stats['clientsCount'] = $localClientsCount;
                 $stats['clientsCountDeferred'] = true;
             }
         } else {
-            $stats['clientsCount'] = (int) ($stats['contactsCount'] ?? 0);
+            $stats['clientsCount'] = $localClientsCount;
             $stats['clientsCountDeferred'] = false;
         }
 
@@ -74,18 +77,28 @@ class DashboardController extends Controller
      */
     public function clientsCount(): \Illuminate\Http\JsonResponse
     {
+        $local = $this->localClientsCount();
         $source = config('erp.clients_view_source', 'crm');
-        if (! in_array($source, ['erp_http', 'erp_sync'])) {
-            // For CRM-only mode, Clients mirrors local contacts count.
-            return response()->json(['count' => (int) ($this->crm->getContactsCount(crm_owner_filter()) ?? 0)]);
+        if (! in_array($source, ['erp_http', 'erp_sync'], true)) {
+            return response()->json(['count' => $local]);
         }
-        $count = Cache::remember('agile_clients_count', (int) config('performance.cache_ttl.erp_clients_count', 600), function () {
+        $erp = Cache::remember('agile_clients_count', (int) config('performance.cache_ttl.erp_clients_count', 600), function () {
             try {
                 return (int) ($this->erp->getClientsCount(8) ?? 0);
             } catch (\Throwable $e) {
                 return 0;
             }
         });
-        return response()->json(['count' => (int) $count]);
+
+        return response()->json(['count' => $local + (int) $erp]);
+    }
+
+    protected function localClientsCount(): int
+    {
+        try {
+            return Client::tableExists() ? (int) Client::query()->count() : 0;
+        } catch (\Throwable $e) {
+            return 0;
+        }
     }
 }
