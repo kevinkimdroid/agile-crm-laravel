@@ -10,7 +10,7 @@ class SeedRestrictedClientAccessDemoCommand extends Command
 {
     protected $signature = 'demo:restricted-clients {--user= : Vtiger user id to receive DEMO-R assignments}';
 
-    protected $description = 'Seed faker DEMO-R (allowed) and DEMO-X (forbidden) clients for restricted-access POC';
+    protected $description = 'Prepare sample assigned/unassigned clients for assigned-only access preview';
 
     public function handle(ClientAccessDemoService $demo): int
     {

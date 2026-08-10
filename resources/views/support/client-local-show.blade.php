@@ -16,6 +16,13 @@
 </div>
 @endif
 
+@if (user_is_limited_to_assigned_clients())
+<div class="alert mb-3" style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;" role="status">
+    <i class="bi bi-shield-check me-1"></i>
+    <strong>Assigned to you.</strong> Only you can view this client while assigned-only access is enabled.
+</div>
+@endif
+
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
         <h1 class="app-page-title mb-1">{{ $client->fullName() }}</h1>

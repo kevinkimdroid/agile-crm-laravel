@@ -126,7 +126,11 @@
     <div class="card profile-form-card mb-4 border-start border-4 border-warning">
         <div class="card-body p-4">
             <h5 class="fw-bold mb-1">Specific client access</h5>
-            <p class="text-muted small mb-3">Choose whether users see every client in their allowed segments, or only clients explicitly assigned per user.</p>
+            <p class="text-muted small mb-3">
+                Control whether this profile can browse every client in allowed segments, or only clients
+                assigned to each user. When set to <strong>Assigned clients only</strong>, a client assigned
+                to one user is <strong>hidden from everyone else</strong> with this restriction.
+            </p>
             @php
                 $selectedAccessMode = old('client_access_mode', $clientAccessMode ?? \App\Services\ProfileAccessService::CLIENT_ACCESS_ALL);
             @endphp
@@ -137,11 +141,12 @@
                 </label>
                 <label class="profile-segment-option">
                     <input type="radio" class="form-check-input me-2" name="client_access_mode" value="{{ \App\Services\ProfileAccessService::CLIENT_ACCESS_ASSIGNED_ONLY }}" {{ $selectedAccessMode === \App\Services\ProfileAccessService::CLIENT_ACCESS_ASSIGNED_ONLY ? 'checked' : '' }}>
-                    <span><strong>Assigned clients only</strong> — assign policy numbers per user in Client Access</span>
+                    <span><strong>Assigned clients only</strong> — each user sees only their assigned policies (exclusive)</span>
                 </label>
             </div>
             <p class="text-muted small mt-3 mb-0">
-                <a href="{{ route('settings.crm', ['section' => 'client-access']) }}">Manage client assignments by user</a>
+                Assign policies under
+                <a href="{{ route('settings.crm', ['section' => 'client-access']) }}">Settings → Client Access</a>.
             </p>
         </div>
     </div>

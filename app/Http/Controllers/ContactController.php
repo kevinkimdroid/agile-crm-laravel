@@ -17,6 +17,8 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class ContactController extends Controller
@@ -82,33 +84,29 @@ class ContactController extends Controller
 
     public function create(): View
     {
-        return view('contacts.create');
+        return view('contacts.create', [
+            'leadSources' => $this->leadSources(),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'firstname' => 'required|string|max:255',
-            'lastname' => 'required|string|max:255',
-            'email' => 'nullable|email',
-            'phone' => 'nullable|string|max:50',
-            'mobile' => 'nullable|string|max:50',
-        ]);
+        $validated = $this->validateProspect($request);
 
         try {
-            $ownerId = \Illuminate\Support\Facades\Auth::id() ?? \Illuminate\Support\Facades\Auth::guard('vtiger')->id() ?? 1;
+            $ownerId = Auth::id() ?? Auth::guard('vtiger')->id() ?? 1;
             $label = trim($validated['firstname'] . ' ' . $validated['lastname']);
             $now = now()->format('Y-m-d H:i:s');
-            $id = (int) \DB::connection('vtiger')->table('vtiger_crmentity')->max('crmid') + 1;
+            $id = (int) DB::connection('vtiger')->table('vtiger_crmentity')->max('crmid') + 1;
 
-            \DB::connection('vtiger')->transaction(function () use ($id, $ownerId, $label, $now, $validated) {
-                \DB::connection('vtiger')->table('vtiger_crmentity')->insert([
+            DB::connection('vtiger')->transaction(function () use ($id, $ownerId, $label, $now, $validated) {
+                DB::connection('vtiger')->table('vtiger_crmentity')->insert([
                     'crmid' => $id,
                     'smcreatorid' => $ownerId,
                     'smownerid' => $ownerId,
                     'modifiedby' => $ownerId,
                     'setype' => 'Contacts',
-                    'description' => '',
+                    'description' => $validated['description'] ?? '',
                     'createdtime' => $now,
                     'modifiedtime' => $now,
                     'viewedtime' => null,
@@ -121,14 +119,26 @@ class ContactController extends Controller
                     'label' => $label,
                 ]);
 
-                \DB::connection('vtiger')->table('vtiger_contactdetails')->insert([
+                $details = [
                     'contactid' => $id,
+                    'contact_no' => 'CON' . $id,
                     'firstname' => $validated['firstname'],
                     'lastname' => $validated['lastname'],
                     'email' => $validated['email'] ?? '',
+                    'secondaryemail' => $validated['secondaryemail'] ?? '',
                     'phone' => $validated['phone'] ?? '',
                     'mobile' => $validated['mobile'] ?? '',
-                ]);
+                    'fax' => $validated['fax'] ?? '',
+                    'title' => $validated['title'] ?? '',
+                    'department' => $validated['department'] ?? '',
+                    'donotcall' => ! empty($validated['donotcall']) ? 1 : 0,
+                    'emailoptout' => ! empty($validated['emailoptout']) ? 1 : 0,
+                ];
+                $detailCols = Schema::connection('vtiger')->getColumnListing('vtiger_contactdetails');
+                DB::connection('vtiger')->table('vtiger_contactdetails')
+                    ->insert(array_intersect_key($details, array_flip($detailCols)));
+
+                $this->syncProspectRelated($id, $validated);
             });
 
             Cache::forget('agile_contacts_count');
@@ -136,6 +146,7 @@ class ContactController extends Controller
             Cache::forget('agile_dashboard_stats');
             $this->forgetContactsListCache($ownerId);
             \App\Events\DashboardStatsUpdated::dispatch();
+
             return redirect()->route('contacts.show', $id)->with('success', 'Prospect created.');
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Failed to create contact: ' . $e->getMessage());
@@ -457,7 +468,10 @@ class ContactController extends Controller
         if (!contact_can_access($id)) {
             return redirect()->route('contacts.index')->with('info', 'That contact is assigned to someone else. Showing your contacts.');
         }
-        return view('contacts.edit', ['contact' => $contact]);
+        return view('contacts.edit', [
+            'contact' => $contact,
+            'leadSources' => $this->leadSources(),
+        ]);
     }
 
     public function update(Request $request, int $id): RedirectResponse
@@ -470,23 +484,45 @@ class ContactController extends Controller
             return redirect()->route('contacts.index')->with('info', 'That contact is assigned to someone else. Showing your contacts.');
         }
 
-        $validated = $request->validate([
-            'firstname' => 'required|string|max:255',
-            'lastname' => 'required|string|max:255',
-            'email' => 'nullable|email',
-            'phone' => 'nullable|string|max:50',
-            'mobile' => 'nullable|string|max:50',
-        ]);
+        $validated = $this->validateProspect($request);
 
         try {
-            Contact::on('vtiger')->where('contactid', $id)->update([
-                'firstname' => $validated['firstname'],
-                'lastname' => $validated['lastname'],
-                'email' => $validated['email'] ?? '',
-                'phone' => $validated['phone'] ?? '',
-                'mobile' => $validated['mobile'] ?? '',
-            ]);
+            $ownerId = Auth::id() ?? Auth::guard('vtiger')->id() ?? 1;
+            $label = trim($validated['firstname'] . ' ' . $validated['lastname']);
+            $now = now()->format('Y-m-d H:i:s');
+
+            DB::connection('vtiger')->transaction(function () use ($id, $ownerId, $label, $now, $validated) {
+                $details = [
+                    'firstname' => $validated['firstname'],
+                    'lastname' => $validated['lastname'],
+                    'email' => $validated['email'] ?? '',
+                    'secondaryemail' => $validated['secondaryemail'] ?? '',
+                    'phone' => $validated['phone'] ?? '',
+                    'mobile' => $validated['mobile'] ?? '',
+                    'fax' => $validated['fax'] ?? '',
+                    'title' => $validated['title'] ?? '',
+                    'department' => $validated['department'] ?? '',
+                    'donotcall' => ! empty($validated['donotcall']) ? 1 : 0,
+                    'emailoptout' => ! empty($validated['emailoptout']) ? 1 : 0,
+                ];
+                $detailCols = Schema::connection('vtiger')->getColumnListing('vtiger_contactdetails');
+                Contact::on('vtiger')->where('contactid', $id)
+                    ->update(array_intersect_key($details, array_flip($detailCols)));
+
+                DB::connection('vtiger')->table('vtiger_crmentity')->where('crmid', $id)->update([
+                    'label' => $label,
+                    'description' => $validated['description'] ?? '',
+                    'modifiedby' => $ownerId,
+                    'modifiedtime' => $now,
+                ]);
+
+                $this->syncProspectRelated($id, $validated);
+            });
+
             $this->forgetContactsListCache(null);
+            Cache::forget('agile_contacts_count');
+            Cache::forget('agile_dashboard_stats');
+
             return redirect()->route('contacts.show', $id)->with('success', 'Prospect updated.');
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Failed to update: ' . $e->getMessage());
@@ -601,6 +637,114 @@ class ContactController extends Controller
             for ($page = 1; $page <= 10; $page++) {
                 Cache::forget('contacts_list_' . $ownerId . '_' . $page);
             }
+        }
+    }
+
+    /** @return list<string> */
+    protected function leadSources(): array
+    {
+        try {
+            if (! Schema::connection('vtiger')->hasTable('vtiger_leadsource')) {
+                return ['Cold Call', 'Referral', 'Web Site', 'Agent', 'Social Media', 'Other'];
+            }
+
+            return DB::connection('vtiger')
+                ->table('vtiger_leadsource')
+                ->orderBy('sortorderid')
+                ->pluck('leadsource')
+                ->filter()
+                ->values()
+                ->all();
+        } catch (\Throwable $e) {
+            return ['Cold Call', 'Referral', 'Web Site', 'Agent', 'Social Media', 'Other'];
+        }
+    }
+
+    /** @return array<string, mixed> */
+    protected function validateProspect(Request $request): array
+    {
+        $validated = $request->validate([
+            'firstname' => 'required|string|max:255',
+            'lastname' => 'required|string|max:255',
+            'title' => 'nullable|string|max:100',
+            'department' => 'nullable|string|max:100',
+            'email' => 'nullable|email|max:255',
+            'secondaryemail' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:50',
+            'mobile' => 'nullable|string|max:50',
+            'homephone' => 'nullable|string|max:50',
+            'fax' => 'nullable|string|max:50',
+            'leadsource' => 'nullable|string|max:100',
+            'birthday' => 'nullable|date',
+            'id_number' => 'nullable|string|max:64',
+            'kra_pin' => 'nullable|string|max:32',
+            'policy_number' => 'nullable|string|max:64',
+            'lead_business_worth' => 'nullable|string|max:64',
+            'mailingstreet' => 'nullable|string|max:255',
+            'mailingcity' => 'nullable|string|max:100',
+            'mailingstate' => 'nullable|string|max:100',
+            'mailingzip' => 'nullable|string|max:32',
+            'mailingcountry' => 'nullable|string|max:100',
+            'mailingpobox' => 'nullable|string|max:64',
+            'description' => 'nullable|string|max:5000',
+            'donotcall' => 'nullable|boolean',
+            'emailoptout' => 'nullable|boolean',
+        ]);
+
+        $validated['donotcall'] = $request->boolean('donotcall');
+        $validated['emailoptout'] = $request->boolean('emailoptout');
+
+        return $validated;
+    }
+
+    /** @param array<string, mixed> $validated */
+    protected function syncProspectRelated(int $id, array $validated): void
+    {
+        if (Schema::connection('vtiger')->hasTable('vtiger_contactscf')) {
+            $scf = [
+                'contactid' => $id,
+                'idNumber' => $validated['id_number'] ?? null,
+                'cf_856' => $validated['id_number'] ?? null,
+                'cf_852' => $validated['kra_pin'] ?? null,
+                'cf_860' => $validated['policy_number'] ?? null,
+                'cf_872' => $validated['lead_business_worth'] ?? null,
+            ];
+            $cols = Schema::connection('vtiger')->getColumnListing('vtiger_contactscf');
+            DB::connection('vtiger')->table('vtiger_contactscf')->updateOrInsert(
+                ['contactid' => $id],
+                array_intersect_key($scf, array_flip($cols))
+            );
+        }
+
+        if (Schema::connection('vtiger')->hasTable('vtiger_contactaddress')) {
+            $addr = [
+                'contactaddressid' => $id,
+                'mailingstreet' => $validated['mailingstreet'] ?? '',
+                'mailingcity' => $validated['mailingcity'] ?? '',
+                'mailingstate' => $validated['mailingstate'] ?? '',
+                'mailingzip' => $validated['mailingzip'] ?? '',
+                'mailingcountry' => $validated['mailingcountry'] ?? '',
+                'mailingpobox' => $validated['mailingpobox'] ?? '',
+            ];
+            $cols = Schema::connection('vtiger')->getColumnListing('vtiger_contactaddress');
+            DB::connection('vtiger')->table('vtiger_contactaddress')->updateOrInsert(
+                ['contactaddressid' => $id],
+                array_intersect_key($addr, array_flip($cols))
+            );
+        }
+
+        if (Schema::connection('vtiger')->hasTable('vtiger_contactsubdetails')) {
+            $sub = [
+                'contactsubscriptionid' => $id,
+                'birthday' => $validated['birthday'] ?? null,
+                'leadsource' => $validated['leadsource'] ?? '',
+                'homephone' => $validated['homephone'] ?? '',
+            ];
+            $cols = Schema::connection('vtiger')->getColumnListing('vtiger_contactsubdetails');
+            DB::connection('vtiger')->table('vtiger_contactsubdetails')->updateOrInsert(
+                ['contactsubscriptionid' => $id],
+                array_intersect_key($sub, array_flip($cols))
+            );
         }
     }
 }

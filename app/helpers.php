@@ -672,7 +672,7 @@ if (! function_exists('user_can_access_client_policy')) {
                 'error' => $e->getMessage(),
             ]);
 
-            return true;
+            return false;
         }
     }
 }

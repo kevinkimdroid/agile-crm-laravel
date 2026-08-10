@@ -82,29 +82,29 @@
 </div>
 @endif
 
-@if (!($isProspects ?? false) && app(\App\Services\ClientAccessDemoService::class)->isDemoModeActive())
-<div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3" role="alert">
-    <div class="d-flex align-items-start gap-2">
-        <i class="bi bi-shield-lock-fill mt-1"></i>
-        <div>
-            <strong>Restricted demo mode is ON.</strong>
-            You only see clients assigned to you (DEMO-R). Attempting DEMO-X shows Access Denied.
-        </div>
+@if (!($isProspects ?? false) && user_is_limited_to_assigned_clients())
+<div class="alert alert-warning border-0 d-flex flex-wrap align-items-start gap-2 mb-3" role="alert" style="background:#fff7ed;border:1px solid #fed7aa!important;">
+    <i class="bi bi-shield-lock-fill mt-1" style="color:#c2410c"></i>
+    <div class="flex-grow-1">
+        <strong class="d-block" style="color:#9a3412">Assigned clients only</strong>
+        <span class="small" style="color:#9a3412">
+            You can only see and open clients that are assigned to you.
+            Clients assigned to other users are hidden.
+        </span>
     </div>
-    <div class="d-flex flex-wrap gap-2">
-        <a href="{{ route('demo.restricted-access') }}" class="btn btn-sm btn-outline-dark">Walkthrough</a>
-        <form action="{{ route('demo.restricted-access.stop') }}" method="POST" class="d-inline">
-            @csrf
-            <button type="submit" class="btn btn-sm btn-dark">Stop demo</button>
-        </form>
-    </div>
+    @if(app(\App\Services\ClientAccessDemoService::class)->isDemoModeActive())
+    <form action="{{ route('demo.restricted-access.stop') }}" method="POST" class="ms-auto">
+        @csrf
+        <button type="submit" class="btn btn-sm btn-outline-dark">Exit preview</button>
+    </form>
+    @endif
 </div>
 @endif
 
 @if (user_is_limited_to_assigned_clients() && ($total ?? 0) === 0 && !($clientsError ?? null))
 <div class="alert alert-info alert-dismissible fade show" role="alert">
     <i class="bi bi-info-circle-fill me-2"></i>
-    Your profile is limited to assigned clients only. An administrator must assign policy numbers to you under
+    No clients are assigned to your account yet. Ask an administrator to assign your policies under
     <strong>Settings → Client Access</strong>.
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
 </div>

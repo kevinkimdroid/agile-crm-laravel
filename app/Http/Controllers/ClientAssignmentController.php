@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Client;
 use App\Models\UserClientAssignment;
 use App\Models\VtigerUser;
 use App\Services\ErpClientService;
@@ -42,6 +43,18 @@ class ClientAssignmentController extends Controller
         }
 
         $label = trim((string) ($validated['client_label'] ?? ''));
+        $system = $validated['system'] ?? null;
+        if (Client::tableExists()) {
+            $local = Client::query()->where('policy_no', $policy)->first();
+            if ($local) {
+                if ($label === '') {
+                    $label = $local->fullName();
+                }
+                if ($system === null || $system === '') {
+                    $system = $local->system ?: null;
+                }
+            }
+        }
         if ($label === '') {
             $detail = $this->erp->getPolicyDetails($policy);
             if (is_array($detail)) {
@@ -58,16 +71,88 @@ class ClientAssignmentController extends Controller
             ],
             [
                 'client_label' => $label !== '' ? $label : null,
-                'system' => $validated['system'] ?? null,
+                'system' => in_array($system, ['group', 'individual', 'mortgage', 'group_pension'], true) ? $system : null,
                 'assigned_by' => $actor ? (int) $actor->id : null,
             ]
         );
 
         $this->profileAccess->clearClientAssignmentCacheForUser((int) $validated['userid']);
+        $this->profileAccess->clearAssigneeCacheForPolicy($policy);
 
         return redirect()
             ->route('settings.crm', ['section' => 'client-access', 'user' => $validated['userid']])
-            ->with('success', 'Client ' . $policy . ' assigned to ' . ($user->full_name ?? $user->user_name) . '.');
+            ->with('success', 'Client ' . $policy . ' assigned to ' . ($user->full_name ?? $user->user_name) . '. Other users can no longer see this client.');
+    }
+
+    /**
+     * Assign one or more local clients (picked from the checklist) to a user.
+     */
+    public function storeMany(Request $request): RedirectResponse
+    {
+        if (! UserClientAssignment::tableExists()) {
+            return back()->with('error', 'Client access storage is not set up. Run: php artisan migrate');
+        }
+
+        $validated = $request->validate([
+            'userid' => 'required|integer|min:1',
+            'policies' => 'required|array|min:1',
+            'policies.*' => 'required|string|max:64',
+        ], [
+            'policies.required' => 'Select at least one client to assign.',
+        ]);
+
+        $user = VtigerUser::on('vtiger')->find($validated['userid']);
+        if (! $user) {
+            return back()->withErrors(['userid' => 'User not found.']);
+        }
+
+        $actor = Auth::guard('vtiger')->user();
+        $added = 0;
+
+        foreach ($validated['policies'] as $rawPolicy) {
+            $policy = UserClientAssignment::normalizePolicyNumber($rawPolicy);
+            if ($policy === '') {
+                continue;
+            }
+
+            $label = null;
+            $system = null;
+            if (Client::tableExists()) {
+                $client = Client::query()->where('policy_no', $policy)->first();
+                if ($client) {
+                    $label = $client->fullName();
+                    $system = $client->system ?: null;
+                }
+            }
+            if ($label === null || $label === '') {
+                $detail = $this->erp->getPolicyDetails($policy);
+                if (is_array($detail)) {
+                    $label = trim((string) ($detail['life_assur'] ?? $detail['life_assured'] ?? $detail['client_name'] ?? $detail['name'] ?? ''));
+                }
+            }
+
+            UserClientAssignment::query()->updateOrCreate(
+                [
+                    'userid' => (int) $validated['userid'],
+                    'policy_number' => $policy,
+                ],
+                [
+                    'client_label' => $label !== '' ? $label : null,
+                    'system' => in_array($system, ['group', 'individual', 'mortgage', 'group_pension'], true) ? $system : null,
+                    'assigned_by' => $actor ? (int) $actor->id : null,
+                ]
+            );
+            $this->profileAccess->clearAssigneeCacheForPolicy($policy);
+            $added++;
+        }
+
+        $this->profileAccess->clearClientAssignmentCacheForUser((int) $validated['userid']);
+
+        $name = $user->full_name ?? $user->user_name;
+
+        return redirect()
+            ->route('settings.crm', ['section' => 'client-access', 'user' => $validated['userid']])
+            ->with('success', $added . ' client' . ($added === 1 ? '' : 's') . ' assigned to ' . $name . '. Other users can no longer see them.');
     }
 
     public function bulkStore(Request $request): RedirectResponse
@@ -138,6 +223,7 @@ class ClientAssignmentController extends Controller
                     'assigned_by' => $actor ? (int) $actor->id : null,
                 ]
             );
+            $this->profileAccess->clearAssigneeCacheForPolicy($policy);
             $added++;
             $affectedUserIds[$userId] = true;
         }
@@ -311,8 +397,10 @@ class ClientAssignmentController extends Controller
         }
 
         $userId = (int) $row->userid;
+        $policy = (string) $row->policy_number;
         $row->delete();
         $this->profileAccess->clearClientAssignmentCacheForUser($userId);
+        $this->profileAccess->clearAssigneeCacheForPolicy($policy);
 
         return redirect()
             ->route('settings.crm', ['section' => 'client-access', 'user' => $userId])
@@ -331,9 +419,9 @@ class ClientAssignmentController extends Controller
 
         $lines = [
             'user,policy_number,client_name',
-            $username . ',GEMIL001234,John Kamau',
-            $username . ',GEMPPP0335,',
-            $username . ',GEMIL009999,Jane Doe',
+            $username . ',ORI-LIFE-1001,John Kamau',
+            $username . ',ORI-MORT-1002,',
+            $username . ',ORI-MED-1003,Jane Doe',
         ];
 
         return response(implode("\r\n", $lines), 200, [

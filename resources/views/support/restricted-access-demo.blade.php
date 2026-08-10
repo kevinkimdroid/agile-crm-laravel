@@ -1,11 +1,11 @@
 @extends('layouts.app')
 
-@section('title', 'Restricted Client Access Demo')
+@section('title', 'Preview assigned client access')
 
 @section('content')
 <style>
 .rad-hero {
-    background: linear-gradient(135deg, #7c2d12 0%, #c2410c 45%, #ea580c 100%);
+    background: linear-gradient(135deg, #0E4385 0%, #1d4ed8 55%, #2563eb 100%);
     border-radius: 16px;
     color: #fff;
     padding: 1.5rem 1.75rem;
@@ -31,7 +31,7 @@
 .rad-step:last-child { border-bottom: 0; }
 .rad-step-num {
     width: 28px; height: 28px; border-radius: 50%;
-    background: #c2410c; color: #fff; font-weight: 700; font-size: .8rem;
+    background: #0E4385; color: #fff; font-weight: 700; font-size: .8rem;
     display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .rad-pill-ok { background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; border-radius:999px; padding:.15rem .65rem; font-size:.8rem; font-weight:600; }
@@ -43,13 +43,14 @@
     <span class="text-muted mx-2">/</span>
     <a href="{{ route('settings.crm', ['section' => 'client-access']) }}" class="text-muted small text-decoration-none">Client Access</a>
     <span class="text-muted mx-2">/</span>
-    <span class="text-dark small fw-semibold">Restricted access demo</span>
+    <span class="text-dark small fw-semibold">Preview assigned access</span>
 </nav>
 
 <div class="rad-hero">
-    <h1 class="h4 mb-1 fw-bold">Attempt access with a restricted role</h1>
-    <p class="mb-0 opacity-90" style="max-width:640px">
-        POC walkthrough: seed faker clients, turn on restricted mode for this session, then try opening a client you are <strong>not</strong> assigned to.
+    <h1 class="h4 mb-1 fw-bold">See how exclusive client access works</h1>
+    <p class="mb-0 opacity-90" style="max-width:680px">
+        When a client is assigned to a user, <strong>only that user</strong> can see and open the record.
+        Use this preview to experience the Clients list and the access-denied screen as an assigned-only user.
     </p>
 </div>
 
@@ -69,34 +70,34 @@
 <div class="row g-4 mb-4">
     <div class="col-lg-5">
         <div class="rad-card h-100">
-            <div class="rad-card-head"><i class="bi bi-list-ol me-2"></i>How to demo</div>
+            <div class="rad-card-head"><i class="bi bi-list-ol me-2"></i>Steps</div>
             <div class="rad-card-body">
                 <div class="rad-step">
                     <span class="rad-step-num">1</span>
                     <div>
-                        <strong>Seed faker clients</strong>
-                        <div class="text-muted small">Creates DEMO-R (allowed) and DEMO-X (forbidden) clients and assigns DEMO-R to you.</div>
+                        <strong>Prepare sample clients</strong>
+                        <div class="text-muted small">Creates clients assigned to you, plus other clients that are not assigned to you.</div>
                     </div>
                 </div>
                 <div class="rad-step">
                     <span class="rad-step-num">2</span>
                     <div>
-                        <strong>Start restricted mode</strong>
+                        <strong>Start assigned-only preview</strong>
                         <div class="text-muted small">This session behaves like a user with <em>Assigned clients only</em>.</div>
                     </div>
                 </div>
                 <div class="rad-step">
                     <span class="rad-step-num">3</span>
                     <div>
-                        <strong>Open Clients list</strong>
-                        <div class="text-muted small">Only DEMO-R clients appear.</div>
+                        <strong>Open Clients</strong>
+                        <div class="text-muted small">You only see clients assigned to you.</div>
                     </div>
                 </div>
                 <div class="rad-step">
                     <span class="rad-step-num">4</span>
                     <div>
-                        <strong>Attempt a DEMO-X client</strong>
-                        <div class="text-muted small">You get an Access Denied screen — the restricted-role proof.</div>
+                        <strong>Try a client assigned to someone else</strong>
+                        <div class="text-muted small">You get a clear Access Denied message.</div>
                     </div>
                 </div>
 
@@ -104,25 +105,25 @@
                     <form action="{{ route('demo.restricted-access.seed') }}" method="POST">
                         @csrf
                         <button type="submit" class="btn btn-outline-secondary btn-sm">
-                            <i class="bi bi-database-add me-1"></i> Seed faker clients
+                            <i class="bi bi-person-plus me-1"></i> Prepare sample clients
                         </button>
                     </form>
                     @if($demoActive)
                     <form action="{{ route('demo.restricted-access.stop') }}" method="POST">
                         @csrf
                         <button type="submit" class="btn btn-outline-danger btn-sm">
-                            <i class="bi bi-stop-circle me-1"></i> Stop restricted mode
+                            <i class="bi bi-stop-circle me-1"></i> Exit preview
                         </button>
                     </form>
                     @else
                     <form action="{{ route('demo.restricted-access.start') }}" method="POST">
                         @csrf
-                        <button type="submit" class="btn btn-danger btn-sm">
-                            <i class="bi bi-shield-lock me-1"></i> Start restricted mode
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i class="bi bi-shield-lock me-1"></i> Start assigned-only preview
                         </button>
                     </form>
                     @endif
-                    <a href="{{ route('support.customers') }}" class="btn btn-primary btn-sm">
+                    <a href="{{ route('support.customers') }}" class="btn btn-outline-primary btn-sm">
                         <i class="bi bi-people me-1"></i> Open Clients
                     </a>
                 </div>
@@ -130,9 +131,9 @@
                 <div class="mt-3 small">
                     Status:
                     @if($demoActive)
-                        <span class="rad-pill-no">Restricted demo ON</span>
+                        <span class="rad-pill-no">Assigned-only preview ON</span>
                     @else
-                        <span class="rad-pill-ok">Full access (demo off)</span>
+                        <span class="rad-pill-ok">Full access</span>
                     @endif
                     @if($profileLimited && !$demoActive)
                         <span class="rad-pill-no ms-1">Profile already assigned-only</span>
@@ -145,7 +146,7 @@
     <div class="col-lg-7">
         <div class="rad-card mb-3">
             <div class="rad-card-head d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-check2-circle text-success me-2"></i>Allowed (assigned) — DEMO-R</span>
+                <span><i class="bi bi-check2-circle text-success me-2"></i>Assigned to you — visible</span>
                 <span class="badge bg-success">{{ $allowedClients->count() }}</span>
             </div>
             <div class="rad-card-body p-0">
@@ -163,7 +164,7 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="4" class="text-center text-muted py-4">Not seeded yet. Click <strong>Seed faker clients</strong>.</td></tr>
+                            <tr><td colspan="4" class="text-center text-muted py-4">No sample clients yet. Click <strong>Prepare sample clients</strong>.</td></tr>
                         @endforelse
                         </tbody>
                     </table>
@@ -173,13 +174,13 @@
 
         <div class="rad-card">
             <div class="rad-card-head d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-slash-circle text-danger me-2"></i>Restricted (not assigned) — DEMO-X</span>
+                <span><i class="bi bi-slash-circle text-danger me-2"></i>Not assigned to you — blocked</span>
                 <span class="badge bg-danger">{{ $forbiddenClients->count() }}</span>
             </div>
             <div class="rad-card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-sm align-middle mb-0">
-                        <thead><tr><th class="ps-3">Policy</th><th>Client</th><th>Product</th><th class="pe-3 text-end">Attempt</th></tr></thead>
+                        <thead><tr><th class="ps-3">Policy</th><th>Client</th><th>Product</th><th class="pe-3 text-end">Try</th></tr></thead>
                         <tbody>
                         @forelse($forbiddenClients as $c)
                             <tr>
@@ -188,12 +189,12 @@
                                 <td class="small text-muted">{{ $c->product }}</td>
                                 <td class="pe-3 text-end">
                                     <a class="btn btn-sm btn-outline-danger" href="{{ route('demo.restricted-access.attempt', ['policy' => $c->policy_no]) }}">
-                                        <i class="bi bi-shield-exclamation me-1"></i>Attempt access
+                                        <i class="bi bi-shield-exclamation me-1"></i>Open client
                                     </a>
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="4" class="text-center text-muted py-4">Not seeded yet.</td></tr>
+                            <tr><td colspan="4" class="text-center text-muted py-4">No sample clients yet.</td></tr>
                         @endforelse
                         </tbody>
                     </table>

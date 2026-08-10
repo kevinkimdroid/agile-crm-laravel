@@ -51,7 +51,7 @@ class RestrictedClientAccessDemoController extends Controller
         }
 
         return redirect()->route('demo.restricted-access')
-            ->with('success', 'Seeded ' . count($result['allowed']) . ' allowed and ' . count($result['forbidden']) . ' restricted demo clients. Assigned allowed policies to your user.');
+            ->with('success', 'Prepared ' . count($result['allowed']) . ' clients assigned to you and ' . count($result['forbidden']) . ' clients that are not assigned to you.');
     }
 
     public function start(): RedirectResponse
@@ -72,7 +72,7 @@ class RestrictedClientAccessDemoController extends Controller
         $this->demo->startDemoMode();
 
         return redirect()->route('support.customers')
-            ->with('success', 'Restricted demo mode ON. You only see assigned DEMO-R clients. Try opening a DEMO-X client to see access denied.');
+            ->with('success', 'Assigned-only preview is on. You can only see clients assigned to you. Opening a client assigned to someone else will be blocked.');
     }
 
     public function stop(): RedirectResponse
@@ -80,7 +80,7 @@ class RestrictedClientAccessDemoController extends Controller
         $this->demo->stopDemoMode();
 
         return redirect()->route('demo.restricted-access')
-            ->with('info', 'Restricted demo mode OFF. Full client access restored for this session.');
+            ->with('info', 'Assigned-only preview ended. Full client access restored for this session.');
     }
 
     /**

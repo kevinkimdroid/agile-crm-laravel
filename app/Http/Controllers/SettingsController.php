@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Client;
 use App\Models\CrmSetting;
 use App\Models\Department;
 use App\Models\UserClientAssignment;
@@ -167,6 +168,22 @@ class SettingsController extends Controller
                     ->get()
                 : collect();
             $data['segmentLabels'] = config('profile_modules.client_segments', []);
+
+            $assignedPolicies = ($data['clientAccessAssignments'] ?? collect())
+                ->pluck('policy_number')
+                ->map(fn ($p) => UserClientAssignment::normalizePolicyNumber($p))
+                ->filter()
+                ->values()
+                ->all();
+
+            $data['assignableClients'] = collect();
+            if (Client::tableExists()) {
+                $q = Client::query()->orderBy('first_name')->orderBy('last_name')->limit(200);
+                if ($assignedPolicies !== []) {
+                    $q->whereNotIn('policy_no', $assignedPolicies);
+                }
+                $data['assignableClients'] = $q->get();
+            }
         } elseif ($section === 'groups') {
             $crm = app(\App\Services\CrmService::class);
             $page = max(1, (int) $request->get('page', 1));

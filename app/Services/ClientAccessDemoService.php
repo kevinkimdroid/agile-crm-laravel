@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
 
 /**
- * POC helper: seed faker clients and let an admin preview "assigned clients only" access.
+ * Admin helper: prepare sample clients and preview "assigned clients only" access.
  */
 class ClientAccessDemoService
 {
@@ -55,7 +55,7 @@ class ClientAccessDemoService
     }
 
     /**
-     * Seed faker local clients + assign ALLOWED policies to $userId.
+     * Create sample local clients and assign the allowed set to $userId.
      *
      * @return array{allowed: list<string>, forbidden: list<string>, assigned_to: int}
      */
@@ -155,21 +155,21 @@ class ClientAccessDemoService
                 'kra_pin' => 'A' . strtoupper(substr(md5($policy), 0, 9)) . 'Z',
                 'date_of_birth' => now()->subYears(rand(28, 55))->subDays(rand(0, 300))->toDateString(),
                 'gender' => rand(0, 1) ? 'Female' : 'Male',
-                'email' => strtolower($person['first'] . '.' . $person['last']) . '@demo.orient.ke',
+                'email' => strtolower($person['first'] . '.' . $person['last']) . '@clients.orient.ke',
                 'phone' => '07' . str_pad((string) random_int(10000000, 99999999), 8, '0', STR_PAD_LEFT),
-                'address' => rand(10, 99) . ' Demo Street',
+                'address' => rand(10, 99) . ' Kenyatta Avenue',
                 'city' => $person['city'],
                 'postal_code' => (string) random_int(1000, 9999),
                 'occupation' => Client::OCCUPATIONS[array_rand(Client::OCCUPATIONS)],
                 'product' => $person['product'],
-                'intermediary' => 'Demo Agency',
+                'intermediary' => 'Orient Agency',
                 'system' => $system,
                 'status' => 'A',
                 'notes' => $allowed
-                    ? 'POC: assigned to restricted demo user (allowed).'
-                    : 'POC: NOT assigned — use to demo access denied.',
-                'source' => 'demo',
-                'created_by_name' => 'Restricted Access Demo',
+                    ? 'Assigned client — visible only to the assigned user when access is restricted.'
+                    : 'Not assigned to the preview user — opening this record is blocked under assigned-only access.',
+                'source' => 'crm',
+                'created_by_name' => 'System',
             ]
         );
     }

@@ -9,11 +9,14 @@
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
         <h5 class="fw-bold mb-1">Client Access</h5>
-        <p class="text-muted small mb-0">Assign specific policy numbers to users. Enable <strong>Assigned clients only</strong> on their profile to enforce this list.</p>
+        <p class="text-muted small mb-0">
+            Assign clients (by policy number) to a user. When that user’s profile is set to
+            <strong>Assigned clients only</strong>, <strong>only that user</strong> can see and open those clients.
+        </p>
     </div>
     <div class="d-flex flex-wrap gap-2">
-        <a href="{{ route('demo.restricted-access') }}" class="btn btn-sm btn-outline-danger" style="border-radius:8px">
-            <i class="bi bi-shield-lock me-1"></i>Restricted access demo
+        <a href="{{ route('demo.restricted-access') }}" class="btn btn-sm btn-outline-primary" style="border-radius:8px">
+            <i class="bi bi-shield-lock me-1"></i>Preview assigned access
         </a>
         <a href="{{ route('settings.crm', ['section' => 'profiles']) }}" class="btn btn-sm btn-outline-secondary" style="border-radius:8px">
             <i class="bi bi-person-vcard me-1"></i>Profile settings
@@ -22,6 +25,15 @@
             <i class="bi bi-people me-1"></i>Users
         </a>
     </div>
+</div>
+
+<div class="alert mb-4" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;" role="alert">
+    <div class="fw-semibold mb-1"><i class="bi bi-shield-check me-1"></i>Important</div>
+    <ul class="mb-0 small ps-3">
+        <li>A client assigned to <strong>User A</strong> is visible to <strong>User A only</strong> — other users cannot see or open that client.</li>
+        <li>Set the user’s profile to <strong>Assigned clients only</strong> so their Clients list shows only their assignments.</li>
+        <li>Administrators can still open assigned clients for support (unless previewing assigned access).</li>
+    </ul>
 </div>
 
 @if (!($clientAccessReady ?? true))
@@ -44,17 +56,17 @@
 <div class="client-access-steps mb-4">
     <div class="client-access-step">
         <span class="client-access-step-num">1</span>
-        <span>Select a user</span>
+        <span>Select the user who should own the clients</span>
     </div>
     <div class="client-access-step-arrow"><i class="bi bi-chevron-right"></i></div>
     <div class="client-access-step">
         <span class="client-access-step-num">2</span>
-        <span>Add policy numbers</span>
+        <span>Assign their policy numbers</span>
     </div>
     <div class="client-access-step-arrow"><i class="bi bi-chevron-right"></i></div>
     <div class="client-access-step">
         <span class="client-access-step-num">3</span>
-        <span>Set profile to <em>Assigned clients only</em></span>
+        <span>Set their profile to <em>Assigned clients only</em></span>
     </div>
 </div>
 
@@ -113,9 +125,16 @@
                 <a href="{{ route('settings.crm', ['section' => 'client-access', 'user' => $selectedClientAccessUser->id]) }}" class="btn btn-sm btn-outline-secondary">Refresh</a>
             </div>
             <div class="client-access-panel-body">
-                <ul class="nav nav-tabs client-access-tabs mb-4" role="tablist">
+                <ul class="nav nav-tabs client-access-tabs mb-3" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="tab-add-one" data-bs-toggle="tab" data-bs-target="#pane-add-one" type="button" role="tab">Add one client</button>
+                        <button class="nav-link active" id="tab-pick" data-bs-toggle="tab" data-bs-target="#pane-pick" type="button" role="tab">
+                            <i class="bi bi-check2-square me-1"></i>Pick clients
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-add-one" data-bs-toggle="tab" data-bs-target="#pane-add-one" type="button" role="tab">
+                            Type policy no.
+                        </button>
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="tab-bulk" data-bs-toggle="tab" data-bs-target="#pane-bulk" type="button" role="tab">Upload CSV</button>
@@ -123,19 +142,76 @@
                 </ul>
 
                 <div class="tab-content">
-                    <div class="tab-pane fade show active" id="pane-add-one" role="tabpanel">
+                    <div class="tab-pane fade show active" id="pane-pick" role="tabpanel">
+                        <p class="small text-muted mb-3">
+                            Tick the clients below, then click <strong>Assign selected</strong>.
+                            Only {{ $selectedName }} will be able to see them when their profile is set to Assigned clients only.
+                        </p>
+
+                        @if(($assignableClients ?? collect())->isEmpty())
+                        <div class="text-center py-4 text-muted border rounded-3 bg-light">
+                            <i class="bi bi-people" style="font-size:1.75rem;opacity:.45;"></i>
+                            <p class="mb-1 mt-2 fw-semibold text-dark">No unassigned clients to pick</p>
+                            <p class="small mb-2">Create clients under Support → Clients, or use <em>Type policy no.</em> / CSV.</p>
+                            <a href="{{ route('support.clients.create') }}" class="btn btn-sm btn-outline-primary">Create client</a>
+                        </div>
+                        @else
+                        <form action="{{ route('settings.client-access.store-many') }}" method="POST" id="clientAccessPickForm">
+                            @csrf
+                            <input type="hidden" name="userid" value="{{ $selectedClientAccessUser->id }}">
+                            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                                <div class="input-group input-group-sm" style="max-width:280px">
+                                    <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                    <input type="search" class="form-control" id="clientAccessPickerSearch" placeholder="Search name or policy…" autocomplete="off">
+                                </div>
+                                <label class="small text-muted mb-0 ms-1">
+                                    <input type="checkbox" class="form-check-input me-1" id="clientAccessSelectAll"> Select all
+                                </label>
+                                <span class="small text-muted ms-auto" id="clientAccessSelectedCount">0 selected</span>
+                            </div>
+                            <div class="client-access-picker mb-3" id="clientAccessPickerList">
+                                @foreach($assignableClients as $client)
+                                @php
+                                    $seg = \App\Models\Client::SYSTEMS[$client->system] ?? ($client->system ?: 'Any');
+                                    $hay = strtolower(($client->fullName() ?? '') . ' ' . ($client->policy_no ?? '') . ' ' . ($client->product ?? '') . ' ' . $seg);
+                                @endphp
+                                <label class="client-access-picker-item" data-search="{{ e($hay) }}">
+                                    <input type="checkbox" name="policies[]" value="{{ $client->policy_no }}" class="form-check-input client-access-pick-cb">
+                                    <span class="client-access-picker-meta">
+                                        <span class="client-access-picker-name">{{ $client->fullName() }}</span>
+                                        <span class="client-access-picker-sub">
+                                            <code>{{ $client->policy_no }}</code>
+                                            @if($client->product) · {{ $client->product }}@endif
+                                            · {{ $seg }}
+                                        </span>
+                                    </span>
+                                </label>
+                                @endforeach
+                            </div>
+                            @error('policies')
+                            <div class="alert alert-danger py-2 small mb-3">{{ $message }}</div>
+                            @enderror
+                            <button type="submit" class="btn btn-primary-custom" id="clientAccessAssignBtn" {{ !($clientAccessReady ?? true) ? 'disabled' : '' }} disabled>
+                                <i class="bi bi-person-check me-1"></i>Assign selected to {{ $selectedName }}
+                            </button>
+                        </form>
+                        @endif
+                    </div>
+
+                    <div class="tab-pane fade" id="pane-add-one" role="tabpanel">
+                        <p class="small text-muted mb-3">Use this if the policy is not in the list above (for example an ERP policy).</p>
                         <form action="{{ route('settings.client-access.store') }}" method="POST">
                             @csrf
                             <input type="hidden" name="userid" value="{{ $selectedClientAccessUser->id }}">
                             <div class="row g-3">
                                 <div class="col-md-5">
                                     <label class="form-label small fw-semibold">Policy number <span class="text-danger">*</span></label>
-                                    <input type="text" name="policy_number" class="form-control form-control-lg" placeholder="e.g. GEMIL001234" required autocomplete="off">
-                                    <div class="form-text">Client name is filled automatically from ERP when possible.</div>
+                                    <input type="text" name="policy_number" class="form-control" placeholder="e.g. ORI-LIFE-1001" required autocomplete="off">
+                                    <div class="form-text">Name is filled from local clients or ERP when possible.</div>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label small fw-semibold">Client name (optional)</label>
-                                    <input type="text" name="client_label" class="form-control" placeholder="Override display name">
+                                    <input type="text" name="client_label" class="form-control" placeholder="Display name">
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label small fw-semibold">Segment</label>
@@ -165,7 +241,7 @@
                                 <div class="client-access-upload-icon"><i class="bi bi-cloud-arrow-up"></i></div>
                                 <p class="client-access-upload-title mb-1">Drop CSV here or click to browse</p>
                                 <p class="client-access-upload-sub mb-3">Columns: <strong>user</strong>, <strong>policy_number</strong>, <strong>client_name</strong></p>
-                                <p class="text-muted small mb-3">Use username or email in the <strong>user</strong> column. Leave blank to assign all rows to <strong>{{ $selectedClientAccessUser->user_name }}</strong>.</p>
+                                <p class="text-muted small mb-3">Leave the user column blank to assign every row to <strong>{{ $selectedClientAccessUser->user_name }}</strong>.</p>
                                 <span class="client-access-upload-filename text-muted small" id="clientAccessFileName">No file selected</span>
                             </div>
 
@@ -204,13 +280,13 @@
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                <tr><td><code>{{ $selectedClientAccessUser->user_name }}</code></td><td><code>GEMIL001234</code></td><td>John Kamau</td></tr>
-                                                <tr><td><code>{{ $selectedClientAccessUser->user_name }}</code></td><td><code>GEMPPP0335</code></td><td></td></tr>
-                                                <tr><td><code>other.user</code></td><td><code>GEMIL009999</code></td><td>Jane Doe</td></tr>
+                                                <tr><td><code>{{ $selectedClientAccessUser->user_name }}</code></td><td><code>ORI-LIFE-1001</code></td><td>John Kamau</td></tr>
+                                                <tr><td><code>{{ $selectedClientAccessUser->user_name }}</code></td><td><code>ORI-MORT-1002</code></td><td></td></tr>
+                                                <tr><td><code>other.user</code></td><td><code>ORI-MED-1003</code></td><td>Jane Doe</td></tr>
                                             </tbody>
                                         </table>
                                     </div>
-                                    <p class="text-muted small mb-0">Each row can target a different user. Blank user column = selected user above. User matches username or email.</p>
+                                    <p class="text-muted small mb-0">Blank user column = selected user above.</p>
                                 </div>
                             </details>
                         </form>
@@ -261,7 +337,7 @@
                                 <div class="text-center py-5 text-muted">
                                     <i class="bi bi-inbox" style="font-size:2rem;opacity:.5;"></i>
                                     <p class="mb-0 mt-2">No clients assigned to {{ $selectedName }} yet.</p>
-                                    <p class="small mb-0">Add a policy number above, then set their profile to <strong>Assigned clients only</strong>.</p>
+                                    <p class="small mb-0">Use <strong>Pick clients</strong> above to assign from the list, then set their profile to <strong>Assigned clients only</strong>.</p>
                                 </div>
                             </td>
                         </tr>
@@ -346,6 +422,20 @@
 .client-access-upload-sub { font-size: 0.875rem; color: var(--agile-text-muted, #64748b); margin: 0; }
 .client-access-upload-filename { display: inline-block; margin-top: .25rem; }
 .client-access-template-table { background: #fff; font-size: 0.85rem; margin-bottom: 0; }
+.client-access-picker {
+    max-height: 320px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff;
+}
+.client-access-picker-item {
+    display: flex; gap: .75rem; align-items: flex-start;
+    padding: .7rem .9rem; border-bottom: 1px solid #f1f5f9; margin: 0; cursor: pointer;
+}
+.client-access-picker-item:last-child { border-bottom: 0; }
+.client-access-picker-item:hover { background: #f8fafc; }
+.client-access-picker-item.is-checked { background: #eff6ff; }
+.client-access-picker-item .form-check-input { margin-top: .35rem; }
+.client-access-picker-name { display: block; font-weight: 600; font-size: .92rem; color: #0f172a; }
+.client-access-picker-sub { display: block; font-size: .78rem; color: #64748b; margin-top: .1rem; }
+.client-access-picker-item.is-hidden { display: none; }
 @media (max-width: 991px) {
     .client-access-steps { flex-direction: column; align-items: flex-start; }
     .client-access-step-arrow { display: none; }
@@ -401,6 +491,68 @@
             }
         });
     }
+
+    var search = document.getElementById('clientAccessPickerSearch');
+    var selectAll = document.getElementById('clientAccessSelectAll');
+    var countEl = document.getElementById('clientAccessSelectedCount');
+    var assignBtn = document.getElementById('clientAccessAssignBtn');
+    var pickForm = document.getElementById('clientAccessPickForm');
+    var items = Array.prototype.slice.call(document.querySelectorAll('.client-access-picker-item'));
+
+    function visibleCheckboxes() {
+        return items.filter(function(item) { return !item.classList.contains('is-hidden'); })
+            .map(function(item) { return item.querySelector('.client-access-pick-cb'); })
+            .filter(Boolean);
+    }
+
+    function refreshCount() {
+        var checked = document.querySelectorAll('.client-access-pick-cb:checked').length;
+        if (countEl) countEl.textContent = checked + ' selected';
+        if (assignBtn) assignBtn.disabled = checked === 0;
+        items.forEach(function(item) {
+            var cb = item.querySelector('.client-access-pick-cb');
+            item.classList.toggle('is-checked', !!(cb && cb.checked));
+        });
+        if (selectAll) {
+            var vis = visibleCheckboxes();
+            selectAll.checked = vis.length > 0 && vis.every(function(cb) { return cb.checked; });
+            selectAll.indeterminate = vis.some(function(cb) { return cb.checked; }) && !selectAll.checked;
+        }
+    }
+
+    if (search) {
+        search.addEventListener('input', function() {
+            var q = (search.value || '').toLowerCase().trim();
+            items.forEach(function(item) {
+                var hay = item.getAttribute('data-search') || '';
+                item.classList.toggle('is-hidden', q !== '' && hay.indexOf(q) === -1);
+            });
+            refreshCount();
+        });
+    }
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            visibleCheckboxes().forEach(function(cb) { cb.checked = selectAll.checked; });
+            refreshCount();
+        });
+    }
+
+    items.forEach(function(item) {
+        var cb = item.querySelector('.client-access-pick-cb');
+        if (cb) cb.addEventListener('change', refreshCount);
+    });
+
+    if (pickForm) {
+        pickForm.addEventListener('submit', function(e) {
+            if (document.querySelectorAll('.client-access-pick-cb:checked').length === 0) {
+                e.preventDefault();
+                alert('Select at least one client.');
+            }
+        });
+    }
+
+    refreshCount();
 })();
 </script>
 @endif

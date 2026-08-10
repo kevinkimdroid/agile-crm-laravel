@@ -371,8 +371,9 @@ class CustomerController extends Controller
             $rows = $query->limit(200)->get()->map(fn (Client $c) => $c->toErpRowObject());
 
             $user = Auth::guard('vtiger')->user();
-            if ($user && $this->profileAccess->userIsLimitedToAssignedClients($user)) {
-                $rows = $this->profileAccess->filterCustomersToAssignedPolicies($rows, (int) $user->id, $system);
+            if ($user) {
+                // Hide clients assigned to someone else (exclusive ownership).
+                $rows = $this->profileAccess->filterCustomersForUserAccess($rows, $user, $system);
             }
 
             return $rows;
@@ -1068,8 +1069,12 @@ class CustomerController extends Controller
                 } elseif ($hasColumnFilters) {
                     $result = $this->getCachedErpFilterBatch($erpSearch, $system);
                     $customers = $this->applyColumnFilters($result['data'], $columnFilters);
-                    if ($user && $this->profileAccess->userIsLimitedToAssignedClients($user)) {
-                        $customers = $this->profileAccess->filterCustomersToAssignedPolicies($customers, (int) $user->id, $system);
+                    if ($user) {
+                        $customers = $this->profileAccess->filterCustomersForUserAccess(
+                            $customers instanceof Collection ? $customers : collect($customers),
+                            $user,
+                            $system
+                        );
                     }
                     $total = $customers->count();
                     $customers = $customers->slice($offset, $perPage)->values();
@@ -1083,14 +1088,16 @@ class CustomerController extends Controller
                     $total = $result['total'];
                     $clientsGrandTotal = $result['grand_total'] ?? null;
                     $clientsError = $result['error'] ?? null;
-                    if ($user && $this->profileAccess->userIsLimitedToAssignedClients($user)) {
-                        $customers = $this->profileAccess->filterCustomersToAssignedPolicies(
+                    if ($user) {
+                        $customers = $this->profileAccess->filterCustomersForUserAccess(
                             $customers instanceof Collection ? $customers : collect($customers),
-                            (int) $user->id,
+                            $user,
                             $system
                         );
-                        $total = count($this->profileAccess->getAssignedPolicyNumbersForUser((int) $user->id, $system));
-                        $clientsGrandTotal = $total;
+                        if ($this->profileAccess->userIsLimitedToAssignedClients($user)) {
+                            $total = count($this->profileAccess->getAssignedPolicyNumbersForUser((int) $user->id, $system));
+                            $clientsGrandTotal = $total;
+                        }
                     }
                 }
                 if ($clientsError && $customers->isEmpty()) {
@@ -1248,8 +1255,12 @@ class CustomerController extends Controller
                 } elseif ($hasColumnFilters) {
                     $result = $this->getCachedErpFilterBatch($erpSearch, $system);
                     $customers = $this->applyColumnFilters($result['data'], $columnFilters);
-                    if ($user && $this->profileAccess->userIsLimitedToAssignedClients($user)) {
-                        $customers = $this->profileAccess->filterCustomersToAssignedPolicies($customers, (int) $user->id, $system);
+                    if ($user) {
+                        $customers = $this->profileAccess->filterCustomersForUserAccess(
+                            $customers instanceof Collection ? $customers : collect($customers),
+                            $user,
+                            $system
+                        );
                     }
                     $total = $customers->count();
                     $customers = $customers->slice($offset, $perPage)->values();
@@ -1263,14 +1274,16 @@ class CustomerController extends Controller
                     $total = $result['total'];
                     $clientsGrandTotal = $result['grand_total'] ?? null;
                     $clientsError = $result['error'] ?? null;
-                    if ($user && $this->profileAccess->userIsLimitedToAssignedClients($user)) {
-                        $customers = $this->profileAccess->filterCustomersToAssignedPolicies(
+                    if ($user) {
+                        $customers = $this->profileAccess->filterCustomersForUserAccess(
                             $customers instanceof Collection ? $customers : collect($customers),
-                            (int) $user->id,
+                            $user,
                             $system
                         );
-                        $total = count($this->profileAccess->getAssignedPolicyNumbersForUser((int) $user->id, $system));
-                        $clientsGrandTotal = $total;
+                        if ($this->profileAccess->userIsLimitedToAssignedClients($user)) {
+                            $total = count($this->profileAccess->getAssignedPolicyNumbersForUser((int) $user->id, $system));
+                            $clientsGrandTotal = $total;
+                        }
                     }
                 }
                 if ($clientsError && $customers->isEmpty()) {

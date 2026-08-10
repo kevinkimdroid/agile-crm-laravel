@@ -6,7 +6,7 @@ $sections = [
         ['section' => 'departments', 'icon' => 'bi-building', 'name' => 'Departments', 'hint' => 'Organize teams and user departments', 'keywords' => 'departments teams org'],
         ['section' => 'roles', 'icon' => 'bi-shield-lock', 'name' => 'Roles', 'hint' => 'Assign profiles to CRM roles', 'keywords' => 'roles permissions access'],
         ['section' => 'profiles', 'icon' => 'bi-person-vcard', 'name' => 'Profiles', 'hint' => 'Module permissions and field access', 'keywords' => 'profiles permissions modules'],
-        ['section' => 'client-access', 'icon' => 'bi-person-check', 'name' => 'Client Access', 'hint' => 'Restrict users to assigned policies + demo', 'keywords' => 'client access policy assignment restricted demo'],
+        ['section' => 'client-access', 'icon' => 'bi-person-check', 'name' => 'Client Access', 'hint' => 'Assign clients so only that user can see them', 'keywords' => 'client access policy assignment restricted assigned only'],
         ['section' => 'sharing-rules', 'icon' => 'bi-share', 'name' => 'Sharing Rules', 'hint' => 'Record visibility across the CRM', 'keywords' => 'sharing rules visibility'],
         ['section' => 'groups', 'icon' => 'bi-people', 'name' => 'Groups', 'hint' => 'Vtiger groups for assignment', 'keywords' => 'groups teams'],
         ['section' => 'login-history', 'icon' => 'bi-clock-history', 'name' => 'Login History', 'hint' => 'Recent sign-in activity', 'keywords' => 'login history audit security'],

@@ -234,6 +234,43 @@ class ProfileAccessService
         }
     }
 
+    /**
+     * User IDs that currently own an assignment for this policy.
+     *
+     * @return list<int>
+     */
+    public function getAssigneeUserIdsForPolicy(string $policyNumber): array
+    {
+        $policyNumber = UserClientAssignment::normalizePolicyNumber($policyNumber);
+        if ($policyNumber === '' || ! $this->assignmentsTableExists()) {
+            return [];
+        }
+
+        try {
+            return safe_cache_remember(
+                'agile_client_assignees_' . md5($policyNumber),
+                300,
+                function () use ($policyNumber) {
+                    return UserClientAssignment::query()
+                        ->where('policy_number', $policyNumber)
+                        ->pluck('userid')
+                        ->map(fn ($id) => (int) $id)
+                        ->unique()
+                        ->values()
+                        ->all();
+                }
+            );
+        } catch (\Throwable $e) {
+            return UserClientAssignment::query()
+                ->where('policy_number', $policyNumber)
+                ->pluck('userid')
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all();
+        }
+    }
+
     public function userCanAccessClientPolicy(?VtigerUser $user, ?string $policyNumber, ?string $system = null): bool
     {
         $policyNumber = UserClientAssignment::normalizePolicyNumber($policyNumber);
@@ -248,22 +285,64 @@ class ProfileAccessService
             return false;
         }
 
-        // Normal admins see everything — unless demo restricted mode is ON.
-        if ($user->isAdministrator() && ! $demoMode) {
-            return true;
-        }
-
         if ($system !== null && $system !== '' && ! $this->userCanAccessClientSegment($user, $system)) {
             return false;
         }
 
-        if (! $this->userIsLimitedToAssignedClients($user)) {
+        $assignees = $this->getAssigneeUserIdsForPolicy($policyNumber);
+
+        // Exclusive ownership: once a client is assigned, only those assignees may see it.
+        // Admins keep access for support (unless assigned-only preview is on).
+        if ($assignees !== []) {
+            if (in_array((int) $user->id, $assignees, true)) {
+                return true;
+            }
+
+            return $user->isAdministrator() && ! $demoMode;
+        }
+
+        // Unassigned client — admins always; assigned-only users never; others by segment.
+        if ($user->isAdministrator() && ! $demoMode) {
             return true;
         }
 
-        $assigned = $this->getAssignedPolicyNumbersForUser((int) $user->id, $system);
+        if ($this->userIsLimitedToAssignedClients($user)) {
+            return false;
+        }
 
-        return in_array($policyNumber, $assigned, true);
+        return true;
+    }
+
+    /**
+     * Keep only rows the current user is allowed to see (enforces exclusive assignments).
+     *
+     * @param  Collection<int, mixed>  $customers
+     * @return Collection<int, mixed>
+     */
+    public function filterCustomersForUserAccess(Collection $customers, VtigerUser $user, ?string $system = null): Collection
+    {
+        return $customers->filter(function ($customer) use ($user, $system) {
+            $row = (array) (is_object($customer) ? $customer : $customer);
+            $policy = '';
+            foreach (['policy_no', 'policy_number', 'ipol_policy_no', 'pol_policy_no', 'contract_no', 'scheme_no'] as $key) {
+                $policy = UserClientAssignment::normalizePolicyNumber($row[$key] ?? '');
+                if ($policy !== '') {
+                    break;
+                }
+            }
+            if ($policy === '') {
+                return false;
+            }
+            $rowSystem = $system;
+            if (($rowSystem === null || $rowSystem === '') && ! empty($row['life_system'])) {
+                $rowSystem = (string) $row['life_system'];
+            }
+            if (($rowSystem === null || $rowSystem === '') && ! empty($row['system'])) {
+                $rowSystem = (string) $row['system'];
+            }
+
+            return $this->userCanAccessClientPolicy($user, $policy, $rowSystem !== '' ? $rowSystem : null);
+        })->values();
     }
 
     /**
@@ -341,6 +420,15 @@ class ProfileAccessService
 
             return false;
         })->values();
+    }
+
+    public function clearAssigneeCacheForPolicy(string $policyNumber): void
+    {
+        $policyNumber = UserClientAssignment::normalizePolicyNumber($policyNumber);
+        if ($policyNumber === '') {
+            return;
+        }
+        Cache::forget('agile_client_assignees_' . md5($policyNumber));
     }
 
     public function clearClientAssignmentCacheForUser(int $userId): void

@@ -272,6 +272,7 @@ Route::post('/settings/crm/ticket-sla/categories/update', [\App\Http\Controllers
 Route::delete('/settings/crm/ticket-sla/categories/{category}', [\App\Http\Controllers\TicketSlaController::class, 'deleteCategoryTat'])->name('settings.ticket-sla.delete-category')->where('category', '.*');
 Route::post('/settings/crm/roles/{role}/profile', [\App\Http\Controllers\RoleController::class, 'assignProfile'])->name('settings.roles.assign-profile');
 Route::post('/settings/client-access', [\App\Http\Controllers\ClientAssignmentController::class, 'store'])->name('settings.client-access.store');
+Route::post('/settings/client-access/assign-selected', [\App\Http\Controllers\ClientAssignmentController::class, 'storeMany'])->name('settings.client-access.store-many');
 Route::post('/settings/client-access/bulk', [\App\Http\Controllers\ClientAssignmentController::class, 'bulkStore'])->name('settings.client-access.bulk');
 Route::get('/settings/client-access/template.csv', [\App\Http\Controllers\ClientAssignmentController::class, 'downloadTemplate'])->name('settings.client-access.template');
 Route::delete('/settings/client-access/{assignment}', [\App\Http\Controllers\ClientAssignmentController::class, 'destroy'])->name('settings.client-access.destroy');

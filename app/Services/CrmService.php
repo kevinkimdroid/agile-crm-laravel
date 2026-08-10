@@ -2100,6 +2100,8 @@ class CrmService
                 ->table('vtiger_contactdetails as c')
                 ->join('vtiger_crmentity as e', 'c.contactid', '=', 'e.crmid')
                 ->leftJoin('vtiger_contactscf as cf', 'c.contactid', '=', 'cf.contactid')
+                ->leftJoin('vtiger_contactaddress as a', 'c.contactid', '=', 'a.contactaddressid')
+                ->leftJoin('vtiger_contactsubdetails as s', 'c.contactid', '=', 's.contactsubscriptionid')
                 ->leftJoin('vtiger_users as u', 'e.smownerid', '=', 'u.id')
                 ->where('e.deleted', 0)
                 ->whereIn('e.setype', ['Contacts', 'Contact'])
@@ -2110,10 +2112,21 @@ class CrmService
                     'e.modifiedtime',
                     'e.smownerid',
                     'e.source',
+                    'e.description',
                     'cf.cf_856',
                     'cf.cf_852',
                     'cf.cf_860',
                     'cf.cf_872',
+                    'cf.idNumber',
+                    'a.mailingstreet',
+                    'a.mailingcity',
+                    'a.mailingstate',
+                    'a.mailingzip',
+                    'a.mailingcountry',
+                    'a.mailingpobox',
+                    's.birthday',
+                    's.leadsource',
+                    's.homephone',
                     DB::raw("CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) as assigned_to_name")
                 )
                 ->first();
@@ -2125,13 +2138,27 @@ class CrmService
             $contact = new Contact((array) $row);
             $contact->contactid = $row->contactid;
             $contact->idNumber = $row->idNumber ?? $row->cf_856 ?? null;
-            // cf_852 = KRA PIN; cf_860, cf_856, cf_872 = policy fields. Exclude cf_852 and reject any value that looks like PIN (e.g. A006533554X)
+            $contact->id_number = $contact->idNumber;
+            // cf_852 = KRA PIN; cf_860 = policy (app convention). Keep pickPolicy helper for legacy rows.
             $contact->policy_number = $this->pickPolicyExcludingPin(
                 $row->cf_860 ?? null,
-                $row->cf_856 ?? null,
-                $row->cf_872 ?? null
-            );
+                null,
+                null
+            ) ?: ($row->cf_860 ?? null);
             $contact->pin = $row->cf_852 ?? null;
+            $contact->kra_pin = $contact->pin;
+            $contact->lead_business_worth = $row->cf_872 ?? null;
+            $contact->cf_872 = $row->cf_872 ?? null;
+            $contact->birthday = $row->birthday ?? null;
+            $contact->leadsource = $row->leadsource ?? null;
+            $contact->homephone = $row->homephone ?? null;
+            $contact->mailingstreet = $row->mailingstreet ?? null;
+            $contact->mailingcity = $row->mailingcity ?? null;
+            $contact->mailingstate = $row->mailingstate ?? null;
+            $contact->mailingzip = $row->mailingzip ?? null;
+            $contact->mailingcountry = $row->mailingcountry ?? null;
+            $contact->mailingpobox = $row->mailingpobox ?? null;
+            $contact->description = $row->description ?? null;
             $contact->assigned_to_name = trim($row->assigned_to_name ?? '') ?: null;
             $contact->source = $row->source ?? null;
             $contact->donotcall = $row->donotcall ?? null;
