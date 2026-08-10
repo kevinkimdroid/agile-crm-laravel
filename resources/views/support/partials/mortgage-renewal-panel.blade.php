@@ -1,9 +1,16 @@
-{{-- Client action panel for mortgage renewals --}}
-<div class="offcanvas offcanvas-end mat-action-panel" tabindex="-1" id="mortgageRenewalPanel" aria-labelledby="mortgageRenewalPanelLabel">
+{{-- Client action panel for renewals (product-aware) --}}
+<div class="offcanvas offcanvas-end mat-action-panel" tabindex="-1" id="mortgageRenewalPanel" aria-labelledby="mortgageRenewalPanelLabel"
+     data-product-filter="{{ $product ?? 'individual' }}"
+     data-product-label="{{ $productLabel ?? 'Renewal' }}"
+     data-client-system="{{ match($product ?? 'individual') {
+         'group' => 'group',
+         'pension' => 'group_pension',
+         default => 'individual',
+     } }}">
     <div class="mat-panel-header">
         <div class="d-flex align-items-start justify-content-between gap-2">
             <div>
-                <p class="mat-panel-eyebrow mb-1">Mortgage renewal</p>
+                <p class="mat-panel-eyebrow mb-1" id="mr_panel_eyebrow">{{ ($productLabel ?? 'Policy') }} renewal</p>
                 <h5 class="fw-bold mb-1" id="mortgageRenewalPanelLabel">Client actions</h5>
                 <div class="mat-panel-meta">
                     <span class="font-monospace fw-semibold" id="mr_panel_policy">—</span>
@@ -62,7 +69,7 @@
                 <form method="post" action="{{ route('support.maturities.notify-client') }}" class="mt-3">
                     @csrf
                     <input type="hidden" name="return_url" value="{{ request()->fullUrl() }}">
-                    <input type="hidden" name="screen" value="mortgage">
+                    <input type="hidden" name="screen" value="renewal">
                     <input type="hidden" name="channel" value="email">
                     <input type="hidden" name="event_type" value="renewal">
                     <input type="hidden" name="policy_number" id="mr_email_policy" value="">
@@ -96,13 +103,13 @@
                     <span class="mat-action-icon" style="background:var(--agile-primary-muted,rgba(27,63,122,0.08));color:var(--agile-primary,#1B3F7A)"><i class="bi bi-chat-dots"></i></span>
                     <div>
                         <h6 class="fw-bold mb-0">SMS reminder</h6>
-                        <p class="small text-muted mb-0">Text the client about their upcoming mortgage renewal.</p>
+                        <p class="small text-muted mb-0" id="mr_sms_help">Text the client about their upcoming renewal.</p>
                     </div>
                 </div>
                 <form method="post" action="{{ route('support.maturities.notify-client') }}" class="mt-3">
                     @csrf
                     <input type="hidden" name="return_url" value="{{ request()->fullUrl() }}">
-                    <input type="hidden" name="screen" value="mortgage">
+                    <input type="hidden" name="screen" value="renewal">
                     <input type="hidden" name="channel" value="sms">
                     <input type="hidden" name="event_type" value="renewal">
                     <input type="hidden" name="policy_number" id="mr_sms_policy" value="">
@@ -161,6 +168,8 @@
     var ticketUrl = @json(route('support.clients.create-ticket'));
     var serveUrl = @json(route('support.serve-client'));
     var contactUrl = @json(route('support.maturities.client-contact'));
+    var productLabel = panel.getAttribute('data-product-label') || 'Renewal';
+    var clientSystem = panel.getAttribute('data-client-system') || 'individual';
 
     function setText(id, value, fallback) {
         var el = document.getElementById(id);
@@ -230,6 +239,12 @@
         var subject = data.subject || '';
         var status = data.status || '';
 
+        setText('mr_panel_eyebrow', productLabel + ' renewal');
+        var smsHelp = document.getElementById('mr_sms_help');
+        if (smsHelp) {
+            smsHelp.textContent = 'Text the client about their upcoming ' + productLabel.toLowerCase() + ' renewal.';
+        }
+
         document.getElementById('mortgageRenewalPanelLabel').textContent = clientName || 'Client actions';
         setText('mr_panel_policy', policy);
         setText('mr_panel_renewal', renewalDisplay);
@@ -250,12 +265,12 @@
 
         var clientLink = document.getElementById('mr_panel_client_link');
         if (clientLink && policy) {
-            clientLink.href = clientShowUrl + '?policy=' + encodeURIComponent(policy) + '&system=mortgage';
+            clientLink.href = clientShowUrl + '?policy=' + encodeURIComponent(policy) + '&system=' + encodeURIComponent(clientSystem);
         }
 
         var ticketLink = document.getElementById('mr_panel_ticket');
         if (ticketLink && policy) {
-            ticketLink.href = ticketUrl + '?policy=' + encodeURIComponent(policy) + '&system=mortgage';
+            ticketLink.href = ticketUrl + '?policy=' + encodeURIComponent(policy) + '&system=' + encodeURIComponent(clientSystem);
         }
 
         var serveLink = document.getElementById('mr_panel_serve');

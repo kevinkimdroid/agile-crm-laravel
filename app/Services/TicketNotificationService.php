@@ -299,7 +299,7 @@ class TicketNotificationService
     }
 
     /**
-     * When a contact submits feedback, email it to life@geminialife.co.ke (or configured address).
+     * When a contact submits feedback, email it to info@agilecraft.co.ke (or configured address).
      */
     public function sendFeedbackReceivedNotification(int $ticketId, string $ticketNo, string $title, string $contactName, string $rating, ?string $comment): bool
     {
@@ -354,7 +354,7 @@ class TicketNotificationService
         }
 
         try {
-            $from = config('mail.from.address', config('email-service.sender', 'life@geminialife.co.ke'));
+            $from = config('mail.from.address', config('email-service.sender', 'info@agilecraft.co.ke'));
             $fromName = config('mail.from.name', config('app.name'));
             Mail::raw($body, function ($message) use ($to, $toName, $subject, $from, $fromName) {
                 $message->to($to, $toName)->from($from, $fromName)->subject($subject);

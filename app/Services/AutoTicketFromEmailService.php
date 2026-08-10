@@ -104,9 +104,7 @@ class AutoTicketFromEmailService
         $internal = array_map('strtolower', array_filter([
             config('email-service.sender'),
             config('mail.from.address'),
-            'life@geminialife.co.ke',
-            'servicinglife@geminialife.co.ke',
-            'financelife@geminialife.co.ke',
+            'info@agilecraft.co.ke',
         ]));
         foreach ($internal as $i) {
             if ($i && (str_contains($address, $i) || str_contains($i, $address))) {
@@ -262,7 +260,7 @@ class AutoTicketFromEmailService
         }
 
         try {
-            $fromAddress = config('mail.from.address', config('email-service.sender', 'life@geminialife.co.ke'));
+            $fromAddress = config('mail.from.address', config('email-service.sender', 'info@agilecraft.co.ke'));
             if (config('mail.default') === 'log') {
                 Log::info('AutoTicketFromEmailService: MAIL_MAILER=log – email not actually sent. Set MAIL_MAILER=smtp for delivery.');
             }

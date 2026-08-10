@@ -221,7 +221,7 @@ return [
 
     'feedback_request' => [
         'enabled' => filter_var(env('TICKET_FEEDBACK_REQUEST_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
-        'notify_email' => env('TICKET_FEEDBACK_NOTIFY_EMAIL', 'life@geminialife.co.ke'),
+        'notify_email' => env('TICKET_FEEDBACK_NOTIFY_EMAIL', 'info@agilecraft.co.ke'),
         // Public URL for feedback links in emails (clients must reach this). No trailing path — use public_path.
         'public_url' => rtrim(env('FEEDBACK_PUBLIC_URL', ''), '/'),
         // URL segment after public_url for HMAC and email links (e.g. crm-client-feedback → /crm-client-feedback?...)

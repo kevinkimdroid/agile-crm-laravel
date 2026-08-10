@@ -15,18 +15,16 @@ class TestImapConnectionCommand extends Command
     public function handle(): int
     {
         if (! extension_loaded('imap')) {
-            $this->error('PHP IMAP extension is not loaded.');
-            $this->line('Enable it in php.ini: remove semicolon from ;extension=imap');
-            $this->line('XAMPP: C:\xampp\php\php.ini');
-            return self::FAILURE;
+            $this->warn('Native PHP IMAP extension is not loaded (optional for Webklex). Continuing with socket IMAP…');
+            $this->line('To enable: uncomment extension=imap in C:\xampp\php\php.ini');
         }
 
-        $host = config('imap.accounts.geminia.host', env('IMAP_HOST', 'smtp.office365.com'));
-        $port = (int) config('imap.accounts.geminia.port', env('IMAP_PORT', 993));
-        $user = config('imap.accounts.geminia.username', env('IMAP_USERNAME'));
-        $encryption = config('imap.accounts.geminia.encryption', env('IMAP_ENCRYPTION', 'ssl'));
+        $host = config('imap.accounts.agilecraft.host', env('IMAP_HOST', 'mail.agilecraft.co.ke'));
+        $port = (int) config('imap.accounts.agilecraft.port', env('IMAP_PORT', 993));
+        $user = config('imap.accounts.agilecraft.username', env('IMAP_USERNAME'));
+        $encryption = config('imap.accounts.agilecraft.encryption', env('IMAP_ENCRYPTION', 'ssl'));
 
-        $this->info('Testing IMAP connection...');
+        $this->info('Testing IMAP connection (Agile Craft)...');
         $this->line("Host: {$host}:{$port} ({$encryption}), User: {$user}");
 
         // Pre-check: DNS
@@ -53,9 +51,9 @@ class TestImapConnectionCommand extends Command
 
         try {
             $cm = new ClientManager(config('imap'));
-            $client = $cm->account('geminia');
+            $client = $cm->account('agilecraft');
             $client->connect();
-            $this->info('IMAP: Connected successfully.');
+            $this->info('IMAP: Connected successfully to Agile Craft mailbox.');
             $folders = $client->getFolders();
             $this->line('Folders: ' . $folders->pluck('path')->implode(', '));
             $client->disconnect();
@@ -68,9 +66,8 @@ class TestImapConnectionCommand extends Command
             }
             $this->error('IMAP failed: ' . $msg);
             $this->newLine();
-            $this->line('Alternatives:');
-            $this->line('  1. Microsoft Graph (Office 365): docs/MICROSOFT-GRAPH-SETUP.md');
-            $this->line('  2. Create Email: Tools → Mail Manager → Create Email (manual entry)');
+            $this->line('Check IMAP_* settings in .env (mail.agilecraft.co.ke / info@agilecraft.co.ke).');
+            $this->line('Or create email manually: Tools → Mail Manager → Create Email');
             return self::FAILURE;
         } catch (\Throwable $e) {
             $this->error('Error: ' . $e->getMessage());

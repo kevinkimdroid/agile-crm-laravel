@@ -133,7 +133,7 @@
                 </div>
                 <div class="col-12">
                     <label class="form-label fw-semibold">Description <span class="text-muted fw-normal">(optional)</span></label>
-                    <textarea name="description" class="form-control" rows="2" placeholder="Brief details if needed">{{ old('description', $presetDescription ?? '') }}</textarea>
+                    <textarea name="description" id="ticketDescriptionBox" class="form-control" rows="2" placeholder="Brief details if needed">{{ old('description', $presetDescription ?? '') }}</textarea>
                 </div>
             </div>
         </div>
@@ -208,6 +208,28 @@
                 <p class="text-muted small mb-0 mt-1">Leave blank for the default message. When provided, this is inserted into the email sent to the client.</p>
             </div>
             <p class="text-muted small mb-0 mt-1">When checked, the client will receive an email with the ticket number after creation.</p>
+        </div>
+    </div>
+
+    {{-- Knowledge base guidance while logging --}}
+    <div class="app-card mb-4" id="createKbPanel" data-search-url="{{ route('support.faq.search') }}">
+        <div class="p-4">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                <h6 class="mb-0 fw-bold"><i class="bi bi-journal-bookmark me-1 text-primary"></i>Resolution guidance (Knowledge Base)</h6>
+                <a href="{{ route('support.faq') }}" class="small" target="_blank" rel="noopener">Browse FAQs</a>
+            </div>
+            <p class="text-muted small mb-3 mb-md-2">Search FAQs while logging the ticket. Add guidance into the description now, or resolve later from the ticket page with <strong>Use as solution</strong>.</p>
+            <div class="row g-3">
+                <div class="col-lg-5">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                        <input type="search" id="createKbSearch" class="form-control" placeholder="e.g. payment not reflected, portal login…" autocomplete="off">
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div id="createKbResults" class="small text-muted">Type a few words to search the knowledge base.</div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -405,6 +427,73 @@
         }
         sendEmailCb.addEventListener('change', toggleEmailOptions);
         toggleEmailOptions();
+    }
+})();
+</script>
+<script>
+(function () {
+    const panel = document.getElementById('createKbPanel');
+    if (!panel) return;
+    const url = panel.getAttribute('data-search-url');
+    const input = document.getElementById('createKbSearch');
+    const box = document.getElementById('createKbResults');
+    const titleInput = document.querySelector('input[name="title"]');
+
+    function escapeHtml(s) {
+        return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function render(rows) {
+        if (!rows.length) {
+            box.innerHTML = '<span class="text-muted">No matching FAQs.</span>';
+            return;
+        }
+        const store = {};
+        rows.forEach(r => store[r.id] = r);
+        box.innerHTML = rows.slice(0, 4).map(r => `
+            <div class="border rounded p-2 mb-2 bg-white">
+                <div class="text-uppercase text-muted" style="font-size:.65rem">${escapeHtml(r.category)}</div>
+                <div class="fw-semibold mb-1">${escapeHtml(r.question)}</div>
+                <div class="text-muted mb-2" style="font-size:.8rem;max-height:3.2rem;overflow:hidden">${escapeHtml(r.answer)}</div>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-id="${r.id}"><i class="bi bi-plus-lg me-1"></i>Add to description</button>
+            </div>
+        `).join('');
+        box.querySelectorAll('button[data-id]').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const r = store[this.getAttribute('data-id')];
+                if (!r) return;
+                const desc = document.getElementById('ticketDescriptionBox');
+                if (!desc) return;
+                const block = 'KB guidance — ' + r.question + '\n' + r.answer;
+                desc.value = desc.value ? (desc.value.replace(/\s*$/, '') + '\n\n' + block) : block;
+                desc.focus();
+            });
+        });
+    }
+
+    let t;
+    function doSearch(q) {
+        if (!q || q.trim().length < 2) {
+            box.innerHTML = '<span class="text-muted">Type a few words to search the knowledge base.</span>';
+            return;
+        }
+        fetch(url + '?q=' + encodeURIComponent(q), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(res => res.json())
+            .then(data => render((data && data.results) || []))
+            .catch(() => { box.innerHTML = '<span class="text-muted">Could not load FAQs.</span>'; });
+    }
+
+    input.addEventListener('input', function () {
+        clearTimeout(t);
+        t = setTimeout(() => doSearch(this.value.trim()), 250);
+    });
+    if (titleInput) {
+        titleInput.addEventListener('change', function () {
+            if (!input.value.trim() && this.value.trim().length >= 4) {
+                input.value = this.value.trim();
+                doSearch(this.value.trim());
+            }
+        });
     }
 })();
 </script>

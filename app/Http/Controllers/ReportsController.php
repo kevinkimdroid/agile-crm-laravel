@@ -42,15 +42,35 @@ class ReportsController
         return view('reports', $crm->getReportsIndexData(120));
     }
 
+    /**
+     * Client (CRM HelpDesk) tickets that exceeded TAT.
+     */
     public function slaBroken(TicketSlaService $sla, UserDepartmentService $userDept): View
     {
-        $tickets = Cache::remember('reports:sla-broken:view', 60, fn () => $sla->getBrokenSlaTickets(100));
+        $tickets = Cache::remember('reports:sla-broken-clients:view', 60, fn () => $sla->getBrokenSlaTickets(100));
         $userIds = $tickets->pluck('smownerid')->filter()->unique()->values()->all();
         $departments = $userDept->getDepartmentsForUsers($userIds);
         $tickets = $tickets->map(fn ($t) => (object) array_merge((array) $t, [
             'owner_department' => isset($t->smownerid) ? ($departments[$t->smownerid] ?? null) : null,
         ]));
-        return view('reports.sla-broken', ['tickets' => $tickets]);
+
+        return view('reports.sla-broken', [
+            'tickets' => $tickets,
+            'reportType' => 'clients',
+        ]);
+    }
+
+    /**
+     * Work tickets that exceeded TAT.
+     */
+    public function slaBrokenWork(TicketSlaService $sla): View
+    {
+        $tickets = Cache::remember('reports:sla-broken-work:view', 60, fn () => $sla->getBrokenWorkSlaTickets(100));
+
+        return view('reports.sla-broken-work', [
+            'tickets' => $tickets,
+            'reportType' => 'work',
+        ]);
     }
 
     public function ticketAging(CrmService $crm, Request $request, UserDepartmentService $userDept): View
@@ -1868,16 +1888,46 @@ class ReportsController
             $t->tat_hours ?? 24,
             $t->hours_overdue ?? 0,
         ])->toArray();
-        $headings = ['Ticket', 'Title', 'Department', 'Status', 'Assigned to', 'User Dept', 'Contact', 'Created', 'Due by', 'Resolved at', 'TAT (h)', 'Hours Overdue'];
+        $headings = ['Ticket', 'Title', 'Category', 'Status', 'Assigned to', 'User Dept', 'Client', 'Created', 'Due by', 'Resolved at', 'TAT (h)', 'Hours Overdue'];
         if ($request->get('format') === 'pdf') {
-            return $this->pdfTableExport('Broken SLA Report', $headings, $rows, 'broken-sla-report-' . date('Y-m-d'), [
+            return $this->pdfTableExport('Client Tickets – Broken SLA', $headings, $rows, 'client-tickets-broken-sla-' . date('Y-m-d'), [
                 'orientation' => 'landscape',
             ]);
         }
         if ($request->get('format') === 'xlsx') {
-            return Excel::download(new SlaBrokenExport($rows), 'broken-sla-report-' . date('Y-m-d') . '.xlsx');
+            return Excel::download(new SlaBrokenExport($rows, $headings), 'client-tickets-broken-sla-' . date('Y-m-d') . '.xlsx');
         }
-        return $this->csvResponse($rows, $headings, 'broken-sla-report');
+        return $this->csvResponse($rows, $headings, 'client-tickets-broken-sla');
+    }
+
+    public function exportSlaBrokenWork(TicketSlaService $sla, Request $request)
+    {
+        $tickets = $sla->getBrokenWorkSlaTickets(500);
+        $rows = $tickets->map(fn ($t) => [
+            $t->ticket_no ?? 'WT' . ($t->id ?? ''),
+            $t->title ?? '',
+            $t->priority ?? '',
+            $t->status ?? '',
+            $t->assignee_name ?? 'Unassigned',
+            $t->owner_department ?? '',
+            optional($t->created_at)->format('Y-m-d H:i:s') ?? '',
+            isset($t->due_at) ? $t->due_at->format('Y-m-d H:i:s') : '',
+            in_array((string) ($t->status ?? ''), ['Done', 'Closed'], true) && isset($t->completed_at)
+                ? $t->completed_at->format('Y-m-d H:i:s')
+                : 'Still open',
+            $t->tat_hours ?? '',
+            $t->hours_overdue ?? 0,
+        ])->toArray();
+        $headings = ['Ticket', 'Title', 'Priority', 'Status', 'Assigned to', 'User Dept', 'Created', 'Due by', 'Completed at', 'TAT (h)', 'Hours Overdue'];
+        if ($request->get('format') === 'pdf') {
+            return $this->pdfTableExport('Work Tickets – Broken SLA', $headings, $rows, 'work-tickets-broken-sla-' . date('Y-m-d'), [
+                'orientation' => 'landscape',
+            ]);
+        }
+        if ($request->get('format') === 'xlsx') {
+            return Excel::download(new SlaBrokenExport($rows, $headings), 'work-tickets-broken-sla-' . date('Y-m-d') . '.xlsx');
+        }
+        return $this->csvResponse($rows, $headings, 'work-tickets-broken-sla');
     }
 
     public function exportTicketAging(CrmService $crm, UserDepartmentService $userDept, Request $request)
@@ -1965,6 +2015,16 @@ class ReportsController
             $t->hours_overdue ?? 0,
         ])->toArray();
 
+        $workSlaRows = $sla->getBrokenWorkSlaTickets(500)->map(fn ($t) => [
+            $t->ticket_no ?? 'WT' . ($t->id ?? ''),
+            $t->title ?? '',
+            $t->priority ?? '',
+            $t->status ?? '',
+            $t->assignee_name ?? 'Unassigned',
+            $t->owner_department ?? '',
+            $t->hours_overdue ?? 0,
+        ])->toArray();
+
         $agingTickets = $crm->getTicketAgingReport($days, 500);
         $agingUserIds = $agingTickets->pluck('smownerid')->filter()->unique()->values()->all();
         $agingDepts = $userDept->getDepartmentsForUsers($agingUserIds);
@@ -2009,9 +2069,14 @@ class ReportsController
                 ],
             ],
             [
-                'title' => 'Broken SLA',
+                'title' => 'Client Tickets – Broken SLA',
                 'headings' => ['Ticket', 'Title', 'Category', 'Status', 'Assigned to', 'Dept', 'Hours overdue'],
                 'rows' => $slaRows,
+            ],
+            [
+                'title' => 'Work Tickets – Broken SLA',
+                'headings' => ['Ticket', 'Title', 'Priority', 'Status', 'Assigned to', 'Dept', 'Hours overdue'],
+                'rows' => $workSlaRows,
             ],
             [
                 'title' => 'Ticket Aging (' . $days . 'd+)',

@@ -192,7 +192,12 @@ class SettingsController extends Controller
             $data['roles'] = \App\Models\VtigerRole::on('vtiger')->orderBy('rolename')->get();
             $data['rolesCanClose'] = $sla->getRolesCanClose();
             $data['departmentTat'] = $sla->getAllDepartmentTat();
+            $data['categoryTat'] = $sla->getAllCategoryTat();
             $data['categoriesWithoutTat'] = $sla->getCategoriesWithoutTat();
+            $data['departmentsWithoutTat'] = $sla->getDepartmentsWithoutTat();
+            $data['slaTab'] = in_array($request->get('tab'), ['categories', 'departments', 'roles'], true)
+                ? $request->get('tab')
+                : 'categories';
         } elseif ($section === 'ticket-dropdowns') {
             $data['ticketCategoriesCustom'] = CrmSetting::tableExists()
                 ? (CrmSetting::get('ticket_categories_custom') ?? '')

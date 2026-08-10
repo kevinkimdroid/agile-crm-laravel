@@ -25,6 +25,36 @@
 
     <div class="app-card mb-4">
         <div class="p-4">
+            <h6 class="text-uppercase small fw-bold mb-4" style="color:var(--agile-primary);letter-spacing:0.08em">Link Records</h6>
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Client / Policy No.</label>
+                    <div class="position-relative" data-lookup="clients"
+                         data-url="{{ route('compliance.complaints.lookup.clients') }}">
+                        <input type="text" class="form-control" data-lookup-input autocomplete="off"
+                               placeholder="Click to select or search client / policy…">
+                        <div class="list-group position-absolute w-100 shadow-sm d-none" data-lookup-results style="z-index:20;max-height:16rem;overflow:auto"></div>
+                    </div>
+                    <div class="form-text">Search ERP clients — selecting one fills name, policy, email and phone below.</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Prospect</label>
+                    <div class="position-relative" data-lookup="prospects"
+                         data-url="{{ route('compliance.complaints.lookup.prospects') }}"
+                         data-target-id="complaint-contact-id">
+                        <input type="text" class="form-control" data-lookup-input autocomplete="off"
+                               value="{{ old('contact_id', $complaint->contact_id) ? 'Prospect #'.old('contact_id', $complaint->contact_id) : '' }}"
+                               placeholder="Click to select or search prospect…">
+                        <div class="list-group position-absolute w-100 shadow-sm d-none" data-lookup-results style="z-index:20;max-height:16rem;overflow:auto"></div>
+                    </div>
+                    <input type="hidden" name="contact_id" id="complaint-contact-id" value="{{ old('contact_id', $complaint->contact_id) }}">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-card mb-4">
+        <div class="p-4">
             <h6 class="text-uppercase small fw-bold mb-4" style="color:var(--agile-primary);letter-spacing:0.08em">Complainant Details</h6>
             <div class="row g-4">
                 <div class="col-md-6">
@@ -45,28 +75,24 @@
             <div class="row g-4 mt-2">
                 <div class="col-md-6">
                     <label class="form-label fw-semibold">Complainant Name <span class="text-danger">*</span></label>
-                    <input type="text" name="complainant_name" class="form-control" value="{{ old('complainant_name', $complaint->complainant_name) }}" required>
+                    <input type="text" name="complainant_name" id="complaint-name" class="form-control" value="{{ old('complainant_name', $complaint->complainant_name) }}" required>
                     @error('complainant_name')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                 </div>
                 <div class="col-md-6">
                     <label class="form-label fw-semibold">Phone</label>
-                    <input type="text" name="complainant_phone" class="form-control" value="{{ old('complainant_phone', $complaint->complainant_phone) }}">
+                    <input type="text" name="complainant_phone" id="complaint-phone" class="form-control" value="{{ old('complainant_phone', $complaint->complainant_phone) }}">
                 </div>
             </div>
             <div class="row g-4 mt-2">
                 <div class="col-md-6">
                     <label class="form-label fw-semibold">Email</label>
-                    <input type="email" name="complainant_email" class="form-control" value="{{ old('complainant_email', $complaint->complainant_email) }}">
+                    <input type="email" name="complainant_email" id="complaint-email" class="form-control" value="{{ old('complainant_email', $complaint->complainant_email) }}">
                     @error('complainant_email')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                 </div>
                 <div class="col-md-6">
                     <label class="form-label fw-semibold">Policy Number</label>
-                    <input type="text" name="policy_number" class="form-control font-monospace" value="{{ old('policy_number', $complaint->policy_number) }}">
+                    <input type="text" name="policy_number" id="complaint-policy" class="form-control font-monospace" value="{{ old('policy_number', $complaint->policy_number) }}">
                 </div>
-            </div>
-            <div class="mt-4">
-                <label class="form-label fw-semibold">Contact ID</label>
-                <input type="number" name="contact_id" class="form-control" value="{{ old('contact_id', $complaint->contact_id) }}" placeholder="Contact ID if known client" min="1">
             </div>
         </div>
     </div>
@@ -118,7 +144,70 @@
             </div>
             <div class="mt-4">
                 <label class="form-label fw-semibold">Assigned To</label>
-                <input type="text" name="assigned_to" class="form-control" value="{{ old('assigned_to', $complaint->assigned_to) }}">
+                @php
+                    $rawAssigned = old('assigned_to', $complaint->assigned_to);
+                    $assignedType = old('assigned_type');
+                    $assignedUser = old('assigned_user');
+                    $assignedAgent = old('assigned_agent');
+                    if ($assignedType === null) {
+                        if (is_string($rawAssigned) && str_starts_with($rawAssigned, 'User: ')) {
+                            $assignedType = 'user';
+                            $assignedUser = $assignedUser ?: substr($rawAssigned, 6);
+                        } elseif (is_string($rawAssigned) && str_starts_with($rawAssigned, 'Agent: ')) {
+                            $assignedType = 'agent';
+                            $assignedAgent = $assignedAgent ?: substr($rawAssigned, 7);
+                        } elseif ($rawAssigned) {
+                            // Legacy plain name — treat as user if it matches a staff name, else keep as free-text user.
+                            $userNames = collect($users ?? [])->pluck('name')->all();
+                            $agentLabels = collect($agents ?? [])->map->label()->all();
+                            if (in_array($rawAssigned, $agentLabels, true)) {
+                                $assignedType = 'agent';
+                                $assignedAgent = $rawAssigned;
+                            } else {
+                                $assignedType = 'user';
+                                $assignedUser = $rawAssigned;
+                            }
+                        } else {
+                            $assignedType = '';
+                        }
+                    }
+                @endphp
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <select name="assigned_type" id="assignedType" class="form-select">
+                            <option value="" {{ $assignedType === '' || $assignedType === null ? 'selected' : '' }}>Unassigned</option>
+                            <option value="user" {{ $assignedType === 'user' ? 'selected' : '' }}>User (staff)</option>
+                            <option value="agent" {{ $assignedType === 'agent' ? 'selected' : '' }}>Agent (intermediary)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8" id="assignedUserWrap" style="{{ $assignedType === 'user' ? '' : 'display:none' }}">
+                        <select name="assigned_user" id="assignedUser" class="form-select">
+                            <option value="">Select user…</option>
+                            @php $userKnown = false; @endphp
+                            @foreach(($users ?? []) as $u)
+                                @php $sel = $assignedUser === $u->name; $userKnown = $userKnown || $sel; @endphp
+                                <option value="{{ $u->name }}" {{ $sel ? 'selected' : '' }}>{{ $u->name }}</option>
+                            @endforeach
+                            @if($assignedUser && ! $userKnown)
+                                <option value="{{ $assignedUser }}" selected>{{ $assignedUser }} (current)</option>
+                            @endif
+                        </select>
+                    </div>
+                    <div class="col-md-8" id="assignedAgentWrap" style="{{ $assignedType === 'agent' ? '' : 'display:none' }}">
+                        <select name="assigned_agent" id="assignedAgent" class="form-select">
+                            <option value="">Select agent…</option>
+                            @php $agentKnown = false; @endphp
+                            @foreach(($agents ?? []) as $agent)
+                                @php $sel = $assignedAgent === $agent->label(); $agentKnown = $agentKnown || $sel; @endphp
+                                <option value="{{ $agent->label() }}" {{ $sel ? 'selected' : '' }}>{{ $agent->label() }}</option>
+                            @endforeach
+                            @if($assignedAgent && ! $agentKnown)
+                                <option value="{{ $assignedAgent }}" selected>{{ $assignedAgent }} (current)</option>
+                            @endif
+                        </select>
+                    </div>
+                </div>
+                <div class="form-text">Choose whether this complaint is assigned to a staff user or an insurance agent.</div>
             </div>
         </div>
     </div>
@@ -128,4 +217,7 @@
         <a href="{{ route('compliance.complaints.show', $complaint) }}" class="btn btn-outline-secondary">Cancel</a>
     </div>
 </form>
+
+@include('compliance.partials.complaint-lookup-script')
+@include('compliance.partials.complaint-assignee-script')
 @endsection

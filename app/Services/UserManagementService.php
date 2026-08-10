@@ -135,7 +135,7 @@ class UserManagementService
         }
 
         try {
-            $from = config('mail.from.address', config('email-service.sender', 'life@geminialife.co.ke'));
+            $from = config('mail.from.address', config('email-service.sender', 'info@agilecraft.co.ke'));
             $fromName = config('mail.from.name', config('app.name'));
             Mail::raw($body, function ($message) use ($to, $toName, $subject, $from, $fromName) {
                 $message->to($to, $toName)->from($from, $fromName)->subject($subject);

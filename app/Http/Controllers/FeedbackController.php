@@ -72,7 +72,7 @@ class FeedbackController extends Controller
                     'rating' => $validated['rating'],
                 ]);
 
-                // Email feedback to life@geminialife.co.ke
+                // Email feedback to info@agilecraft.co.ke
                 $ticketNo = $ticket->ticket_no ?? 'TT' . $ticketId;
                 $title = $ticket->title ?? 'Support request';
                 $contact = $this->crm->getContact($contactId);

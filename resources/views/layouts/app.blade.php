@@ -281,13 +281,13 @@
                         <i class="bi bi-house-door-fill"></i><span>Dashboard</span>
                     </a>
                     @endif
-                    @if($can('support.customers'))
-                    <a href="{{ route('support.customers') }}" class="app-nav-link {{ request()->routeIs('support.customers') || request()->routeIs('support.clients.*') ? 'active' : '' }}"><i class="bi bi-people"></i><span>Clients</span></a>
-                    @endif
                     @if($can('contacts'))
                     <a href="{{ route('contacts.index') }}" class="app-nav-link {{ request()->routeIs('contacts.*') ? 'active' : '' }}">
                         <i class="bi bi-person-lines-fill"></i><span>Prospects</span>
                     </a>
+                    @endif
+                    @if($can('support.customers'))
+                    <a href="{{ route('support.customers') }}" class="app-nav-link {{ request()->routeIs('support.customers') || request()->routeIs('support.clients.*') ? 'active' : '' }}"><i class="bi bi-people"></i><span>Clients</span></a>
                     @endif
                 </div>
                 @if($can('tickets') || $can('support.faq') || $can('compliance.complaints') || ($can('support.customers') && ! ($can('leads') || $can('marketing'))))
@@ -299,7 +299,7 @@
                     </a>
                     @endif
                     @if($can('support.faq'))
-                    <a href="{{ route('support.faq') }}" class="app-nav-link app-nav-sublink"><i class="bi bi-question-circle"></i><span>FAQ</span></a>
+                    <a href="{{ route('support.faq') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('support.faq*') ? 'active' : '' }}"><i class="bi bi-question-circle"></i><span>FAQ &amp; Categories</span></a>
                     @endif
                     @if($can('support.customers') && ! ($can('leads') || $can('marketing')))
                     <a href="{{ route('marketing.broadcast') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.broadcast*') ? 'active' : '' }}"><i class="bi bi-broadcast"></i><span>Broadcast</span></a>
@@ -307,7 +307,7 @@
                     @if($can('tickets'))
                     <a href="{{ route('support.maturities') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('support.maturities') ? 'active' : '' }}"><i class="bi bi-calendar-event"></i><span>Maturities</span></a>
                     <a href="{{ route('support.investment-maturities') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('support.investment-maturities*') ? 'active' : '' }}"><i class="bi bi-piggy-bank"></i><span>Investment maturities</span></a>
-                    <a href="{{ route('support.mortgage-renewals') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('support.mortgage-renewals') ? 'active' : '' }}"><i class="bi bi-house-heart"></i><span>Due for renewal (mortgage)</span></a>
+                    <a href="{{ route('support.mortgage-renewals') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('support.mortgage-renewals') ? 'active' : '' }}"><i class="bi bi-arrow-repeat"></i><span>Renewals</span></a>
                     @endif
                     @if($can('compliance.complaints'))
                     <a href="{{ route('compliance.complaints.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('compliance.complaints.*') ? 'active' : '' }}"><i class="bi bi-clipboard2-data"></i><span>Complaint Register</span></a>

@@ -15,7 +15,7 @@ class MailService
     /** @var string */
     protected $account;
 
-    public function __construct(string $account = 'geminia')
+    public function __construct(string $account = 'agilecraft')
     {
         $this->account = $account;
     }
@@ -329,7 +329,9 @@ class MailService
                 return $results;
             }
 
-            $messages = $targetFolder->messages()->limit($limit)->get();
+            // cPanel/Dovecot (Agile Craft) requires an explicit ALL search before limit;
+            // messages()->limit($n)->get() alone returns an empty set.
+            $messages = $targetFolder->messages()->all()->limit($limit)->get();
 
             foreach ($messages as $message) {
                 $results['fetched']++;
@@ -346,24 +348,22 @@ class MailService
                         continue;
                     }
 
-                    $from = $message->getFrom()->first();
-                    $to = $message->getTo()->map(fn ($a) => $a->mail)->implode(', ');
-                    $cc = $message->getCc()->count() > 0
-                        ? $message->getCc()->map(fn ($a) => $a->mail)->implode(', ')
-                        : null;
+                    $from = optional($message->getFrom())->first();
+                    $to = $this->formatImapAddresses($message->getTo());
+                    $cc = $this->formatImapAddresses($message->getCc()) ?: null;
 
                     $emailId = DB::connection('vtiger')->table('mail_manager_emails')->insertGetId([
                         'message_uid' => $uid,
                         'folder' => $targetFolder->path,
-                        'from_address' => ($from ? $from->mail : null) ?? '',
-                        'from_name' => $from ? $from->personal : null,
+                        'from_address' => ($from->mail ?? null) ?? '',
+                        'from_name' => $from->personal ?? null,
                         'to_addresses' => $to ?: null,
                         'cc_addresses' => $cc,
-                        'subject' => $message->getSubject(),
-                        'body_text' => $message->getTextBody(),
-                        'body_html' => $message->getHTMLBody(),
-                        'date' => ($d = $message->getDate()) ? $d->format('Y-m-d H:i:s') : null,
-                        'has_attachments' => $message->getAttachments()->count() > 0,
+                        'subject' => $this->imapAttributeToString($message->getSubject()),
+                        'body_text' => $message->getTextBody() ?: null,
+                        'body_html' => $message->getHTMLBody() ?: null,
+                        'date' => $this->imapMessageDate($message),
+                        'has_attachments' => (bool) optional($message->getAttachments())->count(),
                         'created_at' => now(),
                         'updated_at' => now(),
                     ]);
@@ -398,6 +398,85 @@ class MailService
         }
 
         return $results;
+    }
+
+    /**
+     * Format IMAP To/Cc address attributes for storage.
+     * Webklex Attribute has toArray()/first() but not map().
+     */
+    protected function formatImapAddresses($addresses): string
+    {
+        if ($addresses === null) {
+            return '';
+        }
+
+        $values = [];
+        if (is_object($addresses) && method_exists($addresses, 'toArray')) {
+            $values = $addresses->toArray();
+        } elseif (is_object($addresses) && method_exists($addresses, 'all')) {
+            $values = $addresses->all();
+        } elseif (is_iterable($addresses)) {
+            $values = $addresses;
+        }
+
+        $out = [];
+        foreach ($values as $a) {
+            if (is_object($a)) {
+                $mail = $a->mail ?? $a->mailbox ?? null;
+                if ($mail) {
+                    $out[] = (string) $mail;
+                } elseif (method_exists($a, '__toString')) {
+                    $out[] = (string) $a;
+                }
+            } elseif (is_string($a) && $a !== '') {
+                $out[] = $a;
+            }
+        }
+
+        return implode(', ', array_values(array_unique($out)));
+    }
+
+    /** Convert a Webklex Attribute/string subject to plain string. */
+    protected function imapAttributeToString($value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+        if (is_object($value) && method_exists($value, 'toString')) {
+            return (string) $value->toString();
+        }
+
+        return trim((string) $value);
+    }
+
+    /** Parse message date from Webklex Attribute or Carbon. */
+    protected function imapMessageDate($message): ?string
+    {
+        try {
+            $raw = $message->getDate();
+            if ($raw === null) {
+                return null;
+            }
+            if ($raw instanceof \Carbon\Carbon) {
+                return $raw->format('Y-m-d H:i:s');
+            }
+            if (is_object($raw) && method_exists($raw, 'toDate')) {
+                return $raw->toDate()->format('Y-m-d H:i:s');
+            }
+            if (is_object($raw) && method_exists($raw, 'first')) {
+                $first = $raw->first();
+                if ($first instanceof \Carbon\Carbon) {
+                    return $first->format('Y-m-d H:i:s');
+                }
+                if ($first) {
+                    return \Carbon\Carbon::parse((string) $first)->format('Y-m-d H:i:s');
+                }
+            }
+
+            return \Carbon\Carbon::parse((string) $raw)->format('Y-m-d H:i:s');
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     protected function processAutoTicketFromEmail(int $emailId): void
@@ -579,9 +658,7 @@ class MailService
         foreach ([
             config('email-service.sender'),
             config('mail.from.address'),
-            'life@geminialife.co.ke',
-            'servicinglife@geminialife.co.ke',
-            'financelife@geminialife.co.ke',
+            'info@agilecraft.co.ke',
         ] as $address) {
             $address = strtolower(trim((string) $address));
             if ($address !== '' && filter_var($address, FILTER_VALIDATE_EMAIL)) {
@@ -614,12 +691,12 @@ class MailService
     }
 
     /**
-     * Manually create an email record (e.g. client sent to life@geminialife.co.ke).
+     * Manually create an email record (e.g. client sent to info@agilecraft.co.ke).
      */
     public function createEmail(array $data): int
     {
         $uid = 'manual-' . uniqid('', true) . '-' . random_int(1000, 9999);
-        $sender = config('email-service.sender', config('mail.from.address', 'life@geminialife.co.ke'));
+        $sender = config('email-service.sender', config('mail.from.address', 'info@agilecraft.co.ke'));
 
         $row = [
             'message_uid' => $uid,

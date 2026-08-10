@@ -7,7 +7,15 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
         <div>
             <h1 class="page-title">Mail Manager</h1>
-            <p class="page-subtitle mb-0">Emails from {{ $useMicrosoftGraph ?? false ? config('microsoft-graph.mailbox') . ' (Microsoft Graph)' : ($useEmailService ?? false ? config('email-service.sender') . ' (HTTP)' : config('email-service.sender', 'life@geminialife.co.ke')) }}</p>
+            <p class="page-subtitle mb-0">
+                @if($useMicrosoftGraph ?? false)
+                    Emails from {{ config('microsoft-graph.mailbox') }} (Microsoft Graph)
+                @elseif($useEmailService ?? false)
+                    Emails from {{ config('email-service.sender') }} (HTTP)
+                @else
+                    Emails from {{ config('email-service.sender', 'info@agilecraft.co.ke') }} (IMAP)
+                @endif
+            </p>
         </div>
         <div class="d-flex gap-2">
             <a href="{{ route('tools.mail-manager.create') }}" class="btn btn-outline-primary">

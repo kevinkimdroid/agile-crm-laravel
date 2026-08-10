@@ -13,8 +13,13 @@ class SlaBrokenExport implements FromArray, WithHeadings, WithStyles, WithCustom
 {
     use WithExcelDateValueBinder;
 
-    public function __construct(protected array $rows)
+    protected array $headings;
+
+    public function __construct(protected array $rows, ?array $headings = null)
     {
+        $this->headings = $headings ?? [
+            'Ticket', 'Title', 'Category', 'Status', 'Assigned to', 'User Dept', 'Client', 'Created', 'Due by', 'Resolved at', 'TAT (h)', 'Hours Overdue',
+        ];
     }
 
     public function array(): array
@@ -24,7 +29,7 @@ class SlaBrokenExport implements FromArray, WithHeadings, WithStyles, WithCustom
 
     public function headings(): array
     {
-        return ['Ticket', 'Title', 'Department', 'Status', 'Assigned to', 'User Dept', 'Contact', 'Created', 'Due by', 'Resolved at', 'TAT (h)', 'Hours Overdue'];
+        return $this->headings;
     }
 
     public function styles(Worksheet $sheet): array

@@ -22,7 +22,7 @@ class MailManagerController extends Controller
 
     public function create(Request $request): View
     {
-        $sender = config('email-service.sender', config('mail.from.address', 'life@geminialife.co.ke'));
+        $sender = config('email-service.sender', config('mail.from.address', 'info@agilecraft.co.ke'));
         $presetFrom = $request->get('from_address');
         $presetFromName = $request->get('from_name');
         return view('tools.mail-manager-create', [
@@ -46,7 +46,7 @@ class MailManagerController extends Controller
         $data = [
             'from_address' => $validated['from_address'],
             'from_name' => $validated['from_name'] ?? null,
-            'to_addresses' => $validated['to_addresses'] ?? config('email-service.sender', 'life@geminialife.co.ke'),
+            'to_addresses' => $validated['to_addresses'] ?? config('email-service.sender', 'info@agilecraft.co.ke'),
             'subject' => $validated['subject'],
             'body_text' => $validated['body'] ?? null,
             'date' => $validated['date'] ?? now(),
@@ -199,14 +199,17 @@ class MailManagerController extends Controller
             throw $e;
         }
 
-        if (!empty($result['errors'])) {
+        if (!empty($result['errors']) && (int) ($result['stored'] ?? 0) === 0) {
             MailFetchHealth::markFailure(implode(' ', $result['errors']), 'manual');
-            return back()->with('error', implode(' ', $result['errors']));
+            return back()->with('error', implode(' ', array_unique($result['errors'])));
         }
 
         MailFetchHealth::markSuccess($result, 'manual');
         Cache::forget('agile_emails_count');
         $msg = "Fetched {$result['fetched']} emails, stored {$result['stored']} new.";
+        if (! empty($result['errors'])) {
+            $msg .= ' Some messages skipped: '.implode('; ', array_slice(array_unique($result['errors']), 0, 2));
+        }
         return back()->with('success', $msg);
     }
 }

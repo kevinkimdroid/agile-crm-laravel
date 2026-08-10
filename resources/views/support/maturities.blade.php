@@ -234,7 +234,7 @@
                 </p>
                 <div class="mat-hero-links d-flex flex-wrap gap-3">
                     <a href="{{ route('support.investment-maturities') }}"><i class="bi bi-piggy-bank me-1"></i>Investment maturities</a>
-                    <a href="{{ route('support.mortgage-renewals') }}"><i class="bi bi-house-heart me-1"></i>Mortgage renewals</a>
+                    <a href="{{ route('support.mortgage-renewals') }}"><i class="bi bi-arrow-repeat me-1"></i>Renewals</a>
                 </div>
             </div>
         </div>

@@ -125,9 +125,7 @@ class AutoComplaintFromEmailService
         $internal = array_map('strtolower', array_filter([
             config('email-service.sender'),
             config('mail.from.address'),
-            'life@geminialife.co.ke',
-            'servicinglife@geminialife.co.ke',
-            'financelife@geminialife.co.ke',
+            'info@agilecraft.co.ke',
         ]));
         foreach ($internal as $i) {
             if ($i && (str_contains($address, $i) || str_contains($i, $address))) {

@@ -24,11 +24,15 @@ class TicketSlaController extends Controller
         $roles = VtigerRole::on('vtiger')->orderBy('rolename')->get();
         $rolesCanClose = $this->sla->getRolesCanClose();
         $departmentTat = $this->sla->getAllDepartmentTat();
+        $categoryTat = $this->sla->getAllCategoryTat();
 
         return view('settings.sections.ticket-sla', [
             'roles' => $roles,
             'rolesCanClose' => $rolesCanClose,
             'departmentTat' => $departmentTat,
+            'categoryTat' => $categoryTat,
+            'categoriesWithoutTat' => $this->sla->getCategoriesWithoutTat(),
+            'departmentsWithoutTat' => $this->sla->getDepartmentsWithoutTat(),
         ]);
     }
 
@@ -37,7 +41,7 @@ class TicketSlaController extends Controller
         $roles = $request->input('roles_can_close', []);
         $roles = is_array($roles) ? array_filter($roles) : [];
         $this->sla->setRolesCanClose($roles);
-        return redirect()->route('settings.crm', ['section' => 'ticket-sla'])->with('success', 'Close ticket permissions updated.');
+        return $this->backToSla('Close ticket permissions updated.');
     }
 
     public function updateDepartmentTat(Request $request): RedirectResponse
@@ -47,7 +51,7 @@ class TicketSlaController extends Controller
         if ($department && $tatHours > 0) {
             $this->sla->setDepartmentTat($department, $tatHours);
         }
-        return redirect()->route('settings.crm', ['section' => 'ticket-sla'])->with('success', 'Department TAT updated.');
+        return $this->backToSla('Department TAT updated.', 'departments');
     }
 
     public function addDepartmentTat(Request $request): RedirectResponse
@@ -57,27 +61,69 @@ class TicketSlaController extends Controller
             'tat_hours' => 'required|integer|min:1|max:720',
         ]);
         $this->sla->setDepartmentTat($request->department, $request->tat_hours);
-        return redirect()->route('settings.crm', ['section' => 'ticket-sla'])->with('success', 'Department added.');
+        return $this->backToSla('Department added.', 'departments');
     }
 
     public function deleteDepartmentTat(string $department): RedirectResponse
     {
         $this->sla->deleteDepartmentTat($department);
-        return redirect()->route('settings.crm', ['section' => 'ticket-sla'])->with('success', 'Department TAT removed.');
+        return $this->backToSla('Department TAT removed.', 'departments');
+    }
+
+    public function updateCategoryTat(Request $request): RedirectResponse
+    {
+        $category = $request->input('category');
+        $tatHours = (int) $request->input('tat_hours', 24);
+        if ($category && $tatHours > 0) {
+            $this->sla->setCategoryTat($category, $tatHours);
+        }
+        return $this->backToSla('Category TAT updated.', 'categories');
+    }
+
+    public function addCategoryTat(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'category' => 'required|string|max:150',
+            'tat_hours' => 'required|integer|min:1|max:720',
+        ]);
+        $this->sla->setCategoryTat($request->category, $request->tat_hours);
+        return $this->backToSla('Category added.', 'categories');
+    }
+
+    public function deleteCategoryTat(string $category): RedirectResponse
+    {
+        $this->sla->deleteCategoryTat(urldecode($category));
+        return $this->backToSla('Category TAT removed.', 'categories');
     }
 
     /**
-     * Sync departments from ticket categories. Ensures every category has a TAT (SLA between departments).
+     * Sync category TAT from ticket categories.
      */
     public function syncFromCategories(): RedirectResponse
     {
-        $result = $this->sla->syncDepartmentsFromCategories();
+        $result = $this->sla->syncCategoriesFromTicketCategories();
         $added = $result['added'] ?? [];
         if (count($added) > 0) {
-            $msg = 'Added ' . count($added) . ' department(s) from ticket categories: ' . implode(', ', $added) . '. Each has 24h default TAT.';
-            return redirect()->route('settings.crm', ['section' => 'ticket-sla'])->with('success', $msg);
+            $msg = 'Added ' . count($added) . ' categor' . (count($added) === 1 ? 'y' : 'ies') . ' with 24h default TAT: ' . implode(', ', $added) . '.';
+            return $this->backToSla($msg, 'categories');
         }
-        return redirect()->route('settings.crm', ['section' => 'ticket-sla'])->with('info', 'All ticket categories already have department TAT configured.');
+        return redirect()->route('settings.crm', ['section' => 'ticket-sla', 'tab' => 'categories'])
+            ->with('info', 'All ticket categories already have TAT configured.');
+    }
+
+    /**
+     * Sync department TAT from org departments list.
+     */
+    public function syncFromDepartments(): RedirectResponse
+    {
+        $result = $this->sla->syncDepartmentsFromOrgList();
+        $added = $result['added'] ?? [];
+        if (count($added) > 0) {
+            $msg = 'Added ' . count($added) . ' department(s) with 24h default TAT: ' . implode(', ', $added) . '.';
+            return $this->backToSla($msg, 'departments');
+        }
+        return redirect()->route('settings.crm', ['section' => 'ticket-sla', 'tab' => 'departments'])
+            ->with('info', 'All org departments already have TAT configured.');
     }
 
     /**
@@ -93,7 +139,7 @@ class TicketSlaController extends Controller
         $import = app(TicketSlaImportService::class)->importFromFile($path);
 
         if (!empty($import['errors'])) {
-            return redirect()->route('settings.crm', ['section' => 'ticket-sla'])
+            return redirect()->route('settings.crm', ['section' => 'ticket-sla', 'tab' => 'departments'])
                 ->with('error', 'Import failed: ' . implode(' ', $import['errors']));
         }
 
@@ -101,7 +147,7 @@ class TicketSlaController extends Controller
         $skipped = $import['skipped'] ?? [];
 
         if (empty($imported)) {
-            return redirect()->route('settings.crm', ['section' => 'ticket-sla'])
+            return redirect()->route('settings.crm', ['section' => 'ticket-sla', 'tab' => 'departments'])
                 ->with('info', 'No departments could be imported. ' . (!empty($skipped) ? 'Skipped: ' . implode(', ', $skipped) : ''));
         }
 
@@ -109,7 +155,11 @@ class TicketSlaController extends Controller
         if (!empty($skipped)) {
             $summary .= '. Skipped: ' . implode(', ', $skipped);
         }
-        return redirect()->route('settings.crm', ['section' => 'ticket-sla'])
-            ->with('success', $summary);
+        return $this->backToSla($summary, 'departments');
+    }
+
+    protected function backToSla(string $message, string $tab = 'categories'): RedirectResponse
+    {
+        return redirect()->route('settings.crm', ['section' => 'ticket-sla', 'tab' => $tab])->with('success', $message);
     }
 }

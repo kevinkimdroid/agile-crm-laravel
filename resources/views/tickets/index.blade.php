@@ -33,6 +33,17 @@
         </div>
     @endif
 
+    <div class="alert alert-light border d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4">
+        <div class="small mb-0">
+            <i class="bi bi-journal-bookmark text-primary me-1"></i>
+            <strong>Resolve with knowledge base:</strong> open a ticket → search FAQs in the right panel → <em>Use as solution</em> → Close.
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ route('tickets.create') }}" class="btn btn-sm btn-outline-primary">Log ticket</a>
+            <a href="{{ route('support.faq') }}" class="btn btn-sm btn-outline-secondary">Browse FAQs</a>
+        </div>
+    </div>
+
     {{-- Status pills --}}
     <div class="tickets-status-pills mb-4">
         <a href="{{ route('tickets.index') }}" class="tickets-pill {{ !($currentList ?? '') ? 'active' : '' }}">

@@ -14,6 +14,18 @@ $allCount = array_sum($categoryCounts);
 @endphp
 
 <div class="faq-page">
+    @if(session('success'))
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="bi bi-check-circle-fill me-1"></i>{{ session('success') }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    @endif
+    @if(session('error'))
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ session('error') }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    @endif
     <div class="faq-hero mb-4">
         <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
             <div>
@@ -22,6 +34,14 @@ $allCount = array_sum($categoryCounts);
                 <p class="faq-hero-desc mb-0">Answers for your team from the Kenya Orient knowledge base — search by topic or browse categories.</p>
             </div>
             <div class="d-flex flex-wrap gap-2">
+                @if(!empty($canManage))
+                <a href="{{ route('support.faq.articles.create') }}" class="btn btn-light btn-sm fw-semibold">
+                    <i class="bi bi-plus-lg me-1"></i>New FAQ
+                </a>
+                <a href="{{ route('support.faq.manage') }}" class="btn btn-outline-light btn-sm">
+                    <i class="bi bi-gear me-1"></i>Manage
+                </a>
+                @endif
                 <a href="{{ route('tickets.create') }}" class="btn btn-light btn-sm fw-semibold">
                     <i class="bi bi-ticket-perforated me-1"></i>Open ticket
                 </a>
@@ -48,7 +68,7 @@ $allCount = array_sum($categoryCounts);
     <div class="row g-3 mb-4">
         <div class="col-sm-4">
             <div class="faq-stat">
-                <span class="faq-stat-label">Articles</span>
+                <span class="faq-stat-label">FAQs</span>
                 <span class="faq-stat-value">{{ number_format($totalFaqs) }}</span>
                 <span class="faq-stat-hint">{{ $search !== '' || $activeCategory !== 'all' ? 'Matching filters' : 'Active in knowledge base' }}</span>
             </div>
@@ -78,12 +98,12 @@ $allCount = array_sum($categoryCounts);
             </a>
             @foreach($categories as $cat)
             @php
-                $catName = $cat->faqcategories ?? '';
+                $catName = $cat->name ?? '';
                 if ($catName === '') continue;
-                $count = $categoryCounts[$catName] ?? 0;
+                $count = $categoryCounts[$cat->id] ?? 0;
             @endphp
-            <a href="{{ route('support.faq', array_filter(['category' => $catName, 'search' => $search ?: null])) }}"
-               class="faq-chip {{ $activeCategory === $catName ? 'active' : '' }}">
+            <a href="{{ route('support.faq', array_filter(['category' => $cat->slug, 'search' => $search ?: null])) }}"
+               class="faq-chip {{ $activeCategory === $cat->slug ? 'active' : '' }}">
                 {{ $catName }} <span class="faq-chip-count">{{ $count }}</span>
             </a>
             @endforeach
@@ -93,19 +113,24 @@ $allCount = array_sum($categoryCounts);
     @if($totalFaqs === 0)
     <div class="card faq-empty-card">
         <div class="faq-empty-icon"><i class="bi bi-journal-x"></i></div>
-        <h5 class="mb-2">No FAQ articles found</h5>
+        <h5 class="mb-2">No FAQs found</h5>
         <p class="text-muted mb-3">
             @if($search !== '')
                 Nothing matched “{{ $search }}”. Try different keywords or clear filters.
             @elseif($activeCategory !== 'all')
-                No articles in the “{{ $activeCategory }}” category yet.
+                No FAQs in the “{{ $activeCategory }}” category yet.
+            @elseif(!($kbReady ?? true))
+                The knowledge base tables are not set up yet. Run <code>php artisan migrate</code> and seed the defaults.
             @else
-                The knowledge base has no active articles yet. Ask an administrator to add FAQs in Kenya Orient (exclude Obsolete status).
+                The knowledge base has no published FAQs yet.@if(!empty($canManage)) Use “New FAQ” above to add the first one.@endif
             @endif
         </p>
         <div class="d-flex flex-wrap justify-content-center gap-2">
             @if($search !== '' || $activeCategory !== 'all')
-            <a href="{{ route('support.faq') }}" class="btn btn-outline-primary btn-sm">Show all articles</a>
+            <a href="{{ route('support.faq') }}" class="btn btn-outline-primary btn-sm">Show all FAQs</a>
+            @endif
+            @if(!empty($canManage))
+            <a href="{{ route('support.faq.articles.create') }}" class="btn btn-outline-primary btn-sm">New FAQ</a>
             @endif
             <a href="{{ route('tickets.create') }}" class="btn btn-primary btn-sm">Open a ticket</a>
         </div>
@@ -115,18 +140,12 @@ $allCount = array_sum($categoryCounts);
         <section class="faq-group mb-4">
             <div class="faq-group-head">
                 <h2 class="faq-group-title">{{ $groupName }}</h2>
-                <span class="badge bg-light text-muted border">{{ $items->count() }} article{{ $items->count() === 1 ? '' : 's' }}</span>
+                <span class="badge bg-light text-muted border">{{ $items->count() }} FAQ{{ $items->count() === 1 ? '' : 's' }}</span>
             </div>
             <div class="accordion faq-accordion" id="faqAccordion{{ Str::slug($groupName) }}">
                 @foreach($items as $faq)
                 @php
                     $accordionId = 'faq-' . $faq->id;
-                    $statusClass = match ($faq->status ?? '') {
-                        'Published' => 'published',
-                        'Reviewed' => 'reviewed',
-                        'Draft' => 'draft',
-                        default => 'other',
-                    };
                 @endphp
                 <div class="accordion-item faq-item">
                     <h3 class="accordion-header" id="heading-{{ $accordionId }}">
@@ -134,14 +153,6 @@ $allCount = array_sum($categoryCounts);
                             data-bs-toggle="collapse" data-bs-target="#collapse-{{ $accordionId }}"
                             aria-expanded="{{ $loop->first ? 'true' : 'false' }}" aria-controls="collapse-{{ $accordionId }}">
                             <span class="faq-question-text">{{ $faq->question }}</span>
-                            <span class="faq-item-meta ms-2">
-                                @if(($faq->status ?? '') !== 'Published')
-                                <span class="badge faq-status faq-status-{{ $statusClass }}">{{ $faq->status }}</span>
-                                @endif
-                                @if(!empty($faq->faq_no))
-                                <span class="faq-no font-monospace">{{ $faq->faq_no }}</span>
-                                @endif
-                            </span>
                         </button>
                     </h3>
                     <div id="collapse-{{ $accordionId }}" class="accordion-collapse collapse {{ $loop->first ? 'show' : '' }}"
@@ -150,16 +161,23 @@ $allCount = array_sum($categoryCounts);
                             {!! nl2br(e($faq->answer ?? '')) !!}
                             @if(!empty($faq->tags))
                             <div class="faq-tags mt-3">
-                                @foreach(array_filter(array_map('trim', explode(',', $faq->tags))) as $tag)
+                                @foreach($faq->tagList() as $tag)
                                 <span class="faq-tag">{{ $tag }}</span>
                                 @endforeach
                             </div>
                             @endif
-                            @if(!empty($faq->modifiedtime))
-                            <p class="faq-updated small text-muted mt-3 mb-0">
-                                Updated {{ \Carbon\Carbon::parse($faq->modifiedtime)->format('d M Y') }}
-                            </p>
-                            @endif
+                            <div class="d-flex align-items-center justify-content-between mt-3">
+                                @if(!empty($faq->updated_at))
+                                <p class="faq-updated small text-muted mb-0">
+                                    Updated {{ $faq->updated_at->format('d M Y') }}
+                                </p>
+                                @else
+                                <span></span>
+                                @endif
+                                @if(!empty($canManage))
+                                <a href="{{ route('support.faq.articles.edit', $faq) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil me-1"></i>Edit</a>
+                                @endif
+                            </div>
                         </div>
                     </div>
                 </div>

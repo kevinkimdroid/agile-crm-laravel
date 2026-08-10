@@ -12,6 +12,9 @@
         <p class="text-muted small mb-0">Assign specific policy numbers to users. Enable <strong>Assigned clients only</strong> on their profile to enforce this list.</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
+        <a href="{{ route('demo.restricted-access') }}" class="btn btn-sm btn-outline-danger" style="border-radius:8px">
+            <i class="bi bi-shield-lock me-1"></i>Restricted access demo
+        </a>
         <a href="{{ route('settings.crm', ['section' => 'profiles']) }}" class="btn btn-sm btn-outline-secondary" style="border-radius:8px">
             <i class="bi bi-person-vcard me-1"></i>Profile settings
         </a>

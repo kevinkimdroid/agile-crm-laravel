@@ -190,6 +190,10 @@ class ProfileAccessService
 
     public function userIsLimitedToAssignedClients(?VtigerUser $user): bool
     {
+        if (app(\App\Services\ClientAccessDemoService::class)->isDemoModeActive()) {
+            return true;
+        }
+
         return $this->getClientAccessModeForUser($user) === self::CLIENT_ACCESS_ASSIGNED_ONLY;
     }
 
@@ -237,7 +241,15 @@ class ProfileAccessService
             return false;
         }
 
-        if (! $user || $user->isAdministrator()) {
+        $demo = app(\App\Services\ClientAccessDemoService::class);
+        $demoMode = $demo->isDemoModeActive();
+
+        if (! $user) {
+            return false;
+        }
+
+        // Normal admins see everything — unless demo restricted mode is ON.
+        if ($user->isAdministrator() && ! $demoMode) {
             return true;
         }
 

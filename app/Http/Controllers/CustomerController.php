@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Client;
 use App\Models\ErpClientConsent;
 use App\Models\ErpClientComment;
 use App\Models\ErpClientDocument;
@@ -55,6 +56,362 @@ class CustomerController extends Controller
     }
 
     /**
+     * Show the "Create Client" form (locally stored clients with KYC details).
+     */
+    public function create(Request $request): View
+    {
+        return view('support.client-create', [
+            'systems' => Client::SYSTEMS,
+            'statuses' => Client::STATUSES,
+            'products' => Client::PRODUCTS,
+            'occupations' => Client::OCCUPATIONS,
+            'agents' => \App\Models\Agent::forDropdown(),
+            'previewPolicyNo' => Client::tableExists() ? Client::generatePolicyNo() : 'CRM…',
+            'defaultSystem' => $request->get('system', 'individual'),
+        ]);
+    }
+
+    /**
+     * Store a new locally-created client (with KYC details).
+     */
+    public function store(Request $request): RedirectResponse
+    {
+        if (! Client::tableExists()) {
+            return redirect()->route('support.customers')->with('error', 'Client storage is not set up yet. Run database migrations.');
+        }
+
+        $validated = $request->validate([
+            'first_name' => 'required|string|max:120',
+            'last_name' => 'nullable|string|max:120',
+            'id_no' => 'nullable|string|max:64',
+            'kra_pin' => 'nullable|string|max:32',
+            'date_of_birth' => 'nullable|date',
+            'gender' => 'nullable|string|max:20',
+            'email' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:50',
+            'address' => 'nullable|string|max:255',
+            'city' => 'nullable|string|max:120',
+            'postal_code' => 'nullable|string|max:32',
+            'occupation' => 'nullable|string|max:120',
+            'occupation_other' => 'nullable|string|max:120',
+            'product' => 'nullable|string|in:'.implode(',', Client::productNames()),
+            'intermediary' => 'nullable|string|max:255',
+            'system' => 'required|in:'.implode(',', array_keys(Client::SYSTEMS)),
+            'status' => 'required|in:'.implode(',', array_keys(Client::STATUSES)),
+            'notes' => 'nullable|string|max:5000',
+        ]);
+
+        if (($validated['occupation'] ?? null) === 'Other') {
+            $validated['occupation'] = trim((string) ($validated['occupation_other'] ?? '')) ?: null;
+        }
+        unset($validated['occupation_other']);
+
+        $validated['policy_no'] = Client::generatePolicyNo();
+        [$userId, $userName] = $this->resolveStaffAuthor();
+        $validated['created_by'] = $userId;
+        $validated['created_by_name'] = $userName;
+        $validated['source'] = 'manual';
+
+        $client = Client::create($validated);
+
+        return redirect()
+            ->route('support.clients.show', ['policy' => $client->policy_no])
+            ->with('success', 'Client "'.$client->fullName().'" created (policy '.$client->policy_no.').');
+    }
+
+    /**
+     * Show the CSV import screen for locally-stored clients.
+     */
+    public function importForm(): View
+    {
+        return view('support.client-import', [
+            'systems' => Client::SYSTEMS,
+            'statuses' => Client::STATUSES,
+            'products' => Client::PRODUCTS,
+            'occupations' => Client::OCCUPATIONS,
+        ]);
+    }
+
+    /**
+     * Download a CSV template for the client importer.
+     */
+    public function importTemplate(): StreamedResponse
+    {
+        $headers = [
+            'first_name', 'last_name', 'id_no', 'kra_pin', 'date_of_birth', 'gender',
+            'email', 'phone', 'address', 'city', 'postal_code', 'occupation',
+            'product', 'intermediary', 'system', 'status', 'policy_no',
+        ];
+        $samples = [
+            [
+                'Jane', 'Wanjiku', '12345678', 'A001234567X', '1990-05-14', 'Female',
+                'jane@example.com', '0712345678', 'Kimathi St', 'Nairobi', '00100', 'Teacher',
+                'Orient Endowment', 'Grace Njeri (AG-1001)', 'individual', 'A', '',
+            ],
+            [
+                'Peter', 'Omondi', '23456789', 'A002345678Y', '1985-11-02', 'Male',
+                'peter@example.com', '0722333444', 'Moi Ave', 'Mombasa', '80100', 'Business Owner',
+                'Orient Group Mortgage', 'Direct / Head Office (DIR-0000)', 'mortgage', 'A', '',
+            ],
+        ];
+
+        return response()->streamDownload(function () use ($headers, $samples) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel opens it cleanly
+            fputcsv($out, $headers);
+            foreach ($samples as $sample) {
+                fputcsv($out, $sample);
+            }
+            fclose($out);
+        }, 'clients-import-template.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * Import clients from an uploaded CSV file into the local clients table.
+     */
+    public function import(Request $request): RedirectResponse
+    {
+        if (! Client::tableExists()) {
+            return redirect()->route('support.customers')->with('error', 'Client storage is not set up yet. Run database migrations.');
+        }
+
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt|max:5120',
+            'default_system' => 'nullable|in:'.implode(',', array_keys(Client::SYSTEMS)),
+        ]);
+
+        $path = $request->file('file')->getRealPath();
+        $handle = @fopen($path, 'r');
+        if ($handle === false) {
+            return redirect()->back()->with('error', 'Could not read the uploaded file.');
+        }
+
+        // Detect the delimiter from the first line (comma, semicolon or tab).
+        $firstLine = fgets($handle);
+        if ($firstLine === false) {
+            fclose($handle);
+
+            return redirect()->back()->with('error', 'The CSV file is empty.');
+        }
+        $firstLine = preg_replace('/^\xEF\xBB\xBF/', '', $firstLine); // strip UTF-8 BOM
+        $counts = [',' => substr_count($firstLine, ','), ';' => substr_count($firstLine, ';'), "\t" => substr_count($firstLine, "\t")];
+        arsort($counts);
+        $delimiter = ($counts[array_key_first($counts)] > 0) ? array_key_first($counts) : ',';
+        rewind($handle);
+
+        $header = fgetcsv($handle, 0, $delimiter);
+        if (! $header) {
+            fclose($handle);
+
+            return redirect()->back()->with('error', 'The CSV file is empty.');
+        }
+        $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $header[0]);
+        $header = array_map(fn ($h) => strtolower(trim((string) $h)), $header);
+
+        if (! array_intersect(['first_name', 'last_name', 'name'], $header)) {
+            fclose($handle);
+
+            return redirect()->back()->with('error', 'Missing header row. Include at least a "first_name" (or "name") column. Download the template for the exact format.');
+        }
+
+        // Canonical product lookup (case-insensitive) against the Orient catalogue.
+        $productMap = [];
+        foreach (Client::productNames() as $p) {
+            $productMap[strtolower($p)] = $p;
+        }
+
+        [$userId, $userName] = $this->resolveStaffAuthor();
+        $defaultSystem = $request->get('default_system', 'individual');
+        $created = 0;
+        $skipped = 0;
+        $errors = [];
+        $rowNum = 1; // header consumed above
+
+        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+            $rowNum++;
+            if ($rowNum > 5001) {
+                $errors[] = 'Stopped at 5,000 rows — split large files.';
+                break;
+            }
+            if (count(array_filter($row, fn ($v) => trim((string) $v) !== '')) === 0) {
+                continue; // blank line
+            }
+
+            $data = [];
+            foreach ($header as $i => $key) {
+                $data[$key] = isset($row[$i]) ? trim((string) $row[$i]) : null;
+            }
+
+            // Name: accept first_name/last_name, or a single "name" column.
+            $first = $data['first_name'] ?? '';
+            $last = $data['last_name'] ?? null;
+            if ($first === '' && ! empty($data['name'])) {
+                $parts = preg_split('/\s+/', trim($data['name']), 2);
+                $first = $parts[0] ?? '';
+                $last = $last ?: ($parts[1] ?? null);
+            }
+            if ($first === '' && empty($last)) {
+                $skipped++;
+                if (count($errors) < 8) {
+                    $errors[] = "Row {$rowNum}: missing name — skipped.";
+                }
+                continue;
+            }
+
+            $system = in_array($data['system'] ?? '', array_keys(Client::SYSTEMS), true) ? $data['system'] : $defaultSystem;
+            $status = in_array(strtoupper((string) ($data['status'] ?? '')), array_keys(Client::STATUSES), true)
+                ? strtoupper($data['status'])
+                : 'A';
+
+            $policy = $data['policy_no'] ?? '';
+            if ($policy !== '' && Client::where('policy_no', $policy)->exists()) {
+                $skipped++;
+                if (count($errors) < 8) {
+                    $errors[] = "Row {$rowNum}: policy {$policy} already exists — skipped.";
+                }
+                continue;
+            }
+
+            $dob = null;
+            if (! empty($data['date_of_birth'])) {
+                try {
+                    $dob = \Carbon\Carbon::parse($data['date_of_birth'])->format('Y-m-d');
+                } catch (\Throwable $e) {
+                    $dob = null;
+                }
+            }
+
+            $gender = null;
+            $g = strtolower((string) ($data['gender'] ?? ''));
+            if (in_array($g, ['m', 'male'], true)) {
+                $gender = 'Male';
+            } elseif (in_array($g, ['f', 'female'], true)) {
+                $gender = 'Female';
+            } elseif ($g !== '') {
+                $gender = ucfirst($g);
+            }
+
+            $product = null;
+            $productRaw = (string) ($data['product'] ?? '');
+            if ($productRaw !== '') {
+                $product = $productMap[strtolower($productRaw)] ?? $productRaw;
+            }
+
+            try {
+                Client::create([
+                    'policy_no' => $policy !== '' ? $policy : Client::generatePolicyNo(),
+                    'first_name' => $first !== '' ? $first : ($last ?: 'Client'),
+                    'last_name' => $last ?: null,
+                    'id_no' => $data['id_no'] ?? null,
+                    'kra_pin' => $data['kra_pin'] ?? null,
+                    'date_of_birth' => $dob,
+                    'gender' => $gender,
+                    'email' => filter_var($data['email'] ?? '', FILTER_VALIDATE_EMAIL) ? $data['email'] : null,
+                    'phone' => $data['phone'] ?? null,
+                    'address' => $data['address'] ?? null,
+                    'city' => $data['city'] ?? null,
+                    'postal_code' => $data['postal_code'] ?? null,
+                    'occupation' => $data['occupation'] ?? null,
+                    'product' => $product,
+                    'intermediary' => $data['intermediary'] ?? null,
+                    'system' => $system,
+                    'status' => $status,
+                    'created_by' => $userId,
+                    'created_by_name' => $userName,
+                    'source' => 'import',
+                ]);
+                $created++;
+            } catch (\Throwable $e) {
+                $skipped++;
+                if (count($errors) < 8) {
+                    $errors[] = "Row {$rowNum}: ".$e->getMessage();
+                }
+            }
+        }
+        fclose($handle);
+
+        $redirect = redirect()->route('support.customers')
+            ->with('success', "Import complete: {$created} client(s) added".($skipped ? ", {$skipped} skipped" : '').'.');
+        if (! empty($errors)) {
+            $redirect->with('import_errors', $errors);
+        }
+
+        return $redirect;
+    }
+
+    /**
+     * Local clients matching the current segment/search, shaped as ERP-style row objects.
+     *
+     * @return Collection<int, object>
+     */
+    private function localClientObjects(?string $system, ?string $search): Collection
+    {
+        if (! Client::tableExists()) {
+            return collect();
+        }
+
+        try {
+            $query = Client::query()->orderByDesc('id');
+            if ($system) {
+                $query->where('system', $system);
+            }
+            $search = trim((string) $search);
+            if ($search !== '') {
+                $like = '%'.$search.'%';
+                $query->where(function ($q) use ($like) {
+                    $q->where('first_name', 'like', $like)
+                        ->orWhere('last_name', 'like', $like)
+                        ->orWhere('policy_no', 'like', $like)
+                        ->orWhere('id_no', 'like', $like)
+                        ->orWhere('phone', 'like', $like)
+                        ->orWhere('email', 'like', $like);
+                });
+            }
+
+            $rows = $query->limit(200)->get()->map(fn (Client $c) => $c->toErpRowObject());
+
+            $user = Auth::guard('vtiger')->user();
+            if ($user && $this->profileAccess->userIsLimitedToAssignedClients($user)) {
+                $rows = $this->profileAccess->filterCustomersToAssignedPolicies($rows, (int) $user->id, $system);
+            }
+
+            return $rows;
+        } catch (\Throwable $e) {
+            return collect();
+        }
+    }
+
+    /**
+     * Prepend local clients to an ERP clients API payload (page 1 only, to avoid duplicates).
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function withLocalClients(array $payload, ?string $system, ?string $search, int $page): array
+    {
+        if ($page > 1 || ! Client::tableExists()) {
+            return $payload;
+        }
+
+        $locals = $this->localClientObjects($system, $search)
+            ->map(fn ($o) => (array) $o)
+            ->values()
+            ->all();
+
+        if (empty($locals)) {
+            return $payload;
+        }
+
+        $payload['customers'] = array_merge($locals, $payload['customers'] ?? []);
+        $payload['total'] = (int) ($payload['total'] ?? 0) + count($locals);
+        if (array_key_exists('grand_total', $payload) && $payload['grand_total'] !== null) {
+            $payload['grand_total'] = (int) $payload['grand_total'] + count($locals);
+        }
+
+        return $payload;
+    }
+
+    /**
      * Show client details by policy number (ERP clients) or redirect to contact (CRM).
      */
     /** @return \Illuminate\View\View|\Illuminate\Http\RedirectResponse */
@@ -67,10 +424,34 @@ class CustomerController extends Controller
             return redirect()->route('support.customers')->with('error', 'Policy number required.');
         }
 
+        // Locally-created clients (POC) are stored in the app DB, not ERP.
+        if (Client::tableExists()) {
+            $localClient = Client::where('policy_no', $policy)->first();
+            if ($localClient) {
+                $system = trim((string) ($request->get('system') ?: $localClient->system ?: ''));
+                if (! user_can_access_client_policy($policy, $system !== '' ? $system : null)) {
+                    return view('support.client-access-denied', [
+                        'policy' => $policy,
+                        'clientName' => $localClient->fullName(),
+                        'system' => $system,
+                        'demoMode' => app(\App\Services\ClientAccessDemoService::class)->isDemoModeActive(),
+                        'isDemoClient' => app(\App\Services\ClientAccessDemoService::class)->isDemoPolicy($policy),
+                    ]);
+                }
+
+                return view('support.client-local-show', ['client' => $localClient]);
+            }
+        }
+
         $system = trim((string) $request->get('system', ''));
         if (! user_can_access_client_policy($policy, $system !== '' ? $system : null)) {
-            return redirect()->route('support.customers', array_filter(['system' => $system ?: null]))
-                ->with('error', 'You do not have access to this client.');
+            return view('support.client-access-denied', [
+                'policy' => $policy,
+                'clientName' => null,
+                'system' => $system,
+                'demoMode' => app(\App\Services\ClientAccessDemoService::class)->isDemoModeActive(),
+                'isDemoClient' => app(\App\Services\ClientAccessDemoService::class)->isDemoPolicy($policy),
+            ]);
         }
 
         $source = config('erp.clients_view_source', 'crm');
@@ -744,6 +1125,18 @@ class CustomerController extends Controller
             $total = $this->crm->getCustomersCount($search, $ownerId);
         }
 
+        // Merge locally-created clients (POC) into the first page of the server-rendered list.
+        if (! ($lazyLoad ?? false) && $page === 1 && ! $hasColumnFilters) {
+            $localObjs = $this->localClientObjects($system, $erpSearch);
+            if ($localObjs->isNotEmpty()) {
+                $customers = $localObjs->merge($customers instanceof Collection ? $customers : collect($customers));
+                $total += $localObjs->count();
+                if ($clientsGrandTotal !== null) {
+                    $clientsGrandTotal += $localObjs->count();
+                }
+            }
+        }
+
         $customers = new LengthAwarePaginator(
             $customers instanceof Collection ? $customers : collect($customers),
             $total,
@@ -813,6 +1206,10 @@ class CustomerController extends Controller
         ]));
         $cachedPayload = \Illuminate\Support\Facades\Cache::get($apiCacheKey);
         if (is_array($cachedPayload)) {
+            if (! $hasColumnFilters) {
+                $cachedPayload = $this->withLocalClients($cachedPayload, $system, $erpSearch, $page);
+            }
+
             return response()->json($cachedPayload);
         }
 
@@ -920,6 +1317,10 @@ class CustomerController extends Controller
         }
 
         \Illuminate\Support\Facades\Cache::put($apiCacheKey, $payload, (int) config('performance.cache_ttl.clients_list', 180));
+
+        if (! $hasColumnFilters) {
+            $payload = $this->withLocalClients($payload, $system, $erpSearch, $page);
+        }
 
         return response()->json($payload);
     }

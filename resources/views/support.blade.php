@@ -59,7 +59,7 @@
 
 <p class="text-muted small mb-2">Quick access to support workflows. Start with Serve Client to search and assist, or jump to Clients to browse.</p>
 <p class="mb-4">
-    <a href="{{ route('support.mortgage-renewals') }}" class="text-decoration-none fw-semibold"><i class="bi bi-house-heart me-1"></i>Due for renewal (mortgage)</a>
+    <a href="{{ route('support.mortgage-renewals') }}" class="text-decoration-none fw-semibold"><i class="bi bi-arrow-repeat me-1"></i>Renewals</a>
     <span class="text-muted small"> — Renewal dates due within the next 30 days (change the period on that page).</span>
 </p>
 <p class="mb-4">
@@ -111,8 +111,8 @@
             <div class="card-body d-flex align-items-center gap-3">
                 <div class="support-quick-icon"><i class="bi bi-question-circle-fill"></i></div>
                 <div>
-                    <h6 class="mb-1">FAQ</h6>
-                    <p class="text-muted small mb-0">Knowledge base</p>
+                    <h6 class="mb-1">FAQ &amp; Categories</h6>
+                    <p class="text-muted small mb-0">Browse and manage knowledge base topics</p>
                 </div>
                 <i class="bi bi-chevron-right ms-auto text-muted"></i>
             </div>

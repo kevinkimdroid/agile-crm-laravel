@@ -23,6 +23,7 @@ class ReportsAllExport implements WithMultipleSheets
         $slaTickets = $this->sla->getBrokenSlaTickets(500);
         $slaUserIds = $slaTickets->pluck('smownerid')->filter()->unique()->values()->all();
         $slaDepts = $this->userDept->getDepartmentsForUsers($slaUserIds);
+        $workSlaTickets = $this->sla->getBrokenWorkSlaTickets(500);
 
         $agingTickets = $this->crm->getTicketAgingReport($this->ticketAgingDays, 500);
         $agingUserIds = $agingTickets->pluck('smownerid')->filter()->unique()->values()->all();
@@ -30,7 +31,7 @@ class ReportsAllExport implements WithMultipleSheets
 
         return [
             'Summary' => new ReportsSummarySheet($this->crm),
-            'Broken SLA' => new SlaBrokenExport(
+            'Client Broken SLA' => new SlaBrokenExport(
                 $slaTickets->map(fn ($t) => [
                     $t->ticket_no ?? 'TT' . $t->ticketid,
                     $t->title ?? '',
@@ -45,6 +46,24 @@ class ReportsAllExport implements WithMultipleSheets
                     $t->tat_hours ?? 24,
                     $t->hours_overdue ?? 0,
                 ])->toArray()
+            ),
+            'Work Broken SLA' => new SlaBrokenExport(
+                $workSlaTickets->map(fn ($t) => [
+                    $t->ticket_no ?? 'WT' . ($t->id ?? ''),
+                    $t->title ?? '',
+                    $t->priority ?? '',
+                    $t->status ?? '',
+                    $t->assignee_name ?? 'Unassigned',
+                    $t->owner_department ?? '',
+                    optional($t->created_at)->format('Y-m-d H:i:s') ?? '',
+                    isset($t->due_at) ? $t->due_at->format('Y-m-d H:i:s') : '',
+                    in_array((string) ($t->status ?? ''), ['Done', 'Closed'], true) && isset($t->completed_at)
+                        ? $t->completed_at->format('Y-m-d H:i:s')
+                        : 'Still open',
+                    $t->tat_hours ?? '',
+                    $t->hours_overdue ?? 0,
+                ])->toArray(),
+                ['Ticket', 'Title', 'Priority', 'Status', 'Assigned to', 'User Dept', 'Created', 'Due by', 'Completed at', 'TAT (h)', 'Hours Overdue']
             ),
             'Ticket Aging' => new TicketAgingExport(
                 $agingTickets->map(fn ($t) => [

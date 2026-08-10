@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Mortgage Renewals')
+@section('title', 'Renewals')
 
 @push('head')
 <style>
@@ -269,6 +269,10 @@
 @php
     $stats = $stats ?? ['total' => (int) ($customers->total() ?? 0), 'today' => 0, 'this_week' => 0, 'pending_notify' => 0];
     $hasActiveFilters = ! empty($search);
+    $product = $product ?? 'individual';
+    $productLabel = $productLabel ?? 'Individual';
+    $products = $products ?? ['individual' => ['label' => 'Individual', 'icon' => 'bi-person-fill']];
+    $productIcon = $products[$product]['icon'] ?? 'bi-arrow-repeat';
     $statusLabel = fn (string $code) => match ($code) {
         'A' => 'Active',
         'FL' => 'Lapsed',
@@ -279,36 +283,39 @@
 <nav class="mb-3">
     <a href="{{ route('support') }}" class="text-muted small text-decoration-none">Support</a>
     <span class="text-muted mx-2">/</span>
-    <span class="text-dark small fw-semibold">Mortgage renewals</span>
+    <span class="text-dark small fw-semibold">Renewals</span>
 </nav>
 
 <div class="mat-hero">
     <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 position-relative" style="z-index:1">
         <div class="d-flex align-items-start gap-3">
-            <div class="mat-hero-icon" aria-hidden="true"><i class="bi bi-house-heart-fill"></i></div>
+            <div class="mat-hero-icon" aria-hidden="true"><i class="bi {{ $productIcon }}"></i></div>
             <div>
-                <h1 class="h3 fw-bold mb-1">Mortgage Renewals</h1>
+                <h1 class="h3 fw-bold mb-1">Renewals</h1>
                 <p class="mb-2 opacity-90 small" style="max-width:36rem">
-                    Mortgages due for renewal in the next <strong>{{ $window }} days</strong>
+                    <strong>{{ $productLabel }}</strong> policies due for renewal in the next <strong>{{ $window }} days</strong>
                     (through {{ $renewalDateEnd->format('d M Y') }}).
-                    Search the list, then use <strong>Manage</strong> to email or SMS clients and create tickets.
+                    Pick a product type, then use <strong>Manage</strong> to email or SMS clients and create tickets.
+                    @if($isDemoRenewals ?? false)
+                        <span class="badge bg-warning text-dark ms-1">Demo data</span>
+                    @endif
                 </p>
                 <div class="mat-hero-links d-flex flex-wrap gap-3">
                     <a href="{{ route('support.maturities') }}"><i class="bi bi-calendar2-event me-1"></i>Maturing policies</a>
                     <a href="{{ route('support.investment-maturities') }}"><i class="bi bi-piggy-bank me-1"></i>Investment maturities</a>
-                    <a href="{{ route('support.customers', ['system' => 'mortgage']) }}"><i class="bi bi-people me-1"></i>Full mortgage register</a>
+                    <a href="{{ route('support.customers') }}"><i class="bi bi-people me-1"></i>Clients</a>
                 </div>
             </div>
         </div>
-        @if (($mortgageConfigured ?? false) && ($useHttp ?? false) && ! ($pageError ?? null))
-            <a href="{{ route('support.mortgage-renewals.export', request()->only(['window', 'search'])) }}" class="btn btn-light btn-sm fw-semibold d-inline-flex align-items-center gap-1 shadow-sm" title="Download all rows in this period as Excel">
+        @if ((($mortgageConfigured ?? false) && ($useHttp ?? false) && ! ($pageError ?? null)) || ($isDemoRenewals ?? false))
+            <a href="{{ route('support.mortgage-renewals.export', request()->only(['window', 'search', 'product'])) }}" class="btn btn-light btn-sm fw-semibold d-inline-flex align-items-center gap-1 shadow-sm" title="Download all rows in this period as Excel">
                 <i class="bi bi-file-earmark-excel text-success"></i> Export Excel
             </a>
         @endif
     </div>
 </div>
 
-@if (($mortgageConfigured ?? false) && ($useHttp ?? false) && ! ($pageError ?? null))
+@if ((($mortgageConfigured ?? false) && ($useHttp ?? false) && ! ($pageError ?? null)) || ($isDemoRenewals ?? false))
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
         <div class="mat-stat-card">
@@ -356,6 +363,17 @@
 <div class="mat-toolbar mb-3">
     <div class="d-flex flex-wrap align-items-end gap-3">
         <form method="GET" action="{{ route('support.mortgage-renewals') }}" class="d-flex flex-column gap-1">
+            @foreach(request()->except(['product', 'page']) as $k => $v)
+                @if($v !== null && $v !== '') <input type="hidden" name="{{ $k }}" value="{{ $v }}"> @endif
+            @endforeach
+            <label class="form-label mb-0">Product type</label>
+            <select name="product" class="form-select form-select-sm" style="min-width:11rem" onchange="this.form.submit()">
+                @foreach($products as $key => $meta)
+                    <option value="{{ $key }}" {{ $product === $key ? 'selected' : '' }}>{{ $meta['label'] }}</option>
+                @endforeach
+            </select>
+        </form>
+        <form method="GET" action="{{ route('support.mortgage-renewals') }}" class="d-flex flex-column gap-1">
             @foreach(request()->except(['window', 'page']) as $k => $v)
                 @if($v !== null && $v !== '') <input type="hidden" name="{{ $k }}" value="{{ $v }}"> @endif
             @endforeach
@@ -384,7 +402,7 @@
         <a href="{{ route('support.mortgage-renewals', request()->except(['search', 'page'])) }}" class="mat-filter-chip">
             Search: {{ \Illuminate\Support\Str::limit($search, 24) }} <i class="bi bi-x"></i>
         </a>
-        <a href="{{ route('support.mortgage-renewals', ['window' => $window]) }}" class="small text-muted ms-auto">Clear all</a>
+        <a href="{{ route('support.mortgage-renewals', ['window' => $window, 'product' => $product]) }}" class="small text-muted ms-auto">Clear all</a>
     </div>
     @endif
 </div>
@@ -557,7 +575,7 @@
                                         <i class="bi bi-sliders me-1"></i>Manage
                                     </button>
                                     @include('support.partials.maturity-notify-buttons', [
-                                        'notifyScreen' => 'mortgage',
+                                        'notifyScreen' => 'renewal',
                                         'notifyEventType' => 'renewal',
                                         'notifyPolicy' => $rowPolicy,
                                         'notifyEventDate' => $renewYmd,
@@ -581,16 +599,16 @@
                     <tr>
                         <td colspan="9" class="p-0 border-0">
                             <div class="mat-empty-state">
-                                <div class="mat-empty-icon"><i class="bi bi-house-heart"></i></div>
+                                <div class="mat-empty-icon"><i class="bi {{ $productIcon }}"></i></div>
                                 @if ($pageError ?? null)
                                     <p class="text-muted mb-0">Resolve the message above and refresh.</p>
                                 @elseif($hasActiveFilters)
-                                    <h6 class="fw-semibold mb-1">No matching mortgages</h6>
+                                    <h6 class="fw-semibold mb-1">No matching {{ strtolower($productLabel) }} policies</h6>
                                     <p class="text-muted small mb-3">Try a different search term or clear your filters.</p>
-                                    <a href="{{ route('support.mortgage-renewals', ['window' => $window]) }}" class="btn btn-sm btn-outline-primary">Clear filters</a>
+                                    <a href="{{ route('support.mortgage-renewals', ['window' => $window, 'product' => $product]) }}" class="btn btn-sm btn-outline-primary">Clear filters</a>
                                 @else
                                     <h6 class="fw-semibold mb-1">All clear for now</h6>
-                                    <p class="text-muted small mb-0">No mortgages with a renewal in the next {{ $window }} days.</p>
+                                    <p class="text-muted small mb-0">No {{ strtolower($productLabel) }} policies with a renewal in the next {{ $window }} days.</p>
                                 @endif
                             </div>
                         </td>
@@ -627,10 +645,17 @@
 <details class="mat-footer-note mt-3 mb-0">
     <summary><i class="bi bi-info-circle me-1"></i>Data source &amp; actions guide</summary>
     <p class="text-muted small mt-2 mb-0">
-        This list shows mortgages whose <strong>renewal date</strong> falls between today and {{ $renewalDateEnd->format('d M Y') }} — not the full mortgage register.
+        This list shows {{ strtolower($productLabel) }} policies whose <strong>renewal date</strong> falls between today and {{ $renewalDateEnd->format('d M Y') }} — not the full register.
         Use <strong>Manage</strong> to send renewal reminder emails or SMS, or create a support ticket.
         Green quick-action buttons mean the client was already contacted for this policy and renewal date.
-        Full mortgage register: <a href="{{ route('support.customers', ['system' => 'mortgage']) }}">Support → Clients → Mortgage</a>.
+        @if($product === 'group')
+            Group / mortgage clients: <a href="{{ route('support.customers', ['system' => 'group']) }}">Support → Clients → Group Life</a>
+            or <a href="{{ route('support.customers', ['system' => 'mortgage']) }}">Mortgage</a>.
+        @elseif($product === 'individual')
+            Individual clients: <a href="{{ route('support.customers', ['system' => 'individual']) }}">Support → Clients → Individual Life</a>.
+        @elseif($product === 'pension')
+            Group pension clients: <a href="{{ route('support.customers', ['system' => 'group_pension']) }}">Support → Clients → Group Pension</a>.
+        @endif
     </p>
 </details>
 

@@ -3,9 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Exports\MortgageRenewalsExport;
+use App\Services\AdvantaSmsService;
 use App\Services\ErpClientService;
 use App\Services\MaturityClientNotificationService;
-use App\Services\AdvantaSmsService;
+use App\Services\RenewalDemoData;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -19,7 +20,28 @@ class MortgageRenewalController extends Controller
     /** Allowed “due within” periods (days). Matches API mendr_window_days cap (120). */
     public const RENEWAL_WINDOWS = [7, 14, 30, 90, 120];
 
-    public function __construct(protected ErpClientService $erp) {}
+    /**
+     * Renewable product types. Each maps to the ERP "view" used by the clients API.
+     * Only products with a configured ERP view can return live data; the rest render an
+     * informative empty state until their source is wired up.
+     */
+    public const PRODUCTS = [
+        'individual' => ['label' => 'Individual', 'icon' => 'bi-person-fill'],
+        'group' => ['label' => 'Group', 'icon' => 'bi-people-fill'],
+        'pension' => ['label' => 'Pension', 'icon' => 'bi-piggy-bank-fill'],
+        'annuities' => ['label' => 'Annuities', 'icon' => 'bi-cash-coin'],
+    ];
+
+    public function __construct(
+        protected ErpClientService $erp,
+        protected RenewalDemoData $demoRenewals,
+    ) {}
+
+    /** POC: use seeded Orient demo renewals (10 per product). Default on. */
+    protected function useDemoRenewals(): bool
+    {
+        return filter_var(env('RENEWALS_DEMO', true), FILTER_VALIDATE_BOOLEAN);
+    }
 
     protected function normalizeWindow(Request $request): int
     {
@@ -31,13 +53,32 @@ class MortgageRenewalController extends Controller
         return 30;
     }
 
+    protected function normalizeProduct(Request $request): string
+    {
+        $p = strtolower(trim((string) $request->get('product', 'individual')));
+
+        return array_key_exists($p, self::PRODUCTS) ? $p : 'individual';
+    }
+
+    /** ERP "view" key backing a product, or null when the product has no configured source yet. */
+    protected function erpViewForProduct(string $product): ?string
+    {
+        return match ($product) {
+            // Orient Group Mortgage lives under the Group class — reuse mortgage ERP view when available.
+            'group' => trim((string) config('erp.clients_mortgage_view')) !== '' ? 'mortgage' : null,
+            default => null,
+        };
+    }
+
     /**
-     * Only mortgages with a renewal date in the next N calendar days (not the full mortgage register).
+     * Policies due for renewal in the next N calendar days (demo or ERP).
      */
     public function index(Request $request): View
     {
-        $mortgageConfigured = trim((string) config('erp.clients_mortgage_view')) !== '';
-        // This page talks to erp-clients-api only; do not require CLIENTS_VIEW_SOURCE=erp_http if the URL is set.
+        $product = $this->normalizeProduct($request);
+        $erpView = $this->erpViewForProduct($product);
+        $productConfigured = $erpView !== null;
+        $useDemo = $this->useDemoRenewals() || ! $productConfigured;
         $useHttp = ! empty(config('erp.clients_http_url'));
 
         $window = $this->normalizeWindow($request);
@@ -55,29 +96,36 @@ class MortgageRenewalController extends Controller
             : 25;
         $offset = ($page - 1) * $perPage;
 
+        $productLabel = self::PRODUCTS[$product]['label'] ?? ucfirst($product);
         $error = null;
         $rows = collect();
         $total = 0;
         $stats = ['total' => 0, 'today' => 0, 'this_week' => 0, 'pending_notify' => 0];
-        if (! $mortgageConfigured) {
-            $error = 'Mortgage renewals are not configured yet. Ask an administrator to set the mortgage view in the system configuration.';
+        $isDemo = false;
+
+        if ($useDemo) {
+            $isDemo = true;
+            $productConfigured = true;
+            $all = $this->demoRenewals->forProduct($product, $window, $searchParam);
+            $stats = $this->demoRenewals->statsFor($all);
+            $total = $all->count();
+            $rows = $all->slice($offset, $perPage)->values();
         } elseif (! $useHttp) {
-            $error = 'Mortgage renewals need a live connection to the policy system. Ask an administrator to enable ERP HTTP client access.';
+            $error = 'Renewals need a live connection to the policy system. Ask an administrator to enable ERP HTTP client access.';
         } else {
-            // Send mendr_window_days (Oracle SYSDATE) and mendr_renewal_from/to so older APIs still apply the date range.
-            $countRes = $this->erp->getClientsFromHttpApi(1, 0, $searchParam, 25, true, 'mortgage', null, $fromStr, $toStr, true, $window);
+            $countRes = $this->erp->getClientsFromHttpApi(1, 0, $searchParam, 25, true, $erpView, null, $fromStr, $toStr, true, $window);
             $error = $countRes['error'] ?? null;
             $total = (int) ($countRes['total'] ?? 0);
-            $stats = $this->buildStats($fromStr, $toStr, $window, $searchParam, $total);
+            $stats = $this->buildStats($fromStr, $toStr, $window, $searchParam, $total, $erpView);
 
-            $dataRes = $this->erp->getClientsFromHttpApi($perPage, $offset, $searchParam, 45, false, 'mortgage', null, $fromStr, $toStr, true, $window);
+            $dataRes = $this->erp->getClientsFromHttpApi($perPage, $offset, $searchParam, 45, false, $erpView, null, $fromStr, $toStr, true, $window);
             if (! $error && ! empty($dataRes['error'])) {
                 $error = $dataRes['error'];
             }
             $rows = $dataRes['data'] instanceof Collection ? $dataRes['data'] : collect($dataRes['data'] ?? []);
             if ($rows->isNotEmpty()) {
                 $rows = $notifyService->enrichContactsFromClientDetails($rows, 'policy_no');
-                $rows = $notifyService->annotateRows($rows, 'mortgage', 'policy_no', 'mendr_renewal_date');
+                $rows = $notifyService->annotateRows($rows, $erpView, 'policy_no', 'mendr_renewal_date');
                 $stats['pending_notify'] = $rows->filter(
                     fn ($row) => empty($row->client_notified_email) && empty($row->client_notified_sms)
                 )->count();
@@ -101,8 +149,12 @@ class MortgageRenewalController extends Controller
             'search' => $search,
             'perPage' => $perPage,
             'pageError' => $error,
-            'mortgageConfigured' => $mortgageConfigured,
+            'product' => $product,
+            'productLabel' => $productLabel,
+            'products' => self::PRODUCTS,
+            'mortgageConfigured' => $productConfigured,
             'useHttp' => $useHttp,
+            'isDemoRenewals' => $isDemo,
             'notifyService' => $notifyService,
             'smsConfigured' => app(AdvantaSmsService::class)->isConfigured(),
         ]);
@@ -111,7 +163,7 @@ class MortgageRenewalController extends Controller
     /**
      * @return array{total: int, today: int, this_week: int, pending_notify: int}
      */
-    protected function buildStats(string $fromStr, string $toStr, int $window, ?string $search, int $total): array
+    protected function buildStats(string $fromStr, string $toStr, int $window, ?string $search, int $total, string $erpView = 'mortgage'): array
     {
         $stats = [
             'total' => $total,
@@ -125,12 +177,12 @@ class MortgageRenewalController extends Controller
         $rangeEnd = min($toStr, $weekEnd);
 
         if ($today >= $fromStr && $today <= $toStr) {
-            $todayRes = $this->erp->getClientsFromHttpApi(1, 0, $search, 20, true, 'mortgage', null, $today, $today, true, max(1, min($window, 7)));
+            $todayRes = $this->erp->getClientsFromHttpApi(1, 0, $search, 20, true, $erpView, null, $today, $today, true, max(1, min($window, 7)));
             $stats['today'] = (int) ($todayRes['total'] ?? 0);
         }
 
         if ($rangeEnd >= $today) {
-            $weekRes = $this->erp->getClientsFromHttpApi(1, 0, $search, 20, true, 'mortgage', null, $today, $rangeEnd, true, max(1, min($window, 7)));
+            $weekRes = $this->erp->getClientsFromHttpApi(1, 0, $search, 20, true, $erpView, null, $today, $rangeEnd, true, max(1, min($window, 7)));
             $stats['this_week'] = (int) ($weekRes['total'] ?? 0);
         }
 
@@ -138,33 +190,44 @@ class MortgageRenewalController extends Controller
     }
 
     /**
-     * Export all mortgages due for renewal in the selected window (same filter as the list, not paginated).
+     * Export renewals in the selected window.
      */
     public function export(Request $request): RedirectResponse|BinaryFileResponse
     {
-        $mortgageConfigured = trim((string) config('erp.clients_mortgage_view')) !== '';
+        $product = $this->normalizeProduct($request);
+        $erpView = $this->erpViewForProduct($product);
+        $productConfigured = $erpView !== null;
+        $useDemo = $this->useDemoRenewals() || ! $productConfigured;
         $useHttp = ! empty(config('erp.clients_http_url'));
         $window = $this->normalizeWindow($request);
         $renewalDateStart = now()->startOfDay();
         $renewalDateEnd = now()->startOfDay()->addDays($window);
         $fromStr = $renewalDateStart->format('Y-m-d');
         $toStr = $renewalDateEnd->format('Y-m-d');
+        $backParams = ['window' => $window, 'product' => $product];
 
-        if (! $mortgageConfigured) {
+        if ($useDemo) {
+            $all = $this->demoRenewals->forProduct($product, $window, null);
+            $filename = $product.'-renewals-demo-'.$window.'d-'.now()->format('Y-m-d-His');
+
+            return Excel::download(new MortgageRenewalsExport($all), $filename.'.xlsx');
+        }
+
+        if (! $productConfigured) {
             return redirect()
-                ->route('support.mortgage-renewals', ['window' => $window])
-                ->with('error', 'Mortgage renewals are not configured.');
+                ->route('support.mortgage-renewals', $backParams)
+                ->with('error', ucfirst($product).' renewals do not have a live policy source configured.');
         }
         if (! $useHttp) {
             return redirect()
-                ->route('support.mortgage-renewals', ['window' => $window])
+                ->route('support.mortgage-renewals', $backParams)
                 ->with('error', 'ERP HTTP URL is not configured.');
         }
 
-        $countRes = $this->erp->getClientsFromHttpApi(1, 0, null, 60, true, 'mortgage', null, $fromStr, $toStr, true, $window);
+        $countRes = $this->erp->getClientsFromHttpApi(1, 0, null, 60, true, $erpView, null, $fromStr, $toStr, true, $window);
         if (! empty($countRes['error'])) {
             return redirect()
-                ->route('support.mortgage-renewals', ['window' => $window])
+                ->route('support.mortgage-renewals', $backParams)
                 ->with('error', $countRes['error']);
         }
 
@@ -175,10 +238,10 @@ class MortgageRenewalController extends Controller
         $guard = 0;
         while ($offset < $total && $guard < 200) {
             $guard++;
-            $dataRes = $this->erp->getClientsFromHttpApi($pageSize, $offset, null, 120, false, 'mortgage', null, $fromStr, $toStr, true, $window);
+            $dataRes = $this->erp->getClientsFromHttpApi($pageSize, $offset, null, 120, false, $erpView, null, $fromStr, $toStr, true, $window);
             if (! empty($dataRes['error'])) {
                 return redirect()
-                    ->route('support.mortgage-renewals', ['window' => $window])
+                    ->route('support.mortgage-renewals', $backParams)
                     ->with('error', $dataRes['error']);
             }
             $chunk = $dataRes['data'] instanceof Collection ? $dataRes['data'] : collect($dataRes['data'] ?? []);
@@ -189,7 +252,7 @@ class MortgageRenewalController extends Controller
             $offset += $pageSize;
         }
 
-        $filename = 'mortgage-renewals-'.$window.'d-'.now()->format('Y-m-d-His');
+        $filename = $product.'-renewals-'.$window.'d-'.now()->format('Y-m-d-His');
 
         return Excel::download(new MortgageRenewalsExport($all), $filename.'.xlsx');
     }

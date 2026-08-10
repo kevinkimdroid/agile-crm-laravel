@@ -14,23 +14,90 @@
     <span class="text-dark small fw-semibold">Clients</span>
     @endif
 </nav>
-<div class="page-header d-flex flex-wrap justify-content-between align-items-start gap-3">
-    <div>
-        <h1 class="page-title">{{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Prospects' : 'Clients' }}</h1>
-        <p class="page-subtitle">{{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Manage sales prospects before they become clients.' : 'Manage your clients and policy assignments.' }}</p>
+@php
+    $isProspects = ($listRoute ?? 'support.customers') === 'contacts.index';
+    $heroTotal = ($clientsGrandTotal !== null && ! ($system ?? '') && ($clientsSource ?? '') === 'erp_http')
+        ? (int) $clientsGrandTotal
+        : (int) ($clientsGrandTotal ?? $total ?? 0);
+    $segLabels = config('clients_ui.tab_labels', []);
+    $heroCountLabel = ($system ?? '') ? ($segLabels[$system] ?? 'Records') : 'Total records';
+@endphp
+<div class="clients-hero mb-4">
+    <div class="clients-hero-main">
+        <div class="clients-hero-icon"><i class="bi {{ $isProspects ? 'bi-person-lines-fill' : 'bi-people-fill' }}"></i></div>
+        <div>
+            <h1 class="clients-hero-title">{{ $isProspects ? 'Prospects' : 'Clients' }}</h1>
+            <p class="clients-hero-subtitle">{{ $isProspects ? 'Manage sales prospects before they become clients.' : 'Manage your clients, KYC details and policy assignments.' }}</p>
+        </div>
     </div>
-    @if(($listRoute ?? 'support.customers') === 'contacts.index')
-    <a href="{{ route('contacts.create') }}" class="btn btn-primary-custom">
-        <i class="bi bi-plus-lg me-2"></i>Add Prospect
-    </a>
-    @endif
+    <div class="clients-hero-side">
+        @unless($isProspects)
+        <div class="clients-hero-count">
+            <span class="clients-hero-count-value" id="clientsTotalValue">{{ number_format($heroTotal) }}</span>
+            <span class="clients-hero-count-label" id="clientsTotalLabel">{{ $heroCountLabel }}</span>
+        </div>
+        @endunless
+        <div class="clients-hero-actions">
+            @if($isProspects)
+            <a href="{{ route('contacts.create') }}" class="btn clients-hero-btn-primary">
+                <i class="bi bi-plus-lg me-2"></i>Add Prospect
+            </a>
+            @else
+            <a href="{{ route('support.clients.import') }}" class="btn clients-hero-btn-ghost">
+                <i class="bi bi-upload me-2"></i>Import
+            </a>
+            <a href="{{ route('support.clients.create', array_filter(['system' => $system ?? null])) }}" class="btn clients-hero-btn-primary">
+                <i class="bi bi-plus-lg me-2"></i>Create Client
+            </a>
+            @endif
+        </div>
+    </div>
 </div>
+
+@if (session('success'))
+<div class="alert alert-success alert-dismissible fade show d-flex align-items-center" role="alert">
+    <i class="bi bi-check-circle-fill me-2"></i>
+    <div>{{ session('success') }}</div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+@endif
+
+@if (session('import_errors'))
+<div class="alert alert-warning alert-dismissible fade show" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i><strong>Some rows were skipped:</strong>
+    <ul class="mb-0 mt-1 small">
+        @foreach (session('import_errors') as $err)
+        <li>{{ $err }}</li>
+        @endforeach
+    </ul>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+@endif
 
 @if (session('error'))
 <div class="alert alert-danger alert-dismissible fade show d-flex align-items-center" role="alert">
     <i class="bi bi-exclamation-triangle-fill me-2"></i>
     <div>{{ session('error') }}</div>
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+@endif
+
+@if (!($isProspects ?? false) && app(\App\Services\ClientAccessDemoService::class)->isDemoModeActive())
+<div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3" role="alert">
+    <div class="d-flex align-items-start gap-2">
+        <i class="bi bi-shield-lock-fill mt-1"></i>
+        <div>
+            <strong>Restricted demo mode is ON.</strong>
+            You only see clients assigned to you (DEMO-R). Attempting DEMO-X shows Access Denied.
+        </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a href="{{ route('demo.restricted-access') }}" class="btn btn-sm btn-outline-dark">Walkthrough</a>
+        <form action="{{ route('demo.restricted-access.stop') }}" method="POST" class="d-inline">
+            @csrf
+            <button type="submit" class="btn btn-sm btn-dark">Stop demo</button>
+        </form>
+    </div>
 </div>
 @endif
 
@@ -136,25 +203,8 @@
 {{-- Clients Table --}}
 <div class="clients-table-card">
     <div class="clients-table-toolbar">
-        <span class="clients-table-filter-status" id="clientsFilterStatus">Filter by column — type at least 2 characters</span>
-        <div class="clients-table-toolbar-meta">
-            <span class="clients-toolbar-stat">
-                <span class="clients-toolbar-stat-value" id="clientsTotalValue">{{ number_format($clientsStatTotal) }}</span>
-                <span class="clients-toolbar-stat-label">
-                    @if(($system ?? '') === 'group')
-                        {{ config('clients_ui.tab_labels.group') }}
-                    @elseif(($system ?? '') === 'individual')
-                        {{ config('clients_ui.tab_labels.individual') }}
-                    @elseif(($system ?? '') === 'mortgage')
-                        {{ config('clients_ui.tab_labels.mortgage') }}
-                    @elseif(($system ?? '') === 'group_pension')
-                        {{ config('clients_ui.tab_labels.group_pension') }}
-                    @else
-                        {{ ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Prospects' : 'Clients' }}
-                    @endif
-                </span>
-            </span>
-        </div>
+        <span class="clients-table-filter-status" id="clientsFilterStatus"><i class="bi bi-funnel me-1"></i>Filter by column — type at least 2 characters</span>
+        <span class="clients-toolbar-hint"><i class="bi bi-lightning-charge-fill me-1"></i>Live search</span>
     </div>
     <div class="clients-table-wrapper">
         <table class="clients-table">
@@ -225,6 +275,39 @@
                 </tr>
                 @else
                 @forelse ($customers as $customer)
+                    @if($customer->_local_client ?? false)
+                        @php $localShow = route('support.clients.show', ['policy' => $customer->policy_no]); @endphp
+                        <tr class="clients-row-open" data-client-open="{{ $localShow }}">
+                            <td>
+                                <a href="{{ $localShow }}" class="clients-name-link text-decoration-none">
+                                    <span class="clients-name">{{ $customer->life_assur ?? '—' }}</span>
+                                    <span class="badge bg-info-subtle text-info-emphasis ms-1" style="font-size:0.62rem">New</span>
+                                </a>
+                                <div class="small text-muted font-monospace">{{ $customer->policy_no }}</div>
+                            </td>
+                            @if($isErpList)
+                            <td class="font-monospace small">{{ $customer->id_no ?? '—' }}</td>
+                            <td>@if(($customer->phone_no ?? '—') !== '—')<a href="tel:{{ tel_href($customer->phone_no) }}" class="text-decoration-none">{{ $customer->phone_no }}</a>@else<span class="text-muted">—</span>@endif</td>
+                            <td>{{ Str::limit($customer->intermediary ?? '—', 25) }}</td>
+                            <td>{{ $customer->pol_prepared_by ?? '—' }}</td>
+                            <td class="clients-product">{{ Str::limit($customer->product ?? '—', 40) }}</td>
+                            <td><span class="clients-system-badge clients-system-{{ $customer->life_system ?? 'individual' }}">{{ \App\Models\Client::SYSTEMS[$customer->life_system ?? 'individual'] ?? 'Individual' }}</span></td>
+                            <td><span class="clients-status-badge clients-status-{{ ($customer->status ?? 'A') === 'A' ? 'active' : (($customer->status ?? '') === 'FL' ? 'lapsed' : 'other') }}">{{ $customer->status ?? '—' }}</span></td>
+                            @else
+                            <td>@if(($customer->email ?? '—') !== '—')<a href="mailto:{{ $customer->email }}" class="text-decoration-none">{{ Str::limit($customer->email, 35) }}</a>@else<span class="text-muted">—</span>@endif</td>
+                            <td>@if(($customer->phone_no ?? '—') !== '—')<a href="tel:{{ tel_href($customer->phone_no) }}" class="text-decoration-none">{{ $customer->phone_no }}</a>@else<span class="text-muted">—</span>@endif</td>
+                            @if(in_array($clientsSource ?? 'crm', ['erp']))<td><span class="badge bg-secondary">{{ Str::limit($customer->product ?? '—', 35) }}</span></td>@endif
+                            <td><span class="text-muted small">{{ $customer->pol_prepared_by ?? '—' }}</span></td>
+                            @endif
+                            <td class="text-end">
+                                <div class="clients-actions">
+                                    <a href="{{ route('support.clients.create-ticket', ['policy' => $customer->policy_no]) }}" class="btn btn-sm btn-success" title="Create ticket"><i class="bi bi-ticket-perforated"></i> Ticket</a>
+                                    <a href="{{ $localShow }}" class="btn btn-sm clients-btn-view" title="View full details"><i class="bi bi-eye"></i> View</a>
+                                </div>
+                            </td>
+                        </tr>
+                        @continue
+                    @endif
                     @php
                         $rowPolicy = $customer->policy_no ?? $customer->policy_number ?? $customer->ipol_policy_no ?? $customer->pol_policy_no ?? (is_array($customer) ? ($customer['policy_no'] ?? $customer['policy_number'] ?? $customer['ipol_policy_no'] ?? $customer['pol_policy_no'] ?? '') : '');
                         $rowIdentifier = trim((string) $rowPolicy);
@@ -378,6 +461,65 @@
 
 <style>
 /* Clients page - modern, fast, presentable */
+
+/* Hero header */
+.clients-hero {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    padding: 1.5rem 1.75rem;
+    border-radius: 18px;
+    background: linear-gradient(120deg, #14346b 0%, #1A468A 55%, #2563a8 100%);
+    color: #fff;
+    box-shadow: 0 12px 30px rgba(20, 52, 107, 0.28);
+    position: relative;
+    overflow: hidden;
+}
+.clients-hero::after {
+    content: "";
+    position: absolute;
+    right: -60px; top: -60px;
+    width: 220px; height: 220px;
+    background: radial-gradient(circle, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0) 70%);
+    pointer-events: none;
+}
+.clients-hero-main { display: flex; align-items: center; gap: 1.1rem; min-width: 0; }
+.clients-hero-icon {
+    width: 58px; height: 58px; flex-shrink: 0;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.16);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem;
+    backdrop-filter: blur(4px);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.2);
+}
+.clients-hero-title { font-size: 1.6rem; font-weight: 700; margin: 0; line-height: 1.1; }
+.clients-hero-subtitle { margin: 0.25rem 0 0; font-size: 0.9rem; opacity: 0.85; max-width: 34rem; }
+.clients-hero-side { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
+.clients-hero-count { text-align: right; padding-right: 1.1rem; border-right: 1px solid rgba(255,255,255,0.22); }
+.clients-hero-count-value { display: block; font-size: 1.9rem; font-weight: 800; line-height: 1; }
+.clients-hero-count-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.8; }
+.clients-hero-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.clients-hero-btn-primary {
+    background: #fff; color: #14346b; font-weight: 600; border: none;
+    padding: 0.55rem 1.1rem; border-radius: 10px; display: inline-flex; align-items: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: transform 0.12s, box-shadow 0.12s;
+}
+.clients-hero-btn-primary:hover { color: #0f2a57; transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0,0,0,0.22); }
+.clients-hero-btn-ghost {
+    background: rgba(255,255,255,0.12); color: #fff; font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.35);
+    padding: 0.55rem 1.1rem; border-radius: 10px; display: inline-flex; align-items: center; transition: background 0.12s;
+}
+.clients-hero-btn-ghost:hover { background: rgba(255,255,255,0.22); color: #fff; }
+@media (max-width: 575.98px) {
+    .clients-hero { padding: 1.15rem; }
+    .clients-hero-count { border-right: none; padding-right: 0; text-align: left; }
+    .clients-hero-side { width: 100%; justify-content: space-between; }
+}
+
 .clients-table-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -555,6 +697,44 @@
 .clients-table-card.is-filter-loading tbody { opacity: 0.55; transition: opacity 0.15s; }
 .clients-ajax-page { padding: 0.35rem 0.75rem; border-radius: 6px; text-decoration: none; color: var(--agile-primary); font-weight: 500; }
 .clients-ajax-page:hover { background: var(--agile-primary-muted); color: var(--agile-primary-dark); }
+
+/* Extra polish */
+.clients-table-card { box-shadow: 0 6px 24px rgba(15, 42, 87, 0.08); }
+
+/* Toolbar */
+.clients-table-toolbar { border-radius: 16px 16px 0 0; }
+.clients-table-filter-status { display: inline-flex; align-items: center; font-weight: 500; }
+.clients-toolbar-hint {
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    color: #0d9488; background: #ccfbf1; padding: 0.28rem 0.6rem; border-radius: 999px;
+}
+
+/* Filter inputs get a search icon + a touch more breathing room */
+.clients-col-filter {
+    padding-left: 1.85rem !important;
+    background-color: rgba(255,255,255,0.96);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 0.55rem center;
+    background-size: 0.8rem;
+}
+.clients-col-filter:focus { background-color: #fff; }
+.clients-table-head-labels th { font-size: 0.7rem; }
+.clients-table tbody tr:nth-child(even) { background: #fbfcfe; }
+.clients-table tbody tr:hover { background: var(--agile-primary-muted); }
+.clients-table tbody tr { transition: background 0.12s, box-shadow 0.12s; }
+.clients-name-link:hover .clients-name { text-decoration: underline; }
+.clients-name-link .font-monospace,
+.clients-table td .font-monospace { letter-spacing: 0.01em; }
+.clients-btn-view, .clients-actions .btn { border-radius: 8px; transition: transform 0.1s; }
+.clients-actions .btn:hover { transform: translateY(-1px); }
+.clients-status-badge { border: 1px solid transparent; }
+.clients-status-active { border-color: #bbf7d0; }
+.clients-status-lapsed { border-color: #fecaca; }
+.clients-system-pill { box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+.clients-toolbar-stat { border-radius: 12px; }
+.clients-empty-icon { box-shadow: inset 0 0 0 1px rgba(26,70,138,0.08); }
 </style>
 
 <script>

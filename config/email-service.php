@@ -29,5 +29,5 @@ return [
     | client emails (Gmail, Yahoo, etc.) will be processed.
     | Comma-separated: EMAIL_EXCLUDED_SENDER_DOMAINS=geminialife.co.ke,gab.co.ke,centralbank.go.ke
     */
-    'excluded_sender_domains' => array_filter(array_map('strtolower', array_map('trim', explode(',', env('EMAIL_EXCLUDED_SENDER_DOMAINS', 'geminialife.co.ke,gab.co.ke,centralbank.go.ke'))))),
+    'excluded_sender_domains' => array_filter(array_map('strtolower', array_map('trim', explode(',', env('EMAIL_EXCLUDED_SENDER_DOMAINS', 'agilecraft.co.ke'))))),
 ];

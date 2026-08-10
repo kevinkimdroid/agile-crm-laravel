@@ -33,7 +33,8 @@ $salesChart = collect($salesByPerson ?? [])->take(10)->map(fn ($r) => [
 
 $reportSections = [
     'Audit & compliance' => [
-        ['route' => 'reports.sla-broken', 'icon' => 'bi-shield-exclamation', 'badge' => 'SLA', 'name' => 'Broken SLA Report', 'hint' => 'Tickets that exceeded department TAT.', 'keywords' => 'sla broken tat compliance'],
+        ['route' => 'reports.sla-broken', 'icon' => 'bi-person-badge', 'badge' => 'Client SLA', 'name' => 'Client Tickets – Broken SLA', 'hint' => 'CRM client tickets that exceeded category/department TAT.', 'keywords' => 'sla broken tat client tickets compliance'],
+        ['route' => 'reports.sla-broken-work', 'icon' => 'bi-kanban', 'badge' => 'Work SLA', 'name' => 'Work Tickets – Broken SLA', 'hint' => 'Internal work tickets that exceeded priority TAT.', 'keywords' => 'sla broken tat work tickets compliance'],
         ['route' => 'reports.ticket-aging', 'icon' => 'bi-hourglass-split', 'badge' => 'Aging', 'name' => 'Ticket Aging', 'hint' => 'Open tickets older than 7+ days.', 'keywords' => 'aging stale open tickets'],
         ['route' => 'reports.tickets-by-date', 'icon' => 'bi-calendar-range', 'badge' => 'Tickets', 'name' => 'Tickets by Date', 'hint' => 'Filter by created date with Excel export.', 'keywords' => 'tickets date range created'],
         ['route' => 'reports.reassignment-audit', 'icon' => 'bi-journal-text', 'badge' => 'Audit', 'name' => 'Ticket Audit Trail', 'hint' => 'Reassignment history for CRM and work tickets.', 'keywords' => 'reassignment audit trail history'],
@@ -464,7 +465,8 @@ $quickExports = [
             <div class="d-flex flex-wrap gap-2">
                 <a href="{{ route('reports.export.all-excel') }}" class="btn btn-primary btn-sm"><i class="bi bi-file-earmark-spreadsheet me-1"></i>All reports (Excel)</a>
                 <a href="{{ route('reports.export.all-pdf') }}" class="btn btn-outline-danger btn-sm"><i class="bi bi-file-earmark-pdf me-1"></i>All reports (PDF)</a>
-                <a href="{{ route('reports.export.sla-broken', ['format' => 'pdf']) }}" class="btn btn-outline-secondary btn-sm">Broken SLA (PDF)</a>
+                <a href="{{ route('reports.export.sla-broken', ['format' => 'pdf']) }}" class="btn btn-outline-secondary btn-sm">Client SLA (PDF)</a>
+                <a href="{{ route('reports.export.sla-broken-work', ['format' => 'pdf']) }}" class="btn btn-outline-secondary btn-sm">Work SLA (PDF)</a>
                 <a href="{{ route('reports.export.ticket-aging', ['format' => 'pdf']) }}" class="btn btn-outline-secondary btn-sm">Ticket aging (PDF)</a>
                 <a href="{{ route('reports.export.tickets-by-date', ['date_from' => $monthStart, 'date_to' => $today, 'format' => 'pdf']) }}" class="btn btn-outline-secondary btn-sm">Tickets by date (PDF)</a>
                 <a href="{{ route('reports.export.reassignment-audit', ['format' => 'pdf']) }}" class="btn btn-outline-secondary btn-sm">Reassignment audit (PDF)</a>

@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Broken SLA Report')
+@section('title', 'Client Tickets – Broken SLA')
 
 @section('content')
 @include('partials.reports-audit-styles')
@@ -10,10 +10,18 @@
             <nav class="reports-breadcrumb mb-2">
                 <a href="{{ route('reports') }}">Reports</a>
                 <span class="reports-breadcrumb-sep">/</span>
-                <span class="reports-breadcrumb-current">Broken SLA</span>
+                <span class="reports-breadcrumb-current">Client Tickets SLA</span>
             </nav>
-            <h1 class="reports-audit-title mb-1">Broken SLA Report</h1>
-            <p class="reports-audit-subtitle mb-0">Tickets that exceeded their Turnaround Time (TAT).</p>
+            <h1 class="reports-audit-title mb-1">Client Tickets – Broken SLA</h1>
+            <p class="reports-audit-subtitle mb-0">CRM client tickets that exceeded category/department Turnaround Time (TAT).</p>
+            <div class="d-flex flex-wrap gap-2 mt-3 no-print">
+                <a href="{{ route('reports.sla-broken') }}" class="btn btn-sm btn-primary">
+                    <i class="bi bi-person-badge me-1"></i> Client tickets
+                </a>
+                <a href="{{ route('reports.sla-broken-work') }}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-kanban me-1"></i> Work tickets
+                </a>
+            </div>
         </div>
         <div class="d-flex flex-wrap gap-2 align-items-center no-print">
             @include('partials.report-export-buttons', ['route' => 'reports.export.sla-broken', 'csvWithoutFormat' => true])
@@ -33,11 +41,11 @@
                     <tr>
                         <th>Ticket</th>
                         <th>Title</th>
-                        <th>Department</th>
+                        <th>Category</th>
                         <th>Status</th>
                         <th>Assigned to</th>
                         <th>User Dept</th>
-                        <th>Prospect</th>
+                        <th>Client</th>
                         <th>Created</th>
                         <th>Due by</th>
                         <th>Resolved at</th>
@@ -78,7 +86,7 @@
                     <tr>
                         <td colspan="12" class="text-center py-5 text-muted">
                             <i class="bi bi-check-circle display-6 d-block mb-2 text-success"></i>
-                            No broken SLAs. All tickets are within their TAT.
+                            No broken SLAs. All client tickets are within their TAT.
                         </td>
                     </tr>
                     @endforelse
@@ -88,6 +96,7 @@
     </div>
     <div class="reports-meta text-muted small mt-3 py-2">
         <i class="bi bi-clock me-1"></i>Report generated: {{ now()->format('l, F j, Y \a\t g:i A') }}
+        · {{ count($tickets ?? []) }} ticket(s)
     </div>
 </div>
 @endsection

@@ -60,7 +60,21 @@
                     <tr><td class="text-muted py-1">Source</td><td>{{ $complaint->source ?: '—' }}</td></tr>
                     <tr><td class="text-muted py-1">Status</td><td><span class="badge bg-{{ in_array($complaint->status, ['Resolved','Closed']) ? 'success' : 'warning' }}">{{ $complaint->status }}</span></td></tr>
                     <tr><td class="text-muted py-1">Priority</td><td>{{ $complaint->priority ?: '—' }}</td></tr>
-                    <tr><td class="text-muted py-1">Assigned To</td><td>{{ $complaint->assigned_to ?: '—' }}</td></tr>
+                    <tr>
+                        <td class="text-muted py-1">Assigned To</td>
+                        <td>
+                            @php $assignee = $complaint->assigned_to; @endphp
+                            @if(!$assignee)
+                                —
+                            @elseif(str_starts_with($assignee, 'User: '))
+                                <span class="badge bg-primary-subtle text-primary-emphasis me-1">User</span>{{ substr($assignee, 6) }}
+                            @elseif(str_starts_with($assignee, 'Agent: '))
+                                <span class="badge bg-success-subtle text-success-emphasis me-1">Agent</span>{{ substr($assignee, 7) }}
+                            @else
+                                {{ $assignee }}
+                            @endif
+                        </td>
+                    </tr>
                     @if($complaint->register_status ?? null)
                     <tr><td class="text-muted py-1">Register type</td><td>{{ \App\Models\Complaint::REGISTER_STATUSES[$complaint->register_status] ?? $complaint->register_status }}</td></tr>
                     @endif

@@ -34,7 +34,7 @@ class PlainTextMailSender
             $retryDelayMs = max(100, (int) config('mass_broadcast.smtp_retry_delay_ms', 800));
             for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
                 try {
-                    $from = config('mail.from.address', config('email-service.sender', 'life@geminialife.co.ke'));
+                    $from = config('mail.from.address', config('email-service.sender', 'info@agilecraft.co.ke'));
                     $fromName = config('mail.from.name', config('app.name'));
                     Mail::raw($body, function ($message) use ($to, $toName, $subject, $from, $fromName, $attachments) {
                         $message->to($to, $toName)->from($from, $fromName)->subject($subject);

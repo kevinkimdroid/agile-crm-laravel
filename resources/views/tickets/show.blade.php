@@ -111,7 +111,7 @@
         </div>
         @elseif(($ticket->status ?? '') !== 'Closed' && ($canCloseTickets ?? true))
         <div class="app-card p-4 mt-4 border border-success">
-            <p class="text-muted small mb-2"><i class="bi bi-info-circle me-1"></i>Add a solution and change status to Closed to resolve this ticket.</p>
+            <p class="text-muted small mb-2"><i class="bi bi-info-circle me-1"></i>Use the <strong>Knowledge Base</strong> panel → <em>Use as solution</em>, then close the ticket.</p>
             <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#closeTicketModal"><i class="bi bi-check-circle me-1"></i> Close Ticket</button>
         </div>
         @elseif(($ticket->status ?? '') !== 'Closed' && !($canCloseTickets ?? true))
@@ -143,7 +143,7 @@
             <form method="POST" action="{{ route('tickets.comments.store', $ticket->ticketid) }}" class="mb-4">
                 @csrf
                 <label class="form-label fw-semibold">Add a comment</label>
-                <textarea name="body" class="form-control mb-2" rows="3" placeholder="Add details, updates, or notes about this ticket..." required>{{ old('body') }}</textarea>
+                <textarea name="body" id="ticketCommentBox" class="form-control mb-2" rows="3" placeholder="Add details, updates, or notes about this ticket..." required>{{ old('body') }}</textarea>
                 <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i> Add Comment</button>
                 @error('body')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
             </form>
@@ -161,6 +161,27 @@
         </div>
     </div>
     <div class="col-lg-4">
+        <div class="app-card p-4 mb-4" id="kbPanel"
+             data-search-url="{{ route('support.faq.search') }}"
+             data-mark-url="{{ route('support.faq.helpful') }}"
+             data-ticket-title="{{ $ticket->title ?? '' }}"
+             data-ticket-category="{{ $ticket->category ?? '' }}"
+             data-can-close="{{ (($ticket->status ?? '') !== 'Closed' && ($canCloseTickets ?? true)) ? '1' : '0' }}">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <h6 class="text-uppercase small fw-bold mb-0" style="color:var(--agile-primary);letter-spacing:0.08em"><i class="bi bi-journal-bookmark me-1"></i>Knowledge Base</h6>
+                <a href="{{ route('support.faq') }}" class="small text-decoration-none" target="_blank" rel="noopener">Open FAQs</a>
+            </div>
+            <ol class="kb-steps small text-muted mb-3 ps-3">
+                <li>Search FAQs for this issue</li>
+                <li>Insert guidance into a comment, or</li>
+                <li><strong>Use as solution</strong> then close the ticket</li>
+            </ol>
+            <div class="input-group input-group-sm mb-3">
+                <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                <input type="search" id="kbSearchInput" class="form-control" placeholder="Search FAQs…" autocomplete="off">
+            </div>
+            <div id="kbResults" class="kb-results"><p class="text-muted small mb-0">Loading suggested FAQs…</p></div>
+        </div>
         <div class="app-card p-4 mb-4">
             <h6 class="text-uppercase small fw-bold mb-4" style="color:var(--agile-primary);letter-spacing:0.08em"><i class="bi bi-person-badge me-1"></i>Reassignment Trail</h6>
             @if(($reassignments ?? collect())->isNotEmpty())
@@ -242,6 +263,14 @@
 .ticket-comment-body { line-height: 1.6; color: var(--agile-text); font-size: 0.9rem; }
 .btn-outline-danger { border-color: #fecaca; color: #dc2626; }
 .btn-outline-danger:hover { background: #fef2f2; border-color: #dc2626; color: #dc2626; }
+.kb-results { max-height: 26rem; overflow: auto; }
+.kb-steps { line-height: 1.45; }
+.kb-article { border: 1px solid var(--agile-border, #e2e8f0); border-radius: 10px; padding: 0.7rem 0.8rem; margin-bottom: 0.6rem; background: #fff; }
+.kb-article-q { font-weight: 600; font-size: 0.85rem; color: var(--agile-text, #1e293b); }
+.kb-article-cat { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: #94a3b8; }
+.kb-article-a { font-size: 0.82rem; color: #475569; line-height: 1.5; max-height: 4.5rem; overflow: hidden; transition: max-height 0.2s ease; }
+.kb-article-a.expanded { max-height: 40rem; }
+.kb-article-actions .btn { font-size: 0.72rem; }
 </style>
 
 @if(($ticket->status ?? '') !== 'Closed' && ($canCloseTickets ?? true))
@@ -255,9 +284,10 @@
             <form method="POST" action="{{ route('tickets.close', $ticket->ticketid) }}">
                 @csrf
                 <div class="modal-body">
-                    <p class="text-muted small mb-3">Add a brief resolution (or leave blank to use "Closed").</p>
+                    <p class="text-muted small mb-3" id="closeTicketHint">Add a brief resolution (or leave blank to use "Closed").</p>
                     <label class="form-label fw-semibold">Solution <span class="text-muted fw-normal">(optional)</span></label>
-                    <textarea name="solution" class="form-control" rows="3" placeholder="e.g. Issue resolved, customer satisfied" autofocus>{{ old('solution') }}</textarea>
+                    <textarea name="solution" id="ticketSolutionBox" class="form-control" rows="5" placeholder="e.g. Issue resolved using FAQ guidance…" autofocus>{{ old('solution') }}</textarea>
+                    <div class="form-text" id="kbSolutionSource" style="display:none"><i class="bi bi-journal-bookmark me-1"></i>Filled from knowledge base</div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -268,4 +298,121 @@
     </div>
 </div>
 @endif
+
+@push('scripts')
+<script>
+(function () {
+    const panel = document.getElementById('kbPanel');
+    if (!panel) return;
+    const url = panel.getAttribute('data-search-url');
+    const markUrl = panel.getAttribute('data-mark-url');
+    const input = document.getElementById('kbSearchInput');
+    const box = document.getElementById('kbResults');
+    const canClose = panel.getAttribute('data-can-close') === '1';
+    const seed = (panel.getAttribute('data-ticket-title') + ' ' + panel.getAttribute('data-ticket-category')).trim();
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || document.querySelector('input[name="_token"]')?.value
+        || '';
+
+    function escapeHtml(s) {
+        return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function formatSolution(r) {
+        return 'Resolved using FAQ guidance:\n'
+            + r.question + '\n\n'
+            + r.answer
+            + (r.category ? ('\n\n(Source: ' + r.category + ' knowledge base)') : '');
+    }
+
+    function markHelpful(id) {
+        if (!markUrl || !id) return;
+        fetch(markUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': csrf,
+            },
+            body: JSON.stringify({ id: id }),
+        }).catch(() => {});
+    }
+
+    function render(rows) {
+        if (!rows.length) {
+            box.innerHTML = '<p class="text-muted small mb-0">No matching FAQs. Try different keywords or open the FAQs page.</p>';
+            return;
+        }
+        box.innerHTML = rows.map(r => {
+            const solBtn = canClose
+                ? `<button type="button" class="btn btn-sm btn-success" data-act="solution" data-id="${r.id}"><i class="bi bi-check-circle me-1"></i>Use as solution</button>`
+                : '';
+            return `<div class="kb-article" data-id="${r.id}">
+                <div class="kb-article-cat mb-1">${escapeHtml(r.category)}</div>
+                <div class="kb-article-q mb-1">${escapeHtml(r.question)}</div>
+                <div class="kb-article-a mb-2" data-answer>${escapeHtml(r.answer).replace(/\n/g, '<br>')}</div>
+                <div class="kb-article-actions d-flex flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-act="expand"><i class="bi bi-arrows-expand me-1"></i>More</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" data-act="comment" data-id="${r.id}"><i class="bi bi-chat-left-text me-1"></i>Insert into comment</button>
+                    ${solBtn}
+                </div>
+            </div>`;
+        }).join('');
+
+        const store = {};
+        rows.forEach(r => store[r.id] = r);
+
+        box.querySelectorAll('[data-act]').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const act = this.getAttribute('data-act');
+                const card = this.closest('.kb-article');
+                const id = this.getAttribute('data-id');
+                const r = id ? store[id] : null;
+                if (act === 'expand') {
+                    card.querySelector('[data-answer]').classList.toggle('expanded');
+                } else if (act === 'comment' && r) {
+                    const t = document.getElementById('ticketCommentBox');
+                    if (t) {
+                        const ref = 'KB guidance — ' + r.question + '\n' + r.answer + '\n';
+                        t.value = t.value ? (t.value.replace(/\s*$/, '') + '\n\n' + ref) : ref;
+                        t.focus();
+                        t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        markHelpful(r.id);
+                    }
+                } else if (act === 'solution' && r) {
+                    const s = document.getElementById('ticketSolutionBox');
+                    const hint = document.getElementById('closeTicketHint');
+                    const source = document.getElementById('kbSolutionSource');
+                    if (s) { s.value = formatSolution(r); }
+                    if (hint) { hint.textContent = 'Solution filled from the knowledge base. Review and close the ticket.'; }
+                    if (source) { source.style.display = ''; }
+                    markHelpful(r.id);
+                    const modalEl = document.getElementById('closeTicketModal');
+                    if (modalEl && window.bootstrap) {
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    }
+                }
+            });
+        });
+    }
+
+    let t;
+    function doSearch(q) {
+        fetch(url + '?q=' + encodeURIComponent(q), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(res => res.json())
+            .then(data => render((data && data.results) || []))
+            .catch(() => { box.innerHTML = '<p class="text-muted small mb-0">Could not load knowledge base.</p>'; });
+    }
+
+    input.addEventListener('input', function () {
+        clearTimeout(t);
+        const q = this.value.trim();
+        t = setTimeout(() => doSearch(q), 250);
+    });
+
+    // Initial suggestions based on the ticket subject + category.
+    doSearch(seed);
+})();
+</script>
+@endpush
 @endsection
