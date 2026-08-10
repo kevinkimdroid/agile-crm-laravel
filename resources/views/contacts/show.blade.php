@@ -3,37 +3,79 @@
 @section('title', $contact->full_name . ' — Prospect')
 
 @section('content')
-<div class="contact-detail-header">
-    <nav class="mb-2 text-uppercase small">
-        <a href="{{ route('contacts.index') }}" class="text-muted">Prospects</a>
-        <span class="text-muted mx-1">&gt;</span>
-        <a href="{{ route('contacts.index') }}" class="text-muted">All</a>
-        <span class="text-muted mx-1">&gt;</span>
-        <span class="text-dark">{{ Str::limit($contact->full_name, 40) }}</span>
-    </nav>
-    <div class="d-flex flex-wrap align-items-start gap-4">
-        <div class="contact-avatar-lg">
-            {{ strtoupper(substr($contact->firstname ?? '?', 0, 1)) }}{{ strtoupper(substr($contact->lastname ?? '', 0, 1)) }}
-        </div>
-        <div class="flex-grow-1">
-            <h1 class="page-title mb-2">{{ $contact->full_name }}</h1>
-            @php
-                $displayPhone = trim($contact->mobile ?? '') ?: trim($contact->phone ?? '');
-            @endphp
-            @if($displayPhone)
-            <p class="mb-2">
-                <i class="bi bi-telephone me-1 text-muted"></i>
-                <a href="tel:{{ tel_href($displayPhone) }}" class="text-decoration-none">{{ $displayPhone }}</a>
-                <span class="text-muted mx-2">·</span>
-                <a href="https://www.google.com/maps/search/?api=1&query={{ urlencode(trim($contact->full_name . ' ' . $displayPhone)) }}" target="_blank" rel="noopener" class="text-primary small">Show Map</a>
-            </p>
-            @endif
-            <div class="d-flex flex-wrap gap-2 align-items-center">
-                <a href="{{ route('contacts.edit', $contact->contactid) }}" class="btn btn-sm btn-primary-custom">Edit</a>
-                <a href="mailto:{{ $contact->email }}" class="btn btn-sm btn-outline-secondary">Send Email</a>
+@php
+    $displayPhone = trim((string) ($contact->mobile ?? '')) ?: trim((string) ($contact->phone ?? ''));
+    $displayEmail = trim((string) ($contact->email ?? ''));
+    $prospectPolicy = trim((string) ($contact->policy_number ?? ''));
+    $mpesaConfigured = app(\App\Services\MpesaStkPushService::class)->isConfigured();
+    $mpesaSandboxSimulate = app(\App\Services\MpesaStkPushService::class)->isSandboxSimulate();
+    $canCollectMpesa = $mpesaConfigured && $prospectPolicy !== '';
+    $mpesaTransactions = ($canCollectMpesa && \Illuminate\Support\Facades\Schema::hasTable('mpesa_stk_transactions'))
+        ? \App\Models\MpesaStkTransaction::query()->where('policy_number', $prospectPolicy)->orderByDesc('id')->limit(6)->get()
+        : collect();
+    $tab = $activeTab ?? 'summary';
+    $tabSuffix = in_array($tab, ['tickets','policies','calls','sms','emails','campaigns','calendar','details','updates'], true) ? '?tab='.$tab : '';
+@endphp
+
+@include('support.partials.client-mpesa-styles')
+
+<div class="contact-detail-header client-profile-hero card contact-detail-card mb-4">
+    <div class="card-body p-4">
+        <nav class="mb-3 text-uppercase small client-profile-breadcrumb">
+            <a href="{{ route('contacts.index') }}" class="text-muted">Prospects</a>
+            <span class="text-muted mx-1">/</span>
+            <a href="{{ route('contacts.index') }}" class="text-muted">All</a>
+            <span class="text-muted mx-1">/</span>
+            <span class="text-dark">{{ Str::limit($contact->full_name, 40) }}</span>
+        </nav>
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+            <div class="d-flex flex-wrap align-items-start gap-3 flex-grow-1">
+                <div class="contact-avatar-lg">
+                    {{ strtoupper(substr($contact->firstname ?? '?', 0, 1)) }}{{ strtoupper(substr($contact->lastname ?? '', 0, 1)) }}
+                </div>
+                <div class="flex-grow-1" style="min-width:220px">
+                    <h1 class="page-title mb-2 client-hero-name">{{ $contact->full_name }}</h1>
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-1">
+                        @if($displayPhone)
+                        <a href="tel:{{ tel_href($displayPhone) }}" class="client-hero-phone text-decoration-none">
+                            <i class="bi bi-telephone-fill me-1"></i>{{ $displayPhone }}
+                        </a>
+                        @endif
+                        @if($contact->title)
+                        <span class="badge bg-light text-dark border">{{ $contact->title }}</span>
+                        @endif
+                        @if($prospectPolicy !== '')
+                        <span class="client-hero-policy font-monospace">{{ $prospectPolicy }}</span>
+                        @endif
+                        @if($contact->leadsource)
+                        <span class="badge bg-primary-subtle text-primary-emphasis">{{ $contact->leadsource }}</span>
+                        @endif
+                        @if($contact->contact_no)
+                        <span class="text-muted small font-monospace">{{ $contact->contact_no }}</span>
+                        @endif
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2 align-items-center client-hero-actions">
+                @if($displayPhone)
+                <a href="tel:{{ tel_href($displayPhone) }}" class="btn btn-sm btn-success"><i class="bi bi-telephone me-1"></i>Call</a>
+                @endif
+                @if($displayEmail !== '')
+                <a href="{{ route('support.email-client', array_filter(['contact_id' => $contact->contactid, 'email' => $displayEmail, 'client_name' => $contact->full_name])) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-envelope me-1"></i>Email</a>
+                @endif
+                @if($displayPhone)
+                <a href="{{ route('support.sms-notifier', ['contact_id' => $contact->contactid, 'phone' => $displayPhone]) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chat-dots me-1"></i>SMS</a>
+                @endif
+                <a href="{{ route('tickets.create', ['contact_id' => $contact->contactid]) }}" class="btn btn-sm btn-success"><i class="bi bi-ticket-perforated me-1"></i>Create Ticket</a>
+                @if($canCollectMpesa)
+                <button type="button" class="btn btn-sm btn-outline-success mpesa-stk-trigger" data-bs-toggle="modal" data-bs-target="#mpesaStkModal">
+                    <i class="bi bi-phone me-1"></i>M-Pesa
+                </button>
+                @endif
+                <a href="{{ route('contacts.edit', $contact->contactid) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>
                 <div class="btn-group">
                     <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">More</button>
-                    <ul class="dropdown-menu">
+                    <ul class="dropdown-menu dropdown-menu-end">
                         <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#followupModal"><i class="bi bi-calendar-check me-2"></i>Log Follow-up</a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li>
@@ -46,19 +88,16 @@
                     </ul>
                 </div>
                 @if(($prevContactId ?? null) || ($nextContactId ?? null))
-                <div class="btn-group ms-1">
+                <div class="btn-group">
                     @if($prevContactId ?? null)
-                    <a href="{{ route('contacts.show', $prevContactId) }}{{ in_array($activeTab ?? '', ['tickets','policies','calls','sms','emails','campaigns','calendar','details','updates']) ? '?tab=' . $activeTab : '' }}" class="btn btn-sm btn-outline-secondary" title="Previous client">
-                        <i class="bi bi-chevron-left"></i>
-                    </a>
+                    <a href="{{ route('contacts.show', $prevContactId) }}{{ $tabSuffix }}" class="btn btn-sm btn-outline-secondary" title="Previous prospect"><i class="bi bi-chevron-left"></i></a>
                     @endif
                     @if($nextContactId ?? null)
-                    <a href="{{ route('contacts.show', $nextContactId) }}{{ in_array($activeTab ?? '', ['tickets','policies','calls','sms','emails','campaigns','calendar','details','updates']) ? '?tab=' . $activeTab : '' }}" class="btn btn-sm btn-outline-secondary" title="Next client">
-                        <i class="bi bi-chevron-right"></i>
-                    </a>
+                    <a href="{{ route('contacts.show', $nextContactId) }}{{ $tabSuffix }}" class="btn btn-sm btn-outline-secondary" title="Next prospect"><i class="bi bi-chevron-right"></i></a>
                     @endif
                 </div>
                 @endif
+                <a href="{{ route('contacts.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
             </div>
         </div>
     </div>
@@ -71,80 +110,164 @@
     </div>
 @endif
 
-{{-- Module tabs --}}
-<ul class="nav contact-module-tabs mb-4">
-    <li class="nav-item">
-        <a class="nav-link {{ ($activeTab ?? 'summary') === 'summary' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=summary">Summary</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link {{ ($activeTab ?? '') === 'details' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=details">Details</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link {{ ($activeTab ?? '') === 'updates' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=updates">
-            Updates
-            @if((($activitiesCount ?? 0) + ($commentsCount ?? 0)) > 0)
-            <span class="badge bg-primary ms-1">{{ ($activitiesCount ?? 0) + ($commentsCount ?? 0) }}</span>
-            @endif
-        </a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link {{ ($activeTab ?? '') === 'tickets' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=tickets" title="Tickets">
-            <i class="bi bi-ticket-perforated me-1"></i>Tickets
-            @if(($ticketsCount ?? 0) > 0)
-            <span class="badge bg-primary ms-1">{{ $ticketsCount }}</span>
-            @endif
-        </a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link {{ ($activeTab ?? '') === 'emails' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=emails" title="Emails from life@geminialife.co.ke">
-            <i class="bi bi-envelope me-1"></i>Emails
-            @if(($emailsCount ?? 0) > 0)
-            <span class="badge bg-primary ms-1">{{ $emailsCount }}</span>
-            @endif
-        </a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link {{ ($activeTab ?? '') === 'policies' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=policies" title="Policies"><i class="bi bi-box me-1"></i>Policies</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link {{ ($activeTab ?? '') === 'calls' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=calls" title="Calls (PBX)"><i class="bi bi-telephone me-1"></i>Calls</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link {{ ($activeTab ?? '') === 'campaigns' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=campaigns" title="Campaigns">
-            <i class="bi bi-megaphone me-1"></i>Campaigns
-            @if(($campaigns ?? collect())->isNotEmpty())
-            <span class="badge bg-primary ms-1">{{ ($campaigns ?? collect())->count() }}</span>
-            @endif
-        </a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link {{ ($activeTab ?? '') === 'sms' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=sms" title="SMS sent"><i class="bi bi-chat-dots me-1"></i>SMS</a>
-    </li>
-</ul>
+@include('support.partials.client-page-toasts')
 
-@php $tab = $activeTab ?? 'summary'; @endphp
+<div class="card contact-detail-card client-module-tabs-shell mb-4">
+    <div class="card-body py-2 px-2">
+        <ul class="nav contact-module-tabs client-module-tabs mb-0">
+            <li class="nav-item">
+                <a class="nav-link {{ $tab === 'summary' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=summary">Summary</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {{ $tab === 'details' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=details">Details</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {{ $tab === 'updates' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=updates">
+                    Updates
+                    @if((($activitiesCount ?? 0) + ($commentsCount ?? 0)) > 0)
+                    <span class="badge bg-primary ms-1">{{ ($activitiesCount ?? 0) + ($commentsCount ?? 0) }}</span>
+                    @endif
+                </a>
+            </li>
+            @if($canCollectMpesa)
+            <li class="nav-item">
+                <a class="nav-link" href="#prospect-mpesa" onclick="document.getElementById('mpesaStkModal') && bootstrap.Modal.getOrCreateInstance(document.getElementById('mpesaStkModal')).show(); return false;">
+                    <i class="bi bi-phone me-1"></i>M-Pesa
+                </a>
+            </li>
+            @endif
+            <li class="nav-item client-module-tabs-divider" aria-hidden="true"></li>
+            <li class="nav-item">
+                <a class="nav-link {{ $tab === 'tickets' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=tickets" title="Tickets">
+                    <i class="bi bi-ticket-perforated"></i>
+                    @if(($ticketsCount ?? 0) > 0)<span class="badge bg-primary ms-1">{{ $ticketsCount }}</span>@endif
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {{ $tab === 'emails' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=emails" title="Emails">
+                    <i class="bi bi-envelope"></i>
+                    @if(($emailsCount ?? 0) > 0)<span class="badge bg-primary ms-1">{{ $emailsCount }}</span>@endif
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {{ $tab === 'policies' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=policies" title="Policies"><i class="bi bi-box"></i></a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {{ $tab === 'calls' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=calls" title="Calls"><i class="bi bi-telephone"></i></a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {{ $tab === 'campaigns' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=campaigns" title="Campaigns">
+                    <i class="bi bi-megaphone"></i>
+                    @if(($campaigns ?? collect())->isNotEmpty())
+                    <span class="badge bg-primary ms-1">{{ ($campaigns ?? collect())->count() }}</span>
+                    @endif
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {{ $tab === 'sms' ? 'active' : '' }}" href="{{ route('contacts.show', $contact->contactid) }}?tab=sms" title="SMS"><i class="bi bi-chat-dots"></i></a>
+            </li>
+        </ul>
+    </div>
+</div>
 
 @if($tab === 'summary')
 <div class="row g-4">
     <div class="col-lg-8">
-        <div class="card contact-detail-card mb-4">
+        <div class="card contact-detail-card mb-4 client-summary-personal">
             <div class="card-body p-4">
-                <h6 class="text-uppercase small fw-bold text-muted mb-3">Key Fields</h6>
-                <dl class="row mb-0">
-                    <dt class="col-sm-4 text-muted small">Last Name</dt>
-                    <dd class="col-sm-8 mb-2">{{ $contact->lastname ?? '—' }}</dd>
-                    <dt class="col-sm-4 text-muted small">First Name</dt>
-                    <dd class="col-sm-8 mb-2">{{ $contact->firstname ?? '—' }}</dd>
-                    <dt class="col-sm-4 text-muted small">Primary Email</dt>
-                    <dd class="col-sm-8 mb-0">{{ $contact->email ?: '—' }}</dd>
-                </dl>
+                <h6 class="text-uppercase small fw-bold mb-3" style="color:var(--agile-primary,#0E4385)">Personal information</h6>
+                <div class="client-summary-personal-grid">
+                    <div class="client-summary-field">
+                        <span class="client-summary-label">Full name</span>
+                        <span class="client-summary-value client-summary-name">{{ $contact->full_name }}</span>
+                    </div>
+                    <div class="client-summary-field">
+                        <span class="client-summary-label">Title / position</span>
+                        <span class="client-summary-value">{{ $contact->title ?: '—' }}</span>
+                    </div>
+                    <div class="client-summary-field">
+                        <span class="client-summary-label">Mobile</span>
+                        <span class="client-summary-value">
+                            @if($displayPhone)<a href="tel:{{ tel_href($displayPhone) }}">{{ $displayPhone }}</a>@else — @endif
+                        </span>
+                    </div>
+                    <div class="client-summary-field">
+                        <span class="client-summary-label">Office phone</span>
+                        <span class="client-summary-value">{{ $contact->phone ?: '—' }}</span>
+                    </div>
+                    <div class="client-summary-field">
+                        <span class="client-summary-label">Primary email</span>
+                        <span class="client-summary-value">{{ $displayEmail !== '' ? $displayEmail : '—' }}</span>
+                    </div>
+                    <div class="client-summary-field">
+                        <span class="client-summary-label">Department</span>
+                        <span class="client-summary-value">{{ $contact->department ?: '—' }}</span>
+                    </div>
+                    <div class="client-summary-field">
+                        <span class="client-summary-label">ID / Passport</span>
+                        <span class="client-summary-value font-monospace">{{ $contact->idNumber ?? $contact->id_number ?? '—' }}</span>
+                    </div>
+                    <div class="client-summary-field">
+                        <span class="client-summary-label">Policy number</span>
+                        <span class="client-summary-value font-monospace">{{ $prospectPolicy !== '' ? $prospectPolicy : '—' }}</span>
+                    </div>
+                    <div class="client-summary-field">
+                        <span class="client-summary-label">Lead source</span>
+                        <span class="client-summary-value">{{ $contact->leadsource ?: '—' }}</span>
+                    </div>
+                    <div class="client-summary-field">
+                        <span class="client-summary-label">Mailing city</span>
+                        <span class="client-summary-value">{{ $contact->mailingcity ?: '—' }}</span>
+                    </div>
+                </div>
+                <div class="mt-3 pt-3 border-top">
+                    <a href="{{ route('contacts.show', $contact->contactid) }}?tab=details" class="btn btn-sm btn-outline-primary">View full details</a>
+                </div>
             </div>
         </div>
 
-        @if($deals->isNotEmpty())
+        @if($canCollectMpesa)
+        <div class="card contact-detail-card mb-4 client-mpesa-summary-card mpesa-ui" id="prospect-mpesa">
+            <div class="card-body p-4">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                    <div>
+                        <h6 class="text-uppercase small fw-bold mb-1" style="color:var(--agile-primary,#0E4385)">M-Pesa premium collection</h6>
+                        <p class="text-muted small mb-0">Send an STK push for policy <code>{{ $prospectPolicy }}</code> and track payment status.</p>
+                    </div>
+                    <button type="button" class="btn btn-success mpesa-stk-trigger" data-bs-toggle="modal" data-bs-target="#mpesaStkModal">
+                        <i class="bi bi-phone me-1"></i>Collect via M-Pesa
+                    </button>
+                </div>
+                @if($mpesaTransactions->isNotEmpty())
+                <div class="mpesa-tx-list border-top pt-3 mt-3">
+                    @foreach($mpesaTransactions->take(3) as $tx)
+                    @php
+                        $st = $tx->status;
+                        $iconClass = match ($st) { 'success' => 'success', 'pending' => 'pending', 'cancelled' => 'cancelled', default => 'failed' };
+                        $icon = match ($st) { 'success' => 'bi-check-lg', 'pending' => 'bi-hourglass-split', 'cancelled' => 'bi-x-lg', default => 'bi-exclamation-lg' };
+                    @endphp
+                    <div class="mpesa-tx-item">
+                        <div class="mpesa-tx-icon {{ $iconClass }}"><i class="bi {{ $icon }}"></i></div>
+                        <div class="mpesa-tx-body">
+                            <div class="mpesa-tx-amount">KES {{ number_format((float) $tx->amount, 0) }}</div>
+                            <div class="mpesa-tx-meta">{{ $tx->created_at?->format('d M Y, H:i') ?? '—' }} · {{ ucfirst((string) $st) }}</div>
+                        </div>
+                    </div>
+                    @endforeach
+                </div>
+                @else
+                <div class="summary-empty-box py-3 text-center text-muted mt-3 border-top">
+                    No M-Pesa payment prompts sent yet.
+                </div>
+                @endif
+            </div>
+        </div>
+        @endif
+
+        @if(($deals ?? collect())->isNotEmpty())
         <div class="card contact-detail-card mb-4" id="deals">
             <div class="card-body p-4">
-                <h6 class="text-uppercase small fw-bold text-muted mb-3">Deals</h6>
+                <h6 class="text-uppercase small fw-bold mb-3" style="color:var(--agile-primary,#0E4385)">Deals</h6>
                 <div class="list-group list-group-flush">
                     @foreach($deals as $deal)
                     <a href="{{ route('deals.show', $deal->potentialid) }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center px-0">
@@ -761,26 +884,97 @@
     </div>
 </div>
 
+@if($canCollectMpesa)
+@include('support.partials.client-mpesa-stk-modal', [
+    'mpesaPolicyNumber' => $prospectPolicy,
+    'clientPhone' => $displayPhone ?: null,
+    'clientName' => $contact->full_name,
+    'defaultAmount' => '',
+    'mpesaConfigured' => $mpesaConfigured,
+    'mpesaSandboxSimulate' => $mpesaSandboxSimulate,
+])
+@endif
+
 <style>
+.client-profile-hero {
+    background: linear-gradient(135deg, #fff 0%, #f8fbff 55%, #f0f6fc 100%);
+    box-shadow: 0 4px 24px rgba(14, 67, 133, 0.08);
+}
+.client-profile-breadcrumb a { text-decoration: none; }
+.client-profile-breadcrumb a:hover { color: var(--agile-primary, #0E4385) !important; }
 .contact-detail-header { margin-bottom: 1.5rem; }
-.contact-avatar-lg { width: 80px; height: 80px; border-radius: 16px; background: var(--primary, #0E4385); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 700; flex-shrink: 0; }
-.contact-module-tabs { border-bottom: 2px solid var(--card-border, #e2e8f0); }
-.contact-module-tabs .nav-link { color: var(--text-muted, #64748b); font-weight: 500; padding: 0.75rem 1rem; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; }
-.contact-module-tabs .nav-link:hover { color: var(--primary, #0E4385); }
-.contact-module-tabs .nav-link.active { color: var(--primary, #0E4385); border-bottom-color: var(--primary, #0E4385); }
-.contact-module-tabs .nav-link i { font-size: 1.1rem; }
-.contact-detail-card { border-radius: 16px; border: 1px solid var(--card-border, rgba(14, 67, 133, 0.12)); }
+.contact-avatar-lg {
+    width: 84px; height: 84px; border-radius: 20px;
+    background: linear-gradient(145deg, #1A468A 0%, #0E4385 100%);
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: 1.55rem; font-weight: 700; flex-shrink: 0;
+    box-shadow: 0 8px 20px rgba(14, 67, 133, 0.25);
+}
+.client-hero-name { color: var(--agile-primary, #0E4385); font-weight: 800; }
+.client-hero-phone { font-weight: 600; color: #334155; }
+.client-hero-policy { font-size: 0.82rem; color: #64748b; background: #f1f5f9; padding: 0.2rem 0.55rem; border-radius: 999px; }
+.client-hero-actions .btn { border-radius: 8px; font-weight: 600; }
+.client-module-tabs-shell {
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(14, 67, 133, 0.05);
+    overflow: hidden;
+}
+.client-module-tabs {
+    display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.15rem; border: none;
+}
+.client-module-tabs .nav-item.client-module-tabs-divider {
+    width: 1px; height: 1.75rem; margin: 0 0.35rem; padding: 0;
+    background: var(--agile-border, #e2e8f0); align-self: center; pointer-events: none; flex: 0 0 1px;
+}
+@media (max-width: 767.98px) {
+    .client-module-tabs .nav-item.client-module-tabs-divider { display: none; }
+}
+.contact-module-tabs { border-bottom: none; }
+.contact-module-tabs .nav-link {
+    color: var(--text-muted, #64748b); font-weight: 500;
+    padding: 0.7rem 1rem; border: none; border-radius: 10px; margin-bottom: 0;
+}
+.contact-module-tabs .nav-link:hover { color: var(--primary, #0E4385); background: rgba(14, 67, 133, 0.06); }
+.contact-module-tabs .nav-link.active {
+    color: #fff; background: var(--primary, #0E4385);
+    border-bottom-color: transparent;
+    box-shadow: 0 4px 12px rgba(14, 67, 133, 0.22);
+}
+.contact-module-tabs .nav-link.active .badge { background: rgba(255,255,255,0.25) !important; color: #fff !important; }
+.contact-module-tabs .nav-link i { font-size: 1.05rem; }
+.contact-detail-card { border-radius: 16px; border: 1px solid var(--card-border, rgba(14, 67, 133, 0.12)); box-shadow: 0 2px 12px rgba(14, 67, 133, 0.04); }
+.client-summary-personal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.25rem; }
+@media (max-width: 575.98px) { .client-summary-personal-grid { grid-template-columns: 1fr; } }
+.client-summary-field { display: flex; flex-direction: column; gap: 0.2rem; }
+.client-summary-label { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; }
+.client-summary-value { font-size: 0.95rem; font-weight: 600; color: #1e293b; }
+.client-summary-name { font-size: 1.1rem; color: var(--agile-primary, #0E4385); }
+.client-mpesa-summary-card, .client-summary-payments { border-color: #bbf7d0; background: linear-gradient(180deg, #f8fdf9 0%, #fff 70%); }
 .policy-row { cursor: pointer; }
 .policy-row:hover { background-color: rgba(14, 67, 133, 0.04); }
 .pbx-badge { font-size: .7rem; }
 .pbx-badge-completed { background: rgba(5, 150, 105, 0.15); color: #059669; }
 .pbx-badge-busy, .pbx-badge-no-response, .pbx-badge-no-answer { background: rgba(217, 119, 6, 0.15); color: #d97706; }
-.summary-empty-box { background: rgba(0,0,0,0.02); border-radius: 8px; min-height: 60px; }
+.summary-empty-box { background: #f8fafc; border-radius: 10px; min-height: 60px; }
 .tickets-badge-open, .tickets-badge-Open { background: rgba(14, 67, 133, 0.12); color: var(--primary); }
 .tickets-badge-in-progress, .tickets-badge-In-Progress { background: rgba(245, 158, 11, 0.2); color: #d97706; }
 .tickets-badge-closed, .tickets-badge-Closed { background: rgba(5, 150, 105, 0.15); color: #059669; }
 .tickets-badge-wait-for-response, .tickets-badge-Wait-For-Response { background: rgba(56, 189, 248, 0.2); color: #0ea5e9; }
 </style>
+
+@if($canCollectMpesa)
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var phoneInput = document.getElementById('mpesa_phone');
+    @if($displayPhone)
+    if (phoneInput && !phoneInput.value) phoneInput.value = @json($displayPhone);
+    @endif
+});
+</script>
+@endpush
+@endif
+
 @if($tab === 'policies' && !empty($policies ?? []))
 <script>
 document.addEventListener('DOMContentLoaded', function() {

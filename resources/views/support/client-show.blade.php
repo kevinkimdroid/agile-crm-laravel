@@ -45,64 +45,59 @@ $mpesaSandboxSimulate = $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushS
 
 <div class="contact-detail-header client-profile-hero card contact-detail-card mb-4">
     <div class="card-body p-4">
-    <nav class="mb-2 text-uppercase small client-profile-breadcrumb">
+    <nav class="mb-3 text-uppercase small client-profile-breadcrumb">
         @if($fromServeClient ?? false)
         <a href="{{ route('support.serve-client', ['search' => $clientPolicy]) }}" class="text-muted">Serve Client</a>
         @else
         <a href="{{ route('support.customers') }}" class="text-muted">Clients</a>
-        <span class="text-muted mx-1">&gt;</span>
+        <span class="text-muted mx-1">/</span>
         <a href="{{ route('support.customers') }}" class="text-muted">All</a>
         @endif
-        <span class="text-muted mx-1">&gt;</span>
+        <span class="text-muted mx-1">/</span>
         <span class="text-dark">{{ Str::limit($clientName, 40) }}</span>
     </nav>
-    <div class="d-flex flex-wrap align-items-start gap-4">
-        <div class="contact-avatar-lg">
-            {{ strtoupper(substr($clientName, 0, 1)) }}{{ strtoupper(substr(strrchr(trim($clientName), ' ') ?: $clientName, 1, 1)) }}
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+        <div class="d-flex flex-wrap align-items-start gap-3 flex-grow-1">
+            <div class="contact-avatar-lg">
+                {{ strtoupper(substr($clientName, 0, 1)) }}{{ strtoupper(substr(strrchr(trim($clientName), ' ') ?: $clientName, 1, 1)) }}
+            </div>
+            <div class="flex-grow-1" style="min-width:220px">
+                <h1 class="page-title mb-2 client-hero-name">{{ $clientName }}</h1>
+                <div class="d-flex flex-wrap gap-2 align-items-center mb-1">
+                    @if($clientPhone)
+                    <a href="tel:{{ tel_href($clientPhone) }}" class="client-hero-phone text-decoration-none">
+                        <i class="bi bi-telephone-fill me-1"></i>{{ $clientPhone }}
+                    </a>
+                    @endif
+                    <span class="clients-system-badge clients-system-{{ $lifeSystem }}">{{ $lifeSystemLabel }}</span>
+                    <span class="client-hero-policy font-monospace">{{ $clientPolicy }}</span>
+                    <span class="client-consent-header-badge {{ optional($clientConsent ?? null)->consent_granted ? 'is-granted' : 'is-pending' }}" id="clientConsentHeaderBadge">
+                        <i class="bi {{ optional($clientConsent ?? null)->consent_granted ? 'bi-check-circle-fill' : 'bi-shield-exclamation' }}"></i>
+                        {{ optional($clientConsent ?? null)->consent_granted ? 'Consented' : 'No consent' }}
+                    </span>
+                </div>
+            </div>
         </div>
-        <div class="flex-grow-1">
-            <h1 class="page-title mb-2">{{ $clientName }}</h1>
+        <div class="d-flex flex-wrap gap-2 align-items-center client-hero-actions">
             @if($clientPhone)
-            <p class="mb-2">
-                <i class="bi bi-telephone me-1 text-muted"></i>
-                <a href="tel:{{ tel_href($clientPhone) }}" class="text-decoration-none">{{ $clientPhone }}</a>
-                <span class="text-muted mx-2">·</span>
-                <a href="https://www.google.com/maps/search/?api=1&query={{ urlencode(trim($clientName . ' ' . $clientPhone)) }}" target="_blank" rel="noopener" class="text-primary small">Show Map</a>
-            </p>
+            <a href="tel:{{ tel_href($clientPhone) }}" class="btn btn-sm btn-success"><i class="bi bi-telephone me-1"></i>Call</a>
             @endif
-            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-                <span class="clients-system-badge clients-system-{{ $lifeSystem }}">{{ $lifeSystemLabel }}</span>
-                <span class="client-status-badge client-status-{{ $headerStatusClass }}">{{ $headerStatusLabel }}</span>
-                <span class="text-muted small font-monospace">{{ $clientPolicy }}</span>
-                <span class="client-consent-header-badge {{ optional($clientConsent ?? null)->consent_granted ? 'is-granted' : 'is-pending' }}" id="clientConsentHeaderBadge">
-                    <i class="bi {{ optional($clientConsent ?? null)->consent_granted ? 'bi-shield-check' : 'bi-shield-exclamation' }}"></i>
-                    {{ optional($clientConsent ?? null)->consent_granted ? 'Consent on file' : 'No consent recorded' }}
-                </span>
-            </div>
-            <div class="d-flex flex-wrap gap-2 align-items-center">
-                @if($clientPhone)
-                <a href="tel:{{ tel_href($clientPhone) }}" class="btn btn-sm btn-success"><i class="bi bi-telephone me-1"></i>Call</a>
-                @endif
-                @if($canSendEmailToClient)
-                <a href="{{ route('support.email-client', array_merge($emailClientRouteParams, ['return_policy' => ($clientPolicy && $clientPolicy !== '—') ? $clientPolicy : null])) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-envelope me-1"></i>Email</a>
-                @endif
-                @if($clientPhone)
-                <a href="{{ route('support.sms-notifier', array_filter($contact ? ['contact_id' => $contact->contactid, 'return_policy' => $clientPolicy] : ['phone' => $clientPhone, 'return_policy' => $clientPolicy])) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chat-dots me-1"></i>SMS</a>
-                @endif
-                <a href="{{ route('support.clients.create-ticket', ['policy' => $clientPolicy]) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-ticket-perforated me-1"></i>Create Ticket</a>
-                @if($contact ?? null)
-                <a href="{{ route('contacts.show', $contact->contactid) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-person me-1"></i>CRM Prospect</a>
-                @endif
-                <button type="button" class="btn btn-sm btn-outline-success {{ $mpesaConfigured ? 'mpesa-stk-trigger' : '' }}"
-                    @if($mpesaConfigured) data-bs-toggle="modal" data-bs-target="#mpesaStkModal" @endif
-                    @if(! $mpesaConfigured) disabled @endif
-                    title="{{ $mpesaConfigured ? ($mpesaSandboxSimulate ? 'Sandbox mode — simulated STK' : 'Send M-Pesa STK push') : 'M-Pesa unavailable' }}">
-                    <i class="bi bi-phone-vibrate me-1"></i>M-Pesa
-                </button>
-                <a href="{{ ($fromServeClient ?? false) ? route('support.serve-client', ['search' => $clientPolicy]) : route('support.customers') }}" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-arrow-left me-1"></i>Back
-                </a>
-            </div>
+            @if($canSendEmailToClient)
+            <a href="{{ route('support.email-client', array_merge($emailClientRouteParams, ['return_policy' => ($clientPolicy && $clientPolicy !== '—') ? $clientPolicy : null])) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-envelope me-1"></i>Email</a>
+            @endif
+            @if($clientPhone)
+            <a href="{{ route('support.sms-notifier', array_filter($contact ? ['contact_id' => $contact->contactid, 'return_policy' => $clientPolicy] : ['phone' => $clientPhone, 'return_policy' => $clientPolicy])) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chat-dots me-1"></i>SMS</a>
+            @endif
+            <a href="{{ route('support.clients.create-ticket', ['policy' => $clientPolicy]) }}" class="btn btn-sm btn-success"><i class="bi bi-ticket-perforated me-1"></i>Create Ticket</a>
+            <button type="button" class="btn btn-sm btn-outline-success {{ $mpesaConfigured ? 'mpesa-stk-trigger' : '' }}"
+                @if($mpesaConfigured) data-bs-toggle="modal" data-bs-target="#mpesaStkModal" @endif
+                @if(! $mpesaConfigured) disabled @endif
+                title="{{ $mpesaConfigured ? ($mpesaSandboxSimulate ? 'Sandbox mode — simulated STK' : 'Send M-Pesa STK push') : 'M-Pesa unavailable' }}">
+                <i class="bi bi-phone me-1"></i>M-Pesa
+            </button>
+            <a href="{{ ($fromServeClient ?? false) ? route('support.serve-client', ['search' => $clientPolicy]) : route('support.customers') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>Back
+            </a>
         </div>
     </div>
     </div>
@@ -125,6 +120,12 @@ $mpesaSandboxSimulate = $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushS
                     <span class="badge bg-primary ms-1 client-tab-badge" data-tab-badge="updates" @if((($activitiesCount ?? 0) + ($commentsCount ?? 0)) <= 0) hidden @endif>{{ ($activitiesCount ?? 0) + ($commentsCount ?? 0) }}</span>
                 </a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link {{ in_array($tab, ['premiums', 'mpesa'], true) ? 'active' : '' }}" href="{{ $clientTabUrl('premiums') }}" title="M-Pesa & premiums">
+                    <i class="bi bi-phone me-1"></i>M-Pesa
+                    <span class="badge bg-success ms-1 client-tab-badge" data-tab-badge="premiums" @if(($premiumsCount ?? 0) <= 0) hidden @endif>{{ $premiumsCount ?? 0 }}</span>
+                </a>
+            </li>
             <li class="nav-item client-module-tabs-divider" aria-hidden="true"></li>
             <li class="nav-item">
                 <a class="nav-link {{ $tab === 'tickets' ? 'active' : '' }}" href="{{ $clientTabUrl('tickets') }}" title="Tickets">
@@ -140,7 +141,7 @@ $mpesaSandboxSimulate = $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushS
             </li>
             <li class="nav-item">
                 <a class="nav-link {{ $tab === 'documents' ? 'active' : '' }}" href="{{ $clientTabUrl('documents') }}" title="Documents">
-                    <i class="bi bi-file-earmark"></i>
+                    <i class="bi bi-folder"></i>
                     @if(($documentsCount ?? 0) > 0)
                     <span class="badge bg-primary ms-1">{{ $documentsCount }}</span>
                     @endif
@@ -159,12 +160,6 @@ $mpesaSandboxSimulate = $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushS
                 <a class="nav-link {{ $tab === 'sms' ? 'active' : '' }}" href="{{ $clientTabUrl('sms') }}" title="SMS sent">
                     <i class="bi bi-chat-dots"></i>
                     <span class="badge bg-primary ms-1 client-tab-badge" data-tab-badge="sms" @if(($smsCount ?? 0) <= 0) hidden @endif>{{ $smsCount ?? 0 }}</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {{ $tab === 'premiums' ? 'active' : '' }}" href="{{ $clientTabUrl('premiums') }}" title="Premiums">
-                    <i class="bi bi-receipt"></i>
-                    <span class="badge bg-primary ms-1 client-tab-badge" data-tab-badge="premiums" @if(($premiumsCount ?? 0) <= 0) hidden @endif>{{ $premiumsCount ?? 0 }}</span>
                 </a>
             </li>
         </ul>
@@ -220,40 +215,45 @@ $mpesaSandboxSimulate = $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushS
             </div>
         </div>
 
-        @if(($tickets ?? collect())->isNotEmpty())
-        <div class="card contact-detail-card mb-4">
+        @include('support.partials.client-summary-notes')
+
+        <div class="card contact-detail-card mb-4 client-mpesa-summary-card mpesa-ui">
             <div class="card-body p-4">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="text-uppercase small fw-bold text-muted mb-0">Recent Tickets</h6>
-                    <a href="{{ $clientTabUrl('tickets') }}" class="btn btn-sm btn-outline-secondary">View all</a>
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                    <div>
+                        <h6 class="text-uppercase small fw-bold mb-1" style="color:var(--agile-primary,#0E4385)">M-Pesa premium collection</h6>
+                        <p class="text-muted small mb-0">Send an STK push to the client’s phone and track payment status in real time.</p>
+                    </div>
+                    <button type="button" class="btn btn-success {{ $mpesaConfigured ? 'mpesa-stk-trigger' : '' }}"
+                        @if($mpesaConfigured) data-bs-toggle="modal" data-bs-target="#mpesaStkModal" @endif
+                        @if(! $mpesaConfigured) disabled title="M-Pesa unavailable" @endif>
+                        <i class="bi bi-phone me-1"></i>Collect via M-Pesa
+                    </button>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Ticket #</th>
-                                <th>Title</th>
-                                <th>Status</th>
-                                <th class="text-end">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach(($tickets ?? collect())->take(5) as $t)
-                            <tr>
-                                <td class="font-monospace small">{{ $t->ticket_no ?? $t->ticketid }}</td>
-                                <td>{{ Str::limit($t->title ?? '—', 40) }}</td>
-                                <td><span class="ticket-status-badge ticket-status-{{ Str::slug($t->status ?? '') }}">{{ $t->status ?? '—' }}</span></td>
-                                <td class="text-end"><a href="{{ route('tickets.show', $t->ticketid) }}" class="btn btn-sm btn-link p-0">View</a></td>
-                            </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+                @if(!empty($mpesaConfigured) && ($mpesaTransactions ?? collect())->isNotEmpty())
+                <div class="mpesa-tx-list border-top pt-3 mt-3">
+                    @foreach(($mpesaTransactions ?? collect())->take(3) as $tx)
+                    @php
+                        $st = $tx->status;
+                        $iconClass = match ($st) { 'success' => 'success', 'pending' => 'pending', 'cancelled' => 'cancelled', default => 'failed' };
+                        $icon = match ($st) { 'success' => 'bi-check-lg', 'pending' => 'bi-hourglass-split', 'cancelled' => 'bi-x-lg', default => 'bi-exclamation-lg' };
+                    @endphp
+                    <div class="mpesa-tx-item">
+                        <div class="mpesa-tx-icon {{ $iconClass }}"><i class="bi {{ $icon }}"></i></div>
+                        <div class="mpesa-tx-body">
+                            <div class="mpesa-tx-amount">KES {{ number_format((float) $tx->amount, 0) }}</div>
+                            <div class="mpesa-tx-meta">{{ $tx->created_at?->format('d M Y, H:i') ?? '—' }} · {{ ucfirst((string) $st) }}</div>
+                        </div>
+                    </div>
+                    @endforeach
                 </div>
+                @else
+                <div class="summary-empty-box py-3 text-center text-muted mt-3 border-top">
+                    No M-Pesa payment prompts sent yet.
+                </div>
+                @endif
             </div>
         </div>
-        @endif
-
-        {{-- Documents moved to Documents tab --}}
     </div>
 
     <div class="col-lg-4">
@@ -269,8 +269,13 @@ $mpesaSandboxSimulate = $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushS
                     <a href="{{ route('support.email-client', array_merge($emailClientRouteParams, ['return_policy' => ($clientPolicy && $clientPolicy !== '—') ? $clientPolicy : null])) }}" class="btn btn-outline-primary"><i class="bi bi-envelope me-2"></i>Send Email</a>
                     @endif
                     <a href="{{ route('support.clients.create-ticket', ['policy' => $clientPolicy]) }}" class="btn btn-outline-success"><i class="bi bi-ticket-perforated me-2"></i>Create Ticket</a>
+                    <button type="button" class="btn btn-outline-success text-start {{ $mpesaConfigured ? 'mpesa-stk-trigger' : '' }}"
+                        @if($mpesaConfigured) data-bs-toggle="modal" data-bs-target="#mpesaStkModal" @endif
+                        @if(! $mpesaConfigured) disabled @endif>
+                        <i class="bi bi-phone me-2"></i>Collect via M-Pesa
+                    </button>
                     @if($contact ?? null)
-                    <a href="{{ route('contacts.show', $contact->contactid) }}" class="btn btn-outline-secondary"><i class="bi bi-person me-2"></i>View CRM Prospect</a>
+                    <a href="{{ route('contacts.show', $contact->contactid) }}" class="btn btn-outline-secondary"><i class="bi bi-person me-2"></i>View CRM Contact</a>
                     @endif
                 </div>
             </div>
@@ -333,11 +338,11 @@ $mpesaSandboxSimulate = $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushS
                     <div class="client-payments-zone-icon client-payments-zone-icon-sm"><i class="bi bi-wallet2"></i></div>
                     <h6 class="text-uppercase small fw-bold text-muted mb-0">Payments</h6>
                 </div>
-                <p class="text-muted small mb-3">Collect premium via M-Pesa STK push for policy <span class="font-monospace">{{ $clientPolicy }}</span>.</p>
+                <p class="text-muted small mb-3">Collect premium via M-Pesa STK push and track prompts sent to this client.</p>
                 <button type="button" class="btn btn-success w-100 mb-3 {{ $mpesaConfigured ? 'mpesa-stk-trigger' : '' }}"
                     @if($mpesaConfigured) data-bs-toggle="modal" data-bs-target="#mpesaStkModal" @endif
                     @if(! $mpesaConfigured) disabled title="M-Pesa unavailable" @endif>
-                    <i class="bi bi-phone-vibrate me-1"></i> Pay premium (M-Pesa)
+                    <i class="bi bi-phone me-1"></i>Collect premium via M-Pesa
                 </button>
                 @if(!empty($mpesaConfigured) && ($mpesaTransactions ?? collect())->isNotEmpty())
                 <div class="mpesa-tx-list border-top pt-3">
@@ -512,6 +517,15 @@ $mpesaSandboxSimulate = $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushS
 
 <style>
 .contact-detail-header { margin-bottom: 0; }
+.client-hero-name { color: var(--agile-primary, #0E4385); font-weight: 800; letter-spacing: -0.01em; }
+.client-hero-phone { font-weight: 600; color: #334155; }
+.client-hero-phone:hover { color: var(--agile-primary, #0E4385); }
+.client-hero-policy {
+    font-size: 0.82rem; color: #64748b; background: #f1f5f9;
+    padding: 0.2rem 0.55rem; border-radius: 999px;
+}
+.client-hero-actions .btn { border-radius: 8px; font-weight: 600; }
+.client-mpesa-summary-card { border-color: #bbf7d0; background: linear-gradient(180deg, #f8fdf9 0%, #fff 70%); }
 .client-profile-hero {
     background: linear-gradient(135deg, #fff 0%, #f8fbff 55%, #f0f6fc 100%);
     box-shadow: 0 4px 24px rgba(14, 67, 133, 0.08);
