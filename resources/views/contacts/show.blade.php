@@ -446,10 +446,23 @@
                         <tbody>
                             @foreach($policies ?? [] as $policy)
                             @php
-                                $policyNo = $policy['policy_no'] ?? $policy['policy_number'] ?? $policy['POLICY_NO'] ?? $policy['POLICY_NUMBER'] ?? '—';
-                                $name = $policy['name'] ?? $policy['client_name'] ?? $policy['CLIENT_NAME'] ?? '—';
-                                $phone = $policy['phone'] ?? $policy['mobile'] ?? $policy['PHONE'] ?? $policy['MOBILE'] ?? '—';
-                                $email = $policy['email'] ?? $policy['EMAIL'] ?? '—';
+                                $policyNo = data_get($policy, 'policy_no')
+                                    ?? data_get($policy, 'policy_number')
+                                    ?? data_get($policy, 'POLICY_NO')
+                                    ?? data_get($policy, 'POLICY_NUMBER')
+                                    ?? '—';
+                                $name = data_get($policy, 'name')
+                                    ?? data_get($policy, 'client_name')
+                                    ?? data_get($policy, 'CLIENT_NAME')
+                                    ?? '—';
+                                $phone = data_get($policy, 'phone')
+                                    ?? data_get($policy, 'mobile')
+                                    ?? data_get($policy, 'PHONE')
+                                    ?? data_get($policy, 'MOBILE')
+                                    ?? '—';
+                                $email = data_get($policy, 'email')
+                                    ?? data_get($policy, 'EMAIL')
+                                    ?? '—';
                             @endphp
                             <tr class="policy-row cursor-pointer" data-policy='@json($policy)' role="button" tabindex="0">
                                 <td class="fw-semibold font-monospace">{{ $policyNo }}</td>

@@ -5,10 +5,13 @@ return [
     |--------------------------------------------------------------------------
     | Finance module (cheques / agency advances / receipt reprint)
     |--------------------------------------------------------------------------
-    | Set FINANCE_MODULE_ENABLED=false for POCs without ERP finance connectivity.
-    | Hides nav links and blocks /finance/* routes.
+    | Set FINANCE_MODULE_ENABLED=false to hide Finance (or leave unset and it
+    | follows ERP_ENABLED — so ERP_ENABLED=false also hides Finance).
     */
-    'finance_enabled' => filter_var(env('FINANCE_MODULE_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+    'finance_enabled' => filter_var(
+        env('FINANCE_MODULE_ENABLED', env('ERP_ENABLED', true)),
+        FILTER_VALIDATE_BOOLEAN
+    ),
 
     /*
     |--------------------------------------------------------------------------

@@ -262,7 +262,10 @@ class ContactController extends Controller
                 }
             } else {
                 $result = $this->erp->getPoliciesForContact($contact);
-                $policies = $result['data'] ?? [];
+                $policies = collect($result['data'] ?? [])
+                    ->map(fn ($row) => is_array($row) ? $row : (array) $row)
+                    ->values()
+                    ->all();
                 $policiesError = $result['error'] ?? null;
             }
         }
