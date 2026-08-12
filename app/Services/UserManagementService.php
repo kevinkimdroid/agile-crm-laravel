@@ -126,7 +126,7 @@ class UserManagementService
     protected function send(string $to, ?string $toName, string $subject, string $body): bool
     {
         $sender = app(PlainTextMailSender::class);
-        if ($sender->sendViaSmtp($to, $toName, $subject, $body)) {
+        if ($sender->sendForAuth($to, $toName, $subject, $body)) {
             return true;
         }
 

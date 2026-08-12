@@ -18,7 +18,15 @@ class PlainTextMailSender
     }
 
     /**
-     * Send via Laravel SMTP only (skips Microsoft Graph). Use for auth / password emails.
+     * Deliver auth / password emails: Graph → SendGrid API → SMTP.
+     */
+    public function sendForAuth(string $to, ?string $toName, string $subject, string $body): bool
+    {
+        return $this->send($to, $toName, $subject, $body, []);
+    }
+
+    /**
+     * Send via Laravel SMTP only (skips Graph and SendGrid API).
      */
     public function sendViaSmtp(string $to, ?string $toName, string $subject, string $body): bool
     {
@@ -63,7 +71,8 @@ class PlainTextMailSender
                 ]);
             }
 
-            return $this->deliverViaLaravelMail($to, $toName, $subject, $body, $attachments);
+            return $this->deliverViaSendGridApi($to, $toName, $subject, $body, false)
+                || $this->deliverViaLaravelMail($to, $toName, $subject, $body, $attachments);
         }
 
         if ($graphConfigured) {
@@ -71,10 +80,30 @@ class PlainTextMailSender
                 return true;
             }
             $this->lastError = 'Graph: sendMail failed.';
-            Log::warning('PlainTextMailSender: Graph send failed, falling back to Laravel Mail', ['to' => $to]);
+            Log::warning('PlainTextMailSender: Graph send failed, trying SendGrid API / SMTP', ['to' => $to]);
+        }
+
+        if ($this->deliverViaSendGridApi($to, $toName, $subject, $body, false)) {
+            return true;
         }
 
         return $this->deliverViaLaravelMail($to, $toName, $subject, $body, []);
+    }
+
+    protected function deliverViaSendGridApi(string $to, ?string $toName, string $subject, string $body, bool $bodyIsHtml): bool
+    {
+        $sendGrid = app(SendGridApiMailService::class);
+        if (! $sendGrid->isConfigured()) {
+            return false;
+        }
+
+        if ($sendGrid->sendMail($to, $toName, $subject, $body, $bodyIsHtml, $this->mailFromAddress(), config('mail.from.name', config('app.name')))) {
+            return true;
+        }
+
+        $this->lastError = 'SendGrid API: send failed (check SENDGRID_API_KEY and sender verification).';
+
+        return false;
     }
 
     /**
