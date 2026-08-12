@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Client;
 use App\Services\DischargeVoucherPdfService;
 use App\Services\ErpClientService;
+use App\Services\OrientPocCatalog;
 use App\Services\PlainTextMailSender;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -65,10 +67,10 @@ class MaturityDischargeVoucherController extends Controller
         );
 
         if (! $ok) {
-            return redirect()->back()->withInput()->with('error', 'Could not send email. Check mail configuration (Microsoft Graph or SMTP) and try again.');
+            return $this->redirectBack($request)->withInput()->with('error', 'Could not send email. Check mail configuration (Microsoft Graph or SMTP) and try again.');
         }
 
-        return redirect()->back()->with('success', 'Discharge voucher emailed to '.$validated['to_email'].'.');
+        return $this->redirectBack($request)->with('success', 'Discharge voucher emailed to '.$validated['to_email'].'.');
     }
 
     /**
@@ -86,17 +88,19 @@ class MaturityDischargeVoucherController extends Controller
         // available. The live ERP policy record enriches client, product, and amount fields only.
         $cacheRow = $this->findMaturityInLocalCaches($policyNumber, $maturityIso, $erp);
         $erpRow = $erp->getPolicyDetails($policyNumber);
+        $localRow = $this->findLocalPolicyRow($policyNumber);
 
-        if ($cacheRow === null && $erpRow === null) {
+        if ($cacheRow === null && $erpRow === null && $localRow === null) {
             abort(404, 'Policy not found. Check the policy number or sync maturities / ERP.');
         }
 
-        // Build the working row: prefer live ERP fields, fall back to cached values for anything
-        // the ERP lookup did not supply (or when ERP has no record for this policy at all).
+        // Build the working row: prefer live ERP fields, fall back to cached/local POC values.
         $row = is_array($erpRow) ? $erpRow : ($erpRow !== null ? (array) $erpRow : []);
-        if ($cacheRow !== null) {
-            $cacheArr = is_array($cacheRow) ? $cacheRow : (array) $cacheRow;
-            foreach ($cacheArr as $k => $v) {
+        foreach ([$cacheRow !== null ? (is_array($cacheRow) ? $cacheRow : (array) $cacheRow) : null, $localRow] as $fallback) {
+            if ($fallback === null) {
+                continue;
+            }
+            foreach ($fallback as $k => $v) {
                 if (! array_key_exists($k, $row) || $row[$k] === null || $row[$k] === '') {
                     $row[$k] = $v;
                 }
@@ -163,6 +167,55 @@ class MaturityDischargeVoucherController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Local POC clients and Orient catalogue (KOL-* policies used in investment maturities demo).
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function findLocalPolicyRow(string $policyNumber): ?array
+    {
+        $policyNumber = trim($policyNumber);
+        if ($policyNumber === '') {
+            return null;
+        }
+
+        if (Client::tableExists()) {
+            $client = Client::query()->where('policy_no', $policyNumber)->first();
+            if ($client) {
+                return $client->toErpRowArray();
+            }
+        }
+
+        $poc = OrientPocCatalog::clientByPolicy($policyNumber);
+        if ($poc === null) {
+            return null;
+        }
+
+        $name = trim(($poc['first_name'] ?? '').' '.($poc['last_name'] ?? ''));
+
+        return [
+            'policy_number' => $policyNumber,
+            'policy_no' => $policyNumber,
+            'life_assured' => $name !== '' ? $name : null,
+            'name' => $name !== '' ? $name : null,
+            'product' => $poc['product'] ?? null,
+            'email_adr' => $poc['email'] ?? null,
+            'email' => $poc['email'] ?? null,
+            'phone_no' => $poc['phone'] ?? null,
+            'mobile' => $poc['phone'] ?? null,
+        ];
+    }
+
+    protected function redirectBack(Request $request)
+    {
+        $returnUrl = trim((string) $request->input('return_url', ''));
+        if ($returnUrl !== '' && str_starts_with($returnUrl, url('/'))) {
+            return redirect()->to($returnUrl);
+        }
+
+        return redirect()->back();
     }
 
     protected function maturityDatesEqual(mixed $stored, string $expectedIso): bool
