@@ -2775,17 +2775,14 @@ class CrmService
         try {
             $conn->beginTransaction();
             $activityType = $data['activitytype'] ?? 'Task';
-            $setype = in_array($activityType, ['Event', 'Meeting', 'Call']) ? 'Events' : 'Task';
+            $setype = in_array($activityType, ['Event', 'Meeting', 'Call'], true) ? 'Events' : 'Task';
             $subject = $data['subject'] ?? 'Untitled';
             $dateStart = $data['date_start'] ?? now()->format('Y-m-d');
             $dueDate = $data['due_date'] ?? $dateStart;
 
-            // vtiger_activity.activityid has no auto_increment; use crmentity_seq
-            $seq = $conn->table('vtiger_crmentity_seq')->lockForUpdate()->first();
-            $activityId = ((int) ($seq->id ?? 0)) + 1;
-            $conn->table('vtiger_crmentity_seq')->update(['id' => $activityId]);
+            $activityId = $this->allocateCrmentityId($conn);
 
-            // Insert crmentity first (required by vtiger)
+            // Insert crmentity first (required by vtiger FK on activityid -> crmid)
             $conn->table('vtiger_crmentity')->insert([
                 'crmid' => $activityId,
                 'smcreatorid' => $ownerId,
@@ -2829,39 +2826,78 @@ class CrmService
                 // Table may not exist or has different structure; skip
             }
 
-            if (!empty($data['related_to'])) {
+            if (! empty($data['related_to'])) {
                 $relatedId = (int) $data['related_to'];
-                $conn->table('vtiger_seactivityrel')->insert([
-                    'crmid' => $relatedId,
-                    'activityid' => $activityId,
-                ]);
-                // vtiger_cntactivityrel for contact-activity link (some vtiger versions)
-                try {
-                    $conn->table('vtiger_cntactivityrel')->insert([
-                        'contactid' => $relatedId,
+                $relatedExists = $conn->table('vtiger_crmentity')
+                    ->where('crmid', $relatedId)
+                    ->where('deleted', 0)
+                    ->exists();
+                if ($relatedExists) {
+                    $conn->table('vtiger_seactivityrel')->insert([
+                        'crmid' => $relatedId,
                         'activityid' => $activityId,
                     ]);
-                } catch (\Throwable $e) {
-                    // Table may not exist; seactivityrel is enough for getActivities
+                    // vtiger_cntactivityrel for contact-activity link (some vtiger versions)
+                    try {
+                        $conn->table('vtiger_cntactivityrel')->insert([
+                            'contactid' => $relatedId,
+                            'activityid' => $activityId,
+                        ]);
+                    } catch (\Throwable $e) {
+                        // Table may not exist; seactivityrel is enough for getActivities
+                    }
                 }
             }
-            if (!empty($data['ticket_id'])) {
-                $conn->table('vtiger_seactivityrel')->insert([
-                    'crmid' => (int) $data['ticket_id'],
-                    'activityid' => $activityId,
-                ]);
+            if (! empty($data['ticket_id'])) {
+                $ticketId = (int) $data['ticket_id'];
+                $ticketExists = $conn->table('vtiger_crmentity')
+                    ->where('crmid', $ticketId)
+                    ->where('deleted', 0)
+                    ->exists();
+                if ($ticketExists) {
+                    $conn->table('vtiger_seactivityrel')->insert([
+                        'crmid' => $ticketId,
+                        'activityid' => $activityId,
+                    ]);
+                }
             }
 
             $conn->commit();
+
             return $activityId;
         } catch (\Throwable $e) {
             $conn->rollBack();
             Log::error('CrmService::createActivity failed', [
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+                'owner_id' => $ownerId,
+                'activitytype' => $data['activitytype'] ?? null,
+                'related_to' => $data['related_to'] ?? null,
             ]);
+
             return null;
         }
+    }
+
+    /**
+     * Next vtiger crmid for new CRM records. Keeps crmentity_seq in sync with max(crmid).
+     */
+    protected function allocateCrmentityId($conn): int
+    {
+        $maxId = (int) $conn->table('vtiger_crmentity')->max('crmid');
+        $nextId = $maxId + 1;
+
+        try {
+            $seq = $conn->table('vtiger_crmentity_seq')->lockForUpdate()->first();
+            if ($seq) {
+                $seqId = (int) ($seq->id ?? 0);
+                $nextId = max($nextId, $seqId + 1);
+                $conn->table('vtiger_crmentity_seq')->update(['id' => $nextId]);
+            }
+        } catch (\Throwable $e) {
+            // crmentity_seq may be missing on some installs; max(crmid)+1 is enough
+        }
+
+        return $nextId;
     }
 
     public function getActivity(int $activityId): ?object
