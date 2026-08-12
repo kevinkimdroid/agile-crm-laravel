@@ -5,7 +5,7 @@
 @section('content')
 <div class="page-header">
     <nav class="breadcrumb-nav mb-2">
-        <a href="{{ route('leads.index') }}" class="text-muted">Leads</a>
+        <a href="{{ route('leads') }}" class="text-muted">Leads</a>
         <span class="mx-2 text-muted">/</span>
         <span class="text-dark fw-semibold">Add Lead</span>
     </nav>

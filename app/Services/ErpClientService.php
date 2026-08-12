@@ -1638,10 +1638,18 @@ class ErpClientService
         }
 
         if ($triedUrls === []) {
-            return ['data' => [], 'error' => 'ERP_CLIENTS_HTTP_URL not set.'];
+            return ['data' => [], 'error' => format_erp_connection_error('ERP_CLIENTS_HTTP_URL not set.')];
         }
 
-        return ['data' => [], 'error' => $lastError];
+        return ['data' => [], 'error' => format_erp_connection_error($lastError, $triedUrls[0] ?? null)];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function investmentMaturitiesUrlCandidatesForTest(): array
+    {
+        return $this->investmentMaturitiesUrlCandidates();
     }
 
     /**

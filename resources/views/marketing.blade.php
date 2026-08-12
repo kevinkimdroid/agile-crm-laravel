@@ -59,7 +59,7 @@
             @endif
             @if($can('marketing.campaigns'))
             <div class="col-md-6 col-lg-4">
-                <a href="{{ route('marketing.campaigns.index') }}" class="card p-4 h-100 text-decoration-none" style="border-radius:16px;border:1px solid var(--card-border, rgba(14,67,133,0.12));color:inherit;">
+                <a href="{{ route('marketing.campaigns') }}" class="card p-4 h-100 text-decoration-none" style="border-radius:16px;border:1px solid var(--card-border, rgba(14,67,133,0.12));color:inherit;">
                     <div class="d-flex align-items-center gap-3">
                         <div class="rounded-3 d-flex align-items-center justify-content-center bg-light text-primary" style="width:56px;height:56px;font-size:1.5rem;"><i class="bi bi-megaphone"></i></div>
                         <div>

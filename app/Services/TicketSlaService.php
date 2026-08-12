@@ -350,8 +350,8 @@ class TicketSlaService
                 'u.first_name as owner_first',
                 'u.last_name as owner_last'
             )
-            ->orderByDesc('e.createdtime')
-            ->limit($limit * 2)
+            ->orderBy('e.createdtime')
+            ->limit($limit * 5)
             ->get();
 
         $userIds = $tickets->pluck('smownerid')->filter()->unique()->values()->all();

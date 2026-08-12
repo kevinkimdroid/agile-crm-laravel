@@ -6,7 +6,12 @@
 <div class="campaigns-page">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
         <div>
-            <h1 class="app-page-title mb-1">Campaigns</h1>
+            <nav class="small mb-1">
+                <a href="{{ route('marketing.campaigns') }}" class="text-muted text-decoration-none">Campaigns</a>
+                <span class="text-muted mx-1">/</span>
+                <span>All campaigns</span>
+            </nav>
+            <h1 class="app-page-title mb-1">All campaigns</h1>
             <p class="app-page-sub mb-0">Create and manage your marketing campaigns</p>
         </div>
         <a href="{{ route('marketing.campaigns.create') }}" class="app-topbar-add">

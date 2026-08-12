@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\WorkTicket;
+use App\Services\OrientPocCatalog;
 use App\Services\TicketSlaService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -21,58 +22,15 @@ class SeedKenyaOrientSlaDemoCommand extends Command
     protected $description = 'Seed sample broken-SLA client/work tickets for Orient POC reports';
 
     /** @var list<array{title:string,category:string,priority:string,status:string,hours_ago:int,policy:string}> */
-    protected array $clientTickets = [
-        [
-            'title' => 'Premium deduction not reflecting — KOL-IND-10001',
-            'category' => 'Premium',
-            'priority' => 'High',
-            'status' => 'Open',
-            'hours_ago' => 72,
-            'policy' => 'KOL-IND-10001',
-        ],
-        [
-            'title' => 'Policy document reprint request — KOL-IND-10002',
-            'category' => 'General',
-            'priority' => 'Normal',
-            'status' => 'In Progress',
-            'hours_ago' => 48,
-            'policy' => 'KOL-IND-10002',
-        ],
-        [
-            'title' => 'Claim status follow-up — KOL-IND-10003',
-            'category' => 'Claims',
-            'priority' => 'High',
-            'status' => 'Wait For Response',
-            'hours_ago' => 96,
-            'policy' => 'KOL-IND-10003',
-        ],
-        [
-            'title' => 'Group member addition delay — KOL-GRP-20001',
-            'category' => 'Support',
-            'priority' => 'Normal',
-            'status' => 'Open',
-            'hours_ago' => 60,
-            'policy' => 'KOL-GRP-20001',
-        ],
-        [
-            'title' => 'Mortgage cover confirmation overdue — KOL-MOR-30001',
-            'category' => 'Other',
-            'priority' => 'Urgent',
-            'status' => 'Open',
-            'hours_ago' => 36,
-            'policy' => 'KOL-MOR-30001',
-        ],
-        [
-            'title' => 'Pension statement not received — KOL-PEN-40001',
-            'category' => 'Feature',
-            'priority' => 'Normal',
-            'status' => 'In Progress',
-            'hours_ago' => 120,
-            'policy' => 'KOL-PEN-40001',
-        ],
-    ];
+    protected array $clientTickets = [];
 
-    public function handle(TicketSlaService $sla): int
+    public function __construct()
+    {
+        parent::__construct();
+        $this->clientTickets = OrientPocCatalog::brokenSlaClientTickets();
+    }
+
+    public function handle(TicketSlaService $sla, \App\Services\CrmService $crm): int
     {
         if (! $this->option('force') && ! $this->confirm('Seed sample broken-SLA tickets for reports?', true)) {
             $this->info('Aborted.');
@@ -95,6 +53,9 @@ class SeedKenyaOrientSlaDemoCommand extends Command
 
         foreach ($this->clientTickets as $row) {
             $contactId = $this->resolveContactId($conn, $row['policy']);
+            if (! $contactId) {
+                $contactId = $this->createContactFromPocClient($conn, $crm, $row['policy'], $ownerId);
+            }
             if (! $contactId) {
                 $this->warn("No CRM contact for policy {$row['policy']} — skipped.");
                 $skipped++;
@@ -194,13 +155,13 @@ class SeedKenyaOrientSlaDemoCommand extends Command
     {
         // Short TATs so overdue demo tickets clearly breach
         foreach ([
-            'Premium' => 24,
-            'Claims' => 24,
-            'General' => 24,
-            'Support' => 24,
-            'Other' => 24,
-            'Feature' => 48,
-            'Bug' => 48,
+            'Premium' => 8,
+            'Claims' => 8,
+            'General' => 8,
+            'Support' => 8,
+            'Other' => 8,
+            'Feature' => 12,
+            'Bug' => 12,
         ] as $category => $hours) {
             try {
                 $sla->setCategoryTat($category, $hours);
@@ -239,6 +200,32 @@ class SeedKenyaOrientSlaDemoCommand extends Command
             ->value('c.contactid');
 
         return $row ? (int) $row : null;
+    }
+
+    protected function createContactFromPocClient($conn, \App\Services\CrmService $crm, string $policy, int $ownerId): ?int
+    {
+        $client = OrientPocCatalog::clientByPolicy($policy);
+        if (! $client) {
+            return null;
+        }
+
+        try {
+            $contactId = $crm->createContactFromErpClient([
+                'first_name' => $client['first_name'] ?? '',
+                'last_name' => $client['last_name'] ?? '',
+                'email' => $client['email'] ?? '',
+                'phone' => $client['phone'] ?? '',
+                'mobile' => $client['phone'] ?? '',
+                'policy_number' => $policy,
+                'policy_no' => $policy,
+                'id_no' => $client['id_no'] ?? '',
+                'product' => $client['product'] ?? '',
+            ]);
+
+            return $contactId ? (int) $contactId : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     protected function seedWorkTickets(int $ownerId): int

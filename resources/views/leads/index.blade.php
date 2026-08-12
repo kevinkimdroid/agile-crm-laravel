@@ -5,7 +5,12 @@
 @section('content')
 <div class="page-header d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
-        <h1 class="page-title">Leads</h1>
+        <nav class="small mb-1">
+            <a href="{{ route('leads') }}" class="text-muted text-decoration-none">Leads</a>
+            <span class="text-muted mx-1">/</span>
+            <span>All leads</span>
+        </nav>
+        <h1 class="page-title">All leads</h1>
         <p class="page-subtitle">CRM leads and PRP policies with unprocessed receipts.</p>
     </div>
     <a href="{{ route('leads.create') }}" class="btn btn-primary-custom">

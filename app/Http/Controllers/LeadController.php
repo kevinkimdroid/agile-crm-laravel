@@ -26,6 +26,25 @@ class LeadController extends Controller
         $this->prpLeads = $prpLeads;
     }
 
+    public function landing(): View
+    {
+        $ownerId = crm_owner_filter();
+        $statusCounts = $this->crm->getLeadsByStatus();
+        $todayCount = $this->crm->getLeadsTodayCount($ownerId);
+        $crmTotal = $this->crm->getLeadsCount(null, $ownerId);
+        $prpEnabled = $this->prpLeads->isEnabled() && $this->prpLeads->hasCacheTable();
+        $prpCount = $prpEnabled ? $this->prpLeads->getCount(null) : 0;
+
+        return view('leads.landing', [
+            'statusCounts' => $statusCounts,
+            'todayCount' => $todayCount,
+            'crmTotal' => $crmTotal,
+            'prpEnabled' => $prpEnabled,
+            'prpCount' => $prpCount,
+            'grandTotal' => $crmTotal + ($prpEnabled ? $prpCount : 0),
+        ]);
+    }
+
     public function index(Request $request): View
     {
         $search = $request->get('q');

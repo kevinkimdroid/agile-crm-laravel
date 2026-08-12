@@ -7,9 +7,9 @@ use Illuminate\Support\Facades\Http;
 
 class ErpTestConnectionCommand extends Command
 {
-    protected $signature = 'erp:test-connection';
+    protected $signature = 'erp:test-http-api';
 
-    protected $description = 'Test ERP API and Oracle connectivity (diagnose Oracle connection failed)';
+    protected $description = 'Test ERP HTTP API and Oracle connectivity (diagnose investment maturities / clients API failures)';
 
     public function handle(): int
     {
@@ -82,6 +82,35 @@ class ErpTestConnectionCommand extends Command
         $this->info('All checks passed. ERP connection is OK.');
         $this->line('If the web app still shows "Oracle connection failed", clear config cache: php artisan config:clear');
         $this->line('Mortgage renewals: php artisan erp:test-mortgage-renewals (filtered count must be less than full mortgage count).');
+
+        // 3. Test investment maturities endpoint
+        $this->newLine();
+        $this->info('3. Testing investment maturities endpoint...');
+        $from = now()->toDateString();
+        $to = now()->addDays(14)->toDateString();
+        $invUrls = app(\App\Services\ErpClientService::class)->investmentMaturitiesUrlCandidatesForTest();
+        $invOk = false;
+        foreach ($invUrls as $invUrl) {
+            try {
+                $inv = Http::timeout(20)->get($invUrl, ['from' => $from, 'to' => $to, 'limit' => 1]);
+                if ($inv->successful()) {
+                    $body = $inv->json();
+                    $count = is_array($body['data'] ?? null) ? count($body['data']) : 0;
+                    $this->info('   ✓ '.$invUrl.' — sample rows: '.$count);
+                    $invOk = true;
+                    break;
+                }
+                if ($inv->status() !== 404) {
+                    $this->warn('   ✗ '.$invUrl.' — status '.$inv->status());
+                }
+            } catch (\Throwable $e) {
+                $this->warn('   ✗ '.$invUrl.' — '.format_erp_connection_error($e->getMessage(), $invUrl));
+            }
+        }
+        if (! $invOk) {
+            $this->error('   Investment maturities endpoint unavailable. Restart erp-clients-api after updating app.py.');
+            return 1;
+        }
 
         return 0;
     }

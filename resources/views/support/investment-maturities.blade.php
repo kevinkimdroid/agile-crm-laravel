@@ -300,6 +300,15 @@
     <span class="text-dark small fw-semibold">Investment maturities</span>
 </nav>
 
+@if (!empty($demoMode))
+<div class="alert border-0 shadow-sm d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4" style="background:var(--agile-primary-muted);">
+    <div>
+        <p class="mb-1 fw-semibold text-dark">POC demo data</p>
+        <p class="mb-0 text-muted small">Showing {{ number_format($stats['total'] ?? 0) }} sample investment maturities using aligned <code>KOL-*</code> policies (no ERP API). Set <code>INVESTMENT_MATURITIES_DEMO=false</code> in <code>.env</code> for live Oracle data.</p>
+    </div>
+</div>
+@endif
+
 <div class="inv-hero">
     <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 position-relative" style="z-index:1">
         <div class="d-flex align-items-start gap-3">
@@ -455,9 +464,20 @@
     </div>
 @endif
 @if ($error)
-    <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
-        <i class="bi bi-exclamation-octagon-fill me-1"></i>{{ $error }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    <div class="alert alert-danger mb-4" role="alert">
+        <div class="d-flex align-items-start gap-2">
+            <i class="bi bi-exclamation-octagon-fill mt-1"></i>
+            <div>
+                <p class="mb-2 fw-semibold">{{ $error }}</p>
+                <p class="mb-0 small text-muted">
+                    Investment maturities load policy data from the ERP API (Python service on port 5000), not directly from Laravel.
+                    @if (!empty($erpHealthUrl))
+                        Check <code>{{ $erpHealthUrl }}</code> from the server shell.
+                    @endif
+                    Run <code>php artisan erp:test-http-api</code> for a full diagnostic.
+                </p>
+            </div>
+        </div>
     </div>
 @endif
 @if (! $trackingEnabled)

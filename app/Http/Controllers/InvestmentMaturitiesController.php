@@ -69,7 +69,7 @@ class InvestmentMaturitiesController extends Controller
                 ['path' => route('support.investment-maturities'), 'query' => $request->query()]
             );
         } catch (\Throwable $e) {
-            $error = $e->getMessage();
+            $error = format_erp_connection_error($e->getMessage());
             Log::error('Investment maturities load failed', ['error' => $e->getMessage()]);
         }
 
@@ -86,11 +86,13 @@ class InvestmentMaturitiesController extends Controller
             'to' => $to,
             'cc' => $cc,
             'error' => $error,
+            'erpHealthUrl' => erp_api_health_url(config('erp.investment_maturities_http_url') ?: config('erp.clients_http_url')),
             'trackingEnabled' => $this->service->notificationsTableExists(),
             'notifyService' => $notifyService,
             'smsConfigured' => app(\App\Services\AdvantaSmsService::class)->isConfigured(),
             'productCodes' => config('maturities.investment_notifications.product_codes', []),
             'products' => $products,
+            'demoMode' => $this->service->usesDemoData(),
         ]);
     }
 

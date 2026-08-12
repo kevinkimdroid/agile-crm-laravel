@@ -66,8 +66,10 @@ Route::post('contacts/{contact}/followup', [ContactController::class, 'storeFoll
 Route::post('contacts/{contact}/comments', [ContactController::class, 'storeComment'])->name('contacts.comments.store');
 Route::post('contacts/{contact}/campaigns', [ContactController::class, 'addToCampaign'])->name('contacts.campaigns.add');
 Route::delete('contacts/{contact}/campaigns/{campaign}', [ContactController::class, 'removeFromCampaign'])->name('contacts.campaigns.remove');
+Route::get('/leads', [LeadController::class, 'landing'])->name('leads');
 Route::get('/leads/prp/{policyNumber}', [LeadController::class, 'showPrp'])->name('leads.show-prp');
-Route::resource('leads', LeadController::class);
+Route::get('/leads/all', [LeadController::class, 'index'])->name('leads.index');
+Route::resource('leads', LeadController::class)->except(['index']);
 Route::get('/tickets/export', [TicketController::class, 'export'])->name('tickets.export');
 Route::get('/tickets/{ticket}/close', [TicketController::class, 'showCloseForm'])->name('tickets.close.form');
 Route::post('/tickets/{ticket}/close', [TicketController::class, 'quickClose'])->name('tickets.close');
@@ -126,7 +128,9 @@ Route::prefix('marketing')->name('marketing.')->group(function () {
     Route::post('broadcast/templates', [\App\Http\Controllers\MassBroadcastController::class, 'storeTemplate'])->name('broadcast.templates.store');
     Route::get('credit-life-statements', [\App\Http\Controllers\CreditLifeStatementController::class, 'index'])->name('credit-life-statements');
     Route::post('credit-life-statements/send', [\App\Http\Controllers\CreditLifeStatementController::class, 'send'])->name('credit-life-statements.send');
-    Route::resource('campaigns', \App\Http\Controllers\CampaignController::class)->parameters(['campaigns' => 'campaign']);
+    Route::get('campaigns', [\App\Http\Controllers\CampaignController::class, 'landing'])->name('campaigns');
+    Route::get('campaigns/all', [\App\Http\Controllers\CampaignController::class, 'index'])->name('campaigns.index');
+    Route::resource('campaigns', \App\Http\Controllers\CampaignController::class)->parameters(['campaigns' => 'campaign'])->except(['index']);
 });
 Route::get('/support', fn () => view('support', ['ticketCounts' => app(\App\Services\CrmService::class)->getTicketCountsByStatus()]))->name('support');
 Route::get('/support/tickets', fn () => redirect()->route('tickets.index'))->name('support.tickets');

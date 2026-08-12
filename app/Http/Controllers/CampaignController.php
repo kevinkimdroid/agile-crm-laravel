@@ -10,6 +10,17 @@ use Illuminate\View\View;
 
 class CampaignController extends Controller
 {
+    public function landing(): View
+    {
+        return view('marketing.campaigns-landing', [
+            'totalCampaigns' => Campaign::count(),
+            'activeCampaigns' => Campaign::where('campaign_status', 'Active')->count(),
+            'planningCampaigns' => Campaign::where('campaign_status', 'Planning')->count(),
+            'completedCampaigns' => Campaign::where('campaign_status', 'Completed')->count(),
+            'totalExpectedRevenue' => Campaign::where('campaign_status', 'Active')->sum('expected_revenue'),
+        ]);
+    }
+
     public function index(Request $request): View
     {
         $query = Campaign::query();

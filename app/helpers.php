@@ -717,6 +717,61 @@ if (! function_exists('oracle_oci8_available')) {
     }
 }
 
+if (! function_exists('format_erp_connection_error')) {
+    /**
+     * Turn raw HTTP/cURL failures into actionable ERP API guidance for the UI.
+     */
+    function format_erp_connection_error(string $message, ?string $url = null): string
+    {
+        if (str_contains($message, 'ERP_CLIENTS_HTTP_URL not set')) {
+            return 'ERP_CLIENTS_HTTP_URL is not set in .env. Add ERP_CLIENTS_HTTP_URL=http://127.0.0.1:5000/clients, then run php artisan config:clear.';
+        }
+
+        if (preg_match('/Failed to connect|Connection refused|cURL error 7|Couldn\'t connect to server/i', $message)) {
+            $healthUrl = erp_api_health_url($url);
+
+            return 'ERP API is not running or not reachable at '.$healthUrl.'. '
+                .'On the server: sudo systemctl start geminia-erp-api (or cd erp-clients-api && python3 app.py). '
+                .'Verify with: curl '.$healthUrl.' — or run php artisan erp:test-http-api.';
+        }
+
+        if (str_contains($message, 'Investment maturities endpoint not found')) {
+            return $message.' Pull the latest erp-clients-api/app.py and restart the API process.';
+        }
+
+        return $message;
+    }
+}
+
+if (! function_exists('erp_api_health_url')) {
+    function erp_api_health_url(?string $url = null): string
+    {
+        $candidates = array_filter([
+            $url,
+            config('erp.investment_maturities_http_url'),
+            config('erp.clients_http_url'),
+        ]);
+
+        foreach ($candidates as $candidate) {
+            $candidate = trim((string) $candidate);
+            if ($candidate === '') {
+                continue;
+            }
+            $parsed = parse_url($candidate);
+            if (! is_array($parsed) || empty($parsed['host'])) {
+                continue;
+            }
+            $scheme = $parsed['scheme'] ?? 'http';
+            $host = $parsed['host'];
+            $port = $parsed['port'] ?? 5000;
+
+            return $scheme.'://'.$host.':'.$port.'/health';
+        }
+
+        return 'http://127.0.0.1:5000/health';
+    }
+}
+
 if (! function_exists('normalize_multiline_text')) {
     /**
      * Normalize stored text for display: literal <br> tags → newlines, trim excess blank lines.

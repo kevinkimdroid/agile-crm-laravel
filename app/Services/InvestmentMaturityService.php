@@ -9,7 +9,15 @@ use Illuminate\Support\Facades\Schema;
 
 class InvestmentMaturityService
 {
-    public function __construct(protected ErpClientService $erpClientService) {}
+    public function __construct(
+        protected ErpClientService $erpClientService,
+        protected InvestmentMaturityDemoData $demoData,
+    ) {}
+
+    public function usesDemoData(): bool
+    {
+        return (bool) config('maturities.investment_notifications.demo', false);
+    }
 
     /**
      * @return Collection<int, object>
@@ -17,6 +25,11 @@ class InvestmentMaturityService
     public function dueWithinDays(int $days = 14): Collection
     {
         $days = max(1, min(90, $days));
+
+        if ($this->usesDemoData()) {
+            return $this->demoData->forWindow($days);
+        }
+
         $cacheKey = 'investment_maturities_due_v2_' . $days;
 
         return Cache::remember($cacheKey, now()->addMinutes(5), function () use ($days) {

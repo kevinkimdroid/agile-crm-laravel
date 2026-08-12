@@ -4,7 +4,7 @@
 
 @section('content')
 <nav class="breadcrumb-nav mb-3">
-    <a href="{{ route('marketing.campaigns.index') }}" class="text-muted small text-decoration-none">Campaigns</a>
+    <a href="{{ route('marketing.campaigns') }}" class="text-muted small text-decoration-none">Campaigns</a>
     <span class="text-muted mx-2">/</span>
     <span class="text-dark small fw-semibold">New Campaign</span>
 </nav>

@@ -77,9 +77,9 @@ return [
                 'children' => [
                     ['key' => 'marketing.social-media', 'label' => 'Social Media', 'icon' => 'bi-facebook', 'route' => 'marketing.social-media'],
                     ['key' => 'marketing.whatsapp', 'label' => 'WhatsApp', 'icon' => 'bi-whatsapp', 'route' => 'marketing.whatsapp'],
-                    ['key' => 'marketing.campaigns', 'label' => 'Campaigns', 'icon' => 'bi-megaphone', 'route' => 'marketing.campaigns.index'],
+                    ['key' => 'marketing.campaigns', 'label' => 'Campaigns', 'icon' => 'bi-megaphone', 'route' => 'marketing.campaigns'],
                     ['key' => 'marketing.broadcast', 'label' => 'Email & SMS broadcast', 'icon' => 'bi-broadcast', 'route' => 'marketing.broadcast'],
-                    ['key' => 'leads', 'label' => 'Leads', 'icon' => 'bi-table', 'route' => 'leads.index'],
+                    ['key' => 'leads', 'label' => 'Leads', 'icon' => 'bi-table', 'route' => 'leads'],
                 ],
             ],
             ['key' => 'support', 'label' => 'Support', 'icon' => 'bi-headset', 'route' => 'support'],

@@ -318,7 +318,7 @@
                 <div class="app-nav-group">
                     <div class="app-nav-label">Sales</div>
                     @if($can('leads'))
-                    <a href="{{ route('leads.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('leads.*') ? 'active' : '' }}">
+                    <a href="{{ route('leads') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('leads') || request()->routeIs('leads.*') ? 'active' : '' }}">
                         <i class="bi bi-people-fill"></i><span>Leads</span>
                     </a>
                     @endif
@@ -333,7 +333,7 @@
                     </a>
                     @endif
                     @if($can('marketing.campaigns'))
-                    <a href="{{ route('marketing.campaigns.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.campaigns.*') ? 'active' : '' }}">
+                    <a href="{{ route('marketing.campaigns') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('marketing.campaigns') || request()->routeIs('marketing.campaigns.*') ? 'active' : '' }}">
                         <i class="bi bi-megaphone"></i><span>Campaigns</span>
                     </a>
                     @endif

@@ -11,7 +11,7 @@
 <div class="page-header d-flex flex-wrap justify-content-between align-items-start gap-3">
     <div>
         <nav class="breadcrumb-nav mb-2">
-            <a href="{{ route('leads.index', $isPrpLead ? ['source' => 'prp'] : []) }}" class="text-muted">Leads</a>
+            <a href="{{ route('leads') }}" class="text-muted">Leads</a>
             <span class="mx-2 text-muted">/</span>
             <span class="text-dark fw-semibold">{{ $displayName }}</span>
         </nav>
