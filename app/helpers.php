@@ -716,3 +716,32 @@ if (! function_exists('oracle_oci8_available')) {
         return extension_loaded('oci8') && function_exists('oci_connect');
     }
 }
+
+if (! function_exists('normalize_multiline_text')) {
+    /**
+     * Normalize stored text for display: literal <br> tags → newlines, trim excess blank lines.
+     */
+    function normalize_multiline_text(?string $text): string
+    {
+        $text = trim((string) ($text ?? ''));
+        if ($text === '') {
+            return '';
+        }
+
+        $text = preg_replace('/<br\s*\/?>/i', "\n", $text) ?? $text;
+
+        return preg_replace("/\n{2,}/", "\n", $text) ?? $text;
+    }
+}
+
+if (! function_exists('format_multiline_html')) {
+    /**
+     * Safe HTML for multiline CRM text (description, comments, etc.).
+     */
+    function format_multiline_html(?string $text): string
+    {
+        $normalized = normalize_multiline_text($text);
+
+        return $normalized === '' ? '' : nl2br(e($normalized));
+    }
+}

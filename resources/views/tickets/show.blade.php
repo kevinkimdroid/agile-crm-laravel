@@ -186,14 +186,14 @@
         <div class="card contact-detail-card mb-4">
             <div class="card-body p-4">
                 <h6 class="text-uppercase small fw-bold mb-3" style="color:var(--agile-primary,#0E4385)">Description</h6>
-                <div class="ticket-description">{{ $ticket->description ? nl2br(e(preg_replace("/\n{2,}/", "\n", $ticket->description))) : 'No description.' }}</div>
+                <div class="ticket-description">{!! $ticket->description ? format_multiline_html($ticket->description) : 'No description.' !!}</div>
             </div>
         </div>
         @if($ticket->solution ?? null)
         <div class="card contact-detail-card mb-4">
             <div class="card-body p-4">
                 <h6 class="text-uppercase small fw-bold mb-3" style="color:var(--agile-primary,#0E4385)">Resolution</h6>
-                <div class="ticket-description">{{ nl2br(e(preg_replace("/\n{2,}/", "\n", $ticket->solution ?? ''))) }}</div>
+                <div class="ticket-description">{!! format_multiline_html($ticket->solution ?? '') !!}</div>
             </div>
         </div>
         @elseif(($ticket->status ?? '') !== 'Closed' && ($canCloseTickets ?? true))
@@ -347,12 +347,12 @@
                 </div>
                 <div class="mt-4 pt-3 border-top">
                     <span class="client-summary-label d-block mb-2">Description</span>
-                    <div class="ticket-description">{{ $ticket->description ? nl2br(e(preg_replace("/\n{2,}/", "\n", $ticket->description))) : '—' }}</div>
+                    <div class="ticket-description">{!! $ticket->description ? format_multiline_html($ticket->description) : '—' !!}</div>
                 </div>
                 @if($ticket->solution ?? null)
                 <div class="mt-4 pt-3 border-top">
                     <span class="client-summary-label d-block mb-2">Resolution</span>
-                    <div class="ticket-description">{{ nl2br(e($ticket->solution)) }}</div>
+                    <div class="ticket-description">{!! format_multiline_html($ticket->solution ?? '') !!}</div>
                 </div>
                 @endif
             </div>
@@ -405,7 +405,7 @@
                 <span class="fw-semibold small">{{ e($comment->author_display) }}</span>
                 <span class="text-muted small">{{ $comment->created_at?->format('d M Y, H:i') ?? '' }}</span>
             </div>
-            <div class="ticket-comment-body">{{ nl2br(e($comment->body)) }}</div>
+            <div class="ticket-comment-body">{!! format_multiline_html($comment->body) !!}</div>
         </div>
         @empty
         <p class="text-muted small mb-0">No comments yet. Add one above to record updates or further details.</p>

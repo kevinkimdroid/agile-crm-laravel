@@ -163,7 +163,7 @@
         <div class="p-4">
             <h6 class="text-uppercase small fw-bold mb-4" style="color:var(--agile-primary);letter-spacing:0.08em">Description Details</h6>
             <label class="form-label fw-semibold">Description</label>
-            <textarea name="description" class="form-control" rows="5" placeholder="Enter ticket description">{{ old('description', $ticket->description) }}</textarea>
+            <textarea name="description" class="form-control" rows="5" placeholder="Enter ticket description">{{ old('description', normalize_multiline_text($ticket->description ?? '')) }}</textarea>
             @error('description')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
         </div>
     </div>
