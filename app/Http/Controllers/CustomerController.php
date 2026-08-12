@@ -448,7 +448,8 @@ class CustomerController extends Controller
         $ticketsCount = 0;
         $activities = collect();
         $activitiesCount = 0;
-        $commentsCount = 0;
+        $clientComments = ErpClientComment::forPolicy($policy);
+        $commentsCount = $clientComments->count();
         $emails = collect();
         $emailsCount = 0;
         $smsLogs = collect();
@@ -531,6 +532,7 @@ class CustomerController extends Controller
             'activities' => $activities,
             'activitiesCount' => $activitiesCount,
             'commentsCount' => $commentsCount,
+            'clientComments' => $clientComments,
             'emails' => $emails,
             'emailsCount' => $emailsCount,
             'smsLogs' => $smsLogs,
@@ -1788,6 +1790,7 @@ class CustomerController extends Controller
         $validated = $request->validate([
             'policy' => 'required|string|max:64',
             'body' => 'required|string|max:10000',
+            'return_tab' => 'nullable|string|in:summary,updates',
         ]);
 
         $policy = trim($validated['policy']);
@@ -1812,8 +1815,16 @@ class CustomerController extends Controller
             'body' => $validated['body'],
         ]);
 
+        $returnTab = in_array($validated['return_tab'] ?? 'summary', ['summary', 'updates'], true)
+            ? ($validated['return_tab'] ?? 'summary')
+            : 'summary';
+        $redirectParams = ['policy' => $policy];
+        if ($returnTab !== 'summary') {
+            $redirectParams['tab'] = $returnTab;
+        }
+
         return redirect()
-            ->to(route('support.clients.show', ['policy' => $policy, 'tab' => 'updates']) . '#client-comments')
+            ->to(route('support.clients.show', $redirectParams) . '#client-comments')
             ->with('success', 'Comment posted.');
     }
 

@@ -2,7 +2,7 @@
 
 return [
 
-    'enabled' => filter_var(env('MPESA_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+    'enabled' => filter_var(env('MPESA_ENABLED', env('APP_ENV', 'production') === 'local'), FILTER_VALIDATE_BOOLEAN),
 
     'environment' => env('MPESA_ENV', 'sandbox'),
 
@@ -10,7 +10,7 @@ return [
     | Local sandbox: skip Safaricom API and accept any phone number.
     | Requires MPESA_ENABLED=true and MPESA_ENV=sandbox.
     */
-    'sandbox_simulate' => filter_var(env('MPESA_SANDBOX_SIMULATE', false), FILTER_VALIDATE_BOOLEAN),
+    'sandbox_simulate' => filter_var(env('MPESA_SANDBOX_SIMULATE', env('APP_ENV', 'production') === 'local'), FILTER_VALIDATE_BOOLEAN),
 
     'consumer_key' => env('MPESA_CONSUMER_KEY', ''),
     'consumer_secret' => env('MPESA_CONSUMER_SECRET', ''),

@@ -1,5 +1,4 @@
-<div class="col-lg-4">
-    <div class="card contact-detail-card mb-4">
+<div class="card contact-detail-card mb-4">
         <div class="card-body p-4">
             <h6 class="text-uppercase small fw-bold text-muted mb-3">Quick actions</h6>
             <div class="d-flex flex-column gap-2">
@@ -13,9 +12,12 @@
                 <a href="{{ route('tickets.create', ['contact_id' => $contact->contactid]) }}" class="btn btn-outline-success"><i class="bi bi-ticket-perforated me-2"></i>Create Ticket</a>
                 <a href="#" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#followupModal"><i class="bi bi-calendar-check me-2"></i>Log Follow-up</a>
                 @if($canCollectMpesa ?? false)
-                <button type="button" class="btn btn-outline-success text-start mpesa-stk-trigger" data-bs-toggle="modal" data-bs-target="#mpesaStkModal">
-                    <i class="bi bi-phone me-2"></i>Collect via M-Pesa
-                </button>
+                @include('support.partials.client-mpesa-trigger-button', [
+                    'mpesaTriggerClass' => 'btn btn-outline-success text-start',
+                    'mpesaTriggerLabel' => '<i class="bi bi-phone me-2"></i>Collect via M-Pesa',
+                    'mpesaConfigured' => $mpesaConfigured ?? app(\App\Services\MpesaStkPushService::class)->isConfigured(),
+                    'mpesaSandboxSimulate' => $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushService::class)->isSandboxSimulate(),
+                ])
                 @endif
                 <a href="{{ route('contacts.edit', $contact->contactid) }}" class="btn btn-outline-secondary"><i class="bi bi-pencil me-2"></i>Edit prospect</a>
             </div>
@@ -27,42 +29,15 @@
         <div class="card-body p-4">
             <h6 class="text-uppercase small fw-bold text-muted mb-3">Payments</h6>
             <p class="text-muted small mb-3">Collect premium via M-Pesa STK push for policy <code>{{ $prospectPolicy }}</code>.</p>
-            <button type="button" class="btn btn-success w-100 mpesa-stk-trigger" data-bs-toggle="modal" data-bs-target="#mpesaStkModal">
-                <i class="bi bi-phone me-1"></i>Collect premium via M-Pesa
-            </button>
+            @include('support.partials.client-mpesa-trigger-button', [
+                'mpesaTriggerClass' => 'btn btn-success w-100',
+                'mpesaTriggerLabel' => '<i class="bi bi-phone me-1"></i>Collect premium via M-Pesa',
+                'mpesaConfigured' => $mpesaConfigured ?? app(\App\Services\MpesaStkPushService::class)->isConfigured(),
+                'mpesaSandboxSimulate' => $mpesaSandboxSimulate ?? app(\App\Services\MpesaStkPushService::class)->isSandboxSimulate(),
+            ])
         </div>
     </div>
     @endif
-
-    <div class="card contact-detail-card mb-4">
-        <div class="card-body p-4">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h6 class="text-uppercase small fw-bold text-muted mb-0">Activities</h6>
-                <div class="d-flex gap-1">
-                    <a href="{{ route('contacts.show', [$contact->contactid, 'tab' => 'updates']) }}" class="btn btn-sm btn-outline-secondary">View all</a>
-                    <a href="{{ route('activities.create', [
-                        'type' => 'Task',
-                        'related_to' => $contact->contactid,
-                        'lock_related' => 1,
-                        'return_to' => route('contacts.show', ['contact' => $contact->contactid, 'tab' => 'updates']),
-                    ]) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-plus-lg me-1"></i>Add Task</a>
-                </div>
-            </div>
-            @if($activities->isNotEmpty())
-                <ul class="list-unstyled mb-0">
-                    @foreach($activities as $act)
-                    <li class="py-2 border-bottom">
-                        <strong>{{ $act->subject ?? 'Untitled' }}</strong>
-                        <span class="badge bg-secondary ms-1">{{ $act->activitytype ?? 'Task' }}</span>
-                        <p class="text-muted small mb-0">{{ $act->date_start ?? '' }}</p>
-                    </li>
-                    @endforeach
-                </ul>
-            @else
-                <div class="summary-empty-box py-4 text-center text-muted">No pending activities</div>
-            @endif
-        </div>
-    </div>
 
     <div class="card contact-detail-card mb-4">
         <div class="card-body p-4">
@@ -87,4 +62,3 @@
             @endif
         </div>
     </div>
-</div>

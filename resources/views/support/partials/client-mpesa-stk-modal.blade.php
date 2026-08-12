@@ -1,15 +1,19 @@
 {{-- M-Pesa STK Push modal --}}
 @php
-    $suggestedPremium = client_suggested_premium_amount($client ?? null);
-    $defaultAmount = old('amount', $suggestedPremium ?: '');
     $mpesaService = app(\App\Services\MpesaStkPushService::class);
+    $mpesaConfigured = $mpesaConfigured ?? $mpesaService->isConfigured();
     $mpesaSandboxSimulate = $mpesaSandboxSimulate ?? $mpesaService->isSandboxSimulate();
+    $suggestedPremium = client_suggested_premium_amount($client ?? null);
+    $defaultAmount = old('amount', $defaultAmount ?? ($suggestedPremium ?: ''));
     $mpesaEnv = config('mpesa.environment', 'sandbox');
     $mpesaQuickAmounts = array_values(array_unique(array_filter(array_merge(
         $suggestedPremium ? [$suggestedPremium] : [],
         [500, 1000, 2500, 5000, 10000]
     ))));
-    $policyRef = $mpesaPolicyNumber ?? $clientPolicy ?? $policy ?? '—';
+    $policyRef = trim((string) ($mpesaPolicyNumber ?? $clientPolicy ?? $policy ?? ''));
+    if ($policyRef === '' || $policyRef === '—') {
+        $policyRef = '—';
+    }
 @endphp
 <div class="modal fade mpesa-ui" id="mpesaStkModal" tabindex="-1" aria-labelledby="mpesaStkModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -37,7 +41,12 @@
                 </div>
 
                 <div class="mpesa-modal-body">
-                    @if($mpesaSandboxSimulate)
+                    @if(! $mpesaConfigured)
+                    <div class="mpesa-notice mpesa-notice-warning mb-3" style="margin:0 0 1rem;">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <div>M-Pesa is not fully configured. Enable <code>MPESA_ENABLED</code> (and sandbox simulate or Daraja credentials) to send STK pushes.</div>
+                    </div>
+                    @elseif($mpesaSandboxSimulate)
                     <div class="mpesa-notice mpesa-notice-info mb-3" style="margin:0 0 1rem;">
                         <i class="bi bi-bug"></i>
                         <div>STK is faked locally — no Safaricom credentials needed.</div>

@@ -9,7 +9,7 @@
     $prospectPolicy = trim((string) ($contact->policy_number ?? ''));
     $mpesaConfigured = app(\App\Services\MpesaStkPushService::class)->isConfigured();
     $mpesaSandboxSimulate = app(\App\Services\MpesaStkPushService::class)->isSandboxSimulate();
-    $canCollectMpesa = $mpesaConfigured && $prospectPolicy !== '';
+    $canCollectMpesa = $prospectPolicy !== '';
     $mpesaTransactions = ($canCollectMpesa && \Illuminate\Support\Facades\Schema::hasTable('mpesa_stk_transactions'))
         ? \App\Models\MpesaStkTransaction::query()->where('policy_number', $prospectPolicy)->orderByDesc('id')->limit(6)->get()
         : collect();
@@ -68,9 +68,12 @@
                 @endif
                 <a href="{{ route('tickets.create', ['contact_id' => $contact->contactid]) }}" class="btn btn-sm btn-success"><i class="bi bi-ticket-perforated me-1"></i>Create Ticket</a>
                 @if($canCollectMpesa)
-                <button type="button" class="btn btn-sm btn-outline-success mpesa-stk-trigger" data-bs-toggle="modal" data-bs-target="#mpesaStkModal">
-                    <i class="bi bi-phone me-1"></i>M-Pesa
-                </button>
+                @include('support.partials.client-mpesa-trigger-button', [
+                    'mpesaTriggerClass' => 'btn btn-sm btn-outline-success',
+                    'mpesaTriggerLabel' => '<i class="bi bi-phone me-1"></i>M-Pesa',
+                    'mpesaConfigured' => $mpesaConfigured,
+                    'mpesaSandboxSimulate' => $mpesaSandboxSimulate,
+                ])
                 @endif
                 <a href="{{ route('contacts.edit', $contact->contactid) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>
                 <div class="btn-group">
@@ -172,60 +175,35 @@
 
 @if($tab === 'summary')
 <div class="row g-4">
-    <div class="col-lg-8">
-        <div class="card contact-detail-card mb-4 client-summary-personal">
-            <div class="card-body p-4">
-                <h6 class="text-uppercase small fw-bold mb-3" style="color:var(--agile-primary,#0E4385)">Personal information</h6>
-                <div class="client-summary-personal-grid">
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">Full name</span>
-                        <span class="client-summary-value client-summary-name">{{ $contact->full_name }}</span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">Title / position</span>
-                        <span class="client-summary-value">{{ $contact->title ?: '—' }}</span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">Mobile</span>
-                        <span class="client-summary-value">
-                            @if($displayPhone)<a href="tel:{{ tel_href($displayPhone) }}">{{ $displayPhone }}</a>@else — @endif
-                        </span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">Office phone</span>
-                        <span class="client-summary-value">{{ $contact->phone ?: '—' }}</span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">Primary email</span>
-                        <span class="client-summary-value">{{ $displayEmail !== '' ? $displayEmail : '—' }}</span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">Department</span>
-                        <span class="client-summary-value">{{ $contact->department ?: '—' }}</span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">ID / Passport</span>
-                        <span class="client-summary-value font-monospace">{{ $contact->idNumber ?? $contact->id_number ?? '—' }}</span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">Policy number</span>
-                        <span class="client-summary-value font-monospace">{{ $prospectPolicy !== '' ? $prospectPolicy : '—' }}</span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">Lead source</span>
-                        <span class="client-summary-value">{{ $contact->leadsource ?: '—' }}</span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">Mailing city</span>
-                        <span class="client-summary-value">{{ $contact->mailingcity ?: '—' }}</span>
-                    </div>
-                </div>
-                <div class="mt-3 pt-3 border-top">
-                    <a href="{{ route('contacts.show', $contact->contactid) }}?tab=details" class="btn btn-sm btn-outline-primary">View full details</a>
-                </div>
-            </div>
-        </div>
+    <div class="col-lg-5">
+        @include('partials.profile-summary-key-fields', [
+            'keyFields' => [
+                ['label' => 'Last Name', 'value' => e($contact->lastname ?: '—'), 'class' => 'client-summary-name'],
+                ['label' => 'First Name', 'value' => e($contact->firstname ?: '—')],
+                ['label' => 'Primary Email', 'value' => $displayEmail !== '' ? e($displayEmail) : '—'],
+                ['label' => 'Mobile', 'value' => $displayPhone ? '<a href="tel:'.e(tel_href($displayPhone)).'">'.e($displayPhone).'</a>' : '—'],
+                ['label' => 'Policy number', 'value' => e($prospectPolicy !== '' ? $prospectPolicy : '—'), 'class' => 'font-monospace'],
+            ],
+            'keyFieldsViewDetailsUrl' => route('contacts.show', $contact->contactid).'?tab=details',
+        ])
 
+        @include('contacts.partials.summary-sidebar')
+    </div>
+
+    <div class="col-lg-7">
+        @include('partials.profile-summary-pending', [
+            'pendingContext' => 'contact',
+            'contact' => $contact,
+            'activities' => $activities,
+            'contactComments' => $contactComments ?? collect(),
+            'comments' => $comments ?? collect(),
+        ])
+    </div>
+</div>
+
+@if($canCollectMpesa || ($deals ?? collect())->isNotEmpty())
+<div class="row g-4 mt-1">
+    <div class="col-12">
         @if($canCollectMpesa)
         <div class="card contact-detail-card mb-4 client-mpesa-summary-card mpesa-ui" id="prospect-mpesa">
             <div class="card-body p-4">
@@ -234,9 +212,12 @@
                         <h6 class="text-uppercase small fw-bold mb-1" style="color:var(--agile-primary,#0E4385)">M-Pesa premium collection</h6>
                         <p class="text-muted small mb-0">Send an STK push for policy <code>{{ $prospectPolicy }}</code> and track payment status.</p>
                     </div>
-                    <button type="button" class="btn btn-success mpesa-stk-trigger" data-bs-toggle="modal" data-bs-target="#mpesaStkModal">
-                        <i class="bi bi-phone me-1"></i>Collect via M-Pesa
-                    </button>
+                    @include('support.partials.client-mpesa-trigger-button', [
+                        'mpesaTriggerClass' => 'btn btn-success',
+                        'mpesaTriggerLabel' => '<i class="bi bi-phone me-1"></i>Collect via M-Pesa',
+                        'mpesaConfigured' => $mpesaConfigured,
+                        'mpesaSandboxSimulate' => $mpesaSandboxSimulate,
+                    ])
                 </div>
                 @if($mpesaTransactions->isNotEmpty())
                 <div class="mpesa-tx-list border-top pt-3 mt-3">
@@ -280,9 +261,8 @@
         </div>
         @endif
     </div>
-
-    @include('contacts.partials.summary-sidebar')
 </div>
+@endif
 @elseif($tab === 'details')
 @include('contacts.partials.details-tab')
 @elseif($tab === 'updates')

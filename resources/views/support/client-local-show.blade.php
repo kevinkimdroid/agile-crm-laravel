@@ -97,11 +97,12 @@
                 <a href="{{ route('support.sms-notifier', array_filter(['phone' => $clientPhone, 'return_policy' => $clientPolicy, 'contact_id' => ($contact ?? null)?->contactid])) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chat-dots me-1"></i>SMS</a>
                 @endif
                 <a href="{{ route('support.clients.create-ticket', ['policy' => $clientPolicy]) }}" class="btn btn-sm btn-success"><i class="bi bi-ticket-perforated me-1"></i>Create Ticket</a>
-                <button type="button" class="btn btn-sm btn-outline-success {{ $mpesaConfigured ? 'mpesa-stk-trigger' : '' }}"
-                    @if($mpesaConfigured) data-bs-toggle="modal" data-bs-target="#mpesaStkModal" @endif
-                    @if(! $mpesaConfigured) disabled title="M-Pesa unavailable" @endif>
-                    <i class="bi bi-phone me-1"></i>M-Pesa
-                </button>
+                @include('support.partials.client-mpesa-trigger-button', [
+                    'mpesaTriggerClass' => 'btn btn-sm btn-outline-success',
+                    'mpesaTriggerLabel' => '<i class="bi bi-phone me-1"></i>M-Pesa',
+                    'mpesaConfigured' => $mpesaConfigured,
+                    'mpesaSandboxSimulate' => $mpesaSandboxSimulate,
+                ])
                 <a href="{{ ($fromServeClient ?? false) ? route('support.serve-client', ['search' => $clientPolicy]) : route('support.customers') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
             </div>
         </div>
@@ -174,52 +175,60 @@
 
 @if($tab === 'summary')
 <div class="row g-4">
-    <div class="col-lg-8">
-        <div class="card contact-detail-card mb-4 client-summary-personal">
+    <div class="col-lg-5">
+        @include('partials.profile-summary-key-fields', [
+            'keyFields' => [
+                ['label' => 'Last Name', 'value' => e($client->last_name ?: '—'), 'class' => 'client-summary-name'],
+                ['label' => 'First Name', 'value' => e($client->first_name ?: '—')],
+                ['label' => 'Primary Email', 'value' => e($clientEmail ?: '—')],
+                ['label' => 'Phone', 'value' => $clientPhone ? '<a href="tel:'.e(tel_href($clientPhone)).'">'.e($clientPhone).'</a>' : '—'],
+                ['label' => 'Policy number', 'value' => e($clientPolicy), 'class' => 'font-monospace'],
+                ['label' => 'Product', 'value' => e($clientProduct)],
+            ],
+            'keyFieldsViewDetailsUrl' => $clientTabUrl('details'),
+        ])
+
+        <div class="card contact-detail-card mb-4">
             <div class="card-body p-4">
-                <h6 class="text-uppercase small fw-bold mb-3" style="color:var(--agile-primary,#0E4385)">Personal information</h6>
-                <div class="client-summary-personal-grid">
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">Life assured</span>
-                        <span class="client-summary-value client-summary-name">{{ $clientName }}</span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">Policy number</span>
-                        <span class="client-summary-value font-monospace">{{ $clientPolicy }}</span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">Phone</span>
-                        <span class="client-summary-value">
-                            @if($clientPhone)<a href="tel:{{ tel_href($clientPhone) }}">{{ $clientPhone }}</a>@else — @endif
-                        </span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">Product</span>
-                        <span class="client-summary-value">{{ $clientProduct }}</span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">Email</span>
-                        <span class="client-summary-value">{{ $clientEmail ?: '—' }}</span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">System</span>
-                        <span class="client-summary-value"><span class="clients-system-badge clients-system-{{ $lifeSystem }}">{{ $lifeSystemLabel }}</span></span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">ID / Passport</span>
-                        <span class="client-summary-value font-monospace">{{ $client->id_no ?: '—' }}</span>
-                    </div>
-                    <div class="client-summary-field">
-                        <span class="client-summary-label">KRA PIN</span>
-                        <span class="client-summary-value font-monospace">{{ $client->kra_pin ?: '—' }}</span>
-                    </div>
-                </div>
-                <div class="mt-3 pt-3 border-top">
-                    <a href="{{ $clientTabUrl('details') }}" class="btn btn-sm btn-outline-primary">View full details</a>
+                <h6 class="text-uppercase small fw-bold text-muted mb-3">Quick actions</h6>
+                <div class="d-flex flex-column gap-2">
+                    @if($clientPhone)
+                    <a href="tel:{{ tel_href($clientPhone) }}" class="btn btn-outline-primary"><i class="bi bi-telephone me-2"></i>Call</a>
+                    <a href="{{ route('support.sms-notifier', array_filter(['phone' => $clientPhone, 'return_policy' => $clientPolicy, 'contact_id' => ($contact ?? null)?->contactid])) }}" class="btn btn-outline-primary"><i class="bi bi-chat-dots me-2"></i>Send Text</a>
+                    @endif
+                    @if($clientEmail)
+                    <a href="{{ route('support.email-client', array_merge($emailClientRouteParams, ['return_policy' => $clientPolicy])) }}" class="btn btn-outline-primary"><i class="bi bi-envelope me-2"></i>Send Email</a>
+                    @endif
+                    <a href="{{ route('support.clients.create-ticket', ['policy' => $clientPolicy]) }}" class="btn btn-outline-success"><i class="bi bi-ticket-perforated me-2"></i>Create Ticket</a>
+                    @include('support.partials.client-mpesa-trigger-button', [
+                        'mpesaTriggerClass' => 'btn btn-outline-success text-start',
+                        'mpesaTriggerLabel' => '<i class="bi bi-phone me-2"></i>Collect via M-Pesa',
+                        'mpesaConfigured' => $mpesaConfigured,
+                        'mpesaSandboxSimulate' => $mpesaSandboxSimulate,
+                    ])
+                    @if($contact ?? null)
+                    <a href="{{ route('contacts.show', $contact->contactid) }}" class="btn btn-outline-secondary"><i class="bi bi-person me-2"></i>View CRM Contact</a>
+                    @endif
                 </div>
             </div>
         </div>
+    </div>
 
+    <div class="col-lg-7">
+        @include('partials.profile-summary-pending', [
+            'pendingContext' => 'client',
+            'contact' => $contact ?? null,
+            'activities' => $activities ?? collect(),
+            'clientComments' => $clientComments ?? collect(),
+            'clientPolicy' => $clientPolicy,
+            'clientShowBase' => $clientShowBase,
+            'policy' => $policy ?? $clientPolicy,
+        ])
+    </div>
+</div>
+
+<div class="row g-4 mt-1">
+    <div class="col-12">
         <div class="card contact-detail-card mb-4 client-mpesa-summary-card mpesa-ui">
             <div class="card-body p-4">
                 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
@@ -227,11 +236,12 @@
                         <h6 class="text-uppercase small fw-bold mb-1" style="color:var(--agile-primary,#0E4385)">M-Pesa premium collection</h6>
                         <p class="text-muted small mb-0">Send an STK push to the client’s phone and track payment status in real time.</p>
                     </div>
-                    <button type="button" class="btn btn-success {{ $mpesaConfigured ? 'mpesa-stk-trigger' : '' }}"
-                        @if($mpesaConfigured) data-bs-toggle="modal" data-bs-target="#mpesaStkModal" @endif
-                        @if(! $mpesaConfigured) disabled title="M-Pesa unavailable" @endif>
-                        <i class="bi bi-phone me-1"></i>Collect via M-Pesa
-                    </button>
+                    @include('support.partials.client-mpesa-trigger-button', [
+                        'mpesaTriggerClass' => 'btn btn-success',
+                        'mpesaTriggerLabel' => '<i class="bi bi-phone me-1"></i>Collect via M-Pesa',
+                        'mpesaConfigured' => $mpesaConfigured,
+                        'mpesaSandboxSimulate' => $mpesaSandboxSimulate,
+                    ])
                 </div>
                 @if($mpesaTransactions->isNotEmpty())
                 <div class="mpesa-tx-list border-top pt-3 mt-3">
@@ -258,44 +268,6 @@
                 <div class="mt-3">
                     <a href="{{ $clientTabUrl('premiums') }}" class="btn btn-sm btn-outline-secondary">Open M-Pesa tab</a>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-lg-4">
-        <div class="card contact-detail-card mb-4">
-            <div class="card-body p-4">
-                <h6 class="text-uppercase small fw-bold text-muted mb-3">Quick actions</h6>
-                <div class="d-flex flex-column gap-2">
-                    @if($clientPhone)
-                    <a href="tel:{{ tel_href($clientPhone) }}" class="btn btn-outline-primary"><i class="bi bi-telephone me-2"></i>Call</a>
-                    <a href="{{ route('support.sms-notifier', array_filter(['phone' => $clientPhone, 'return_policy' => $clientPolicy, 'contact_id' => ($contact ?? null)?->contactid])) }}" class="btn btn-outline-primary"><i class="bi bi-chat-dots me-2"></i>Send Text</a>
-                    @endif
-                    @if($clientEmail)
-                    <a href="{{ route('support.email-client', array_merge($emailClientRouteParams, ['return_policy' => $clientPolicy])) }}" class="btn btn-outline-primary"><i class="bi bi-envelope me-2"></i>Send Email</a>
-                    @endif
-                    <a href="{{ route('support.clients.create-ticket', ['policy' => $clientPolicy]) }}" class="btn btn-outline-success"><i class="bi bi-ticket-perforated me-2"></i>Create Ticket</a>
-                    <button type="button" class="btn btn-outline-success text-start {{ $mpesaConfigured ? 'mpesa-stk-trigger' : '' }}"
-                        @if($mpesaConfigured) data-bs-toggle="modal" data-bs-target="#mpesaStkModal" @endif
-                        @if(! $mpesaConfigured) disabled @endif>
-                        <i class="bi bi-phone me-2"></i>Collect via M-Pesa
-                    </button>
-                    @if($contact ?? null)
-                    <a href="{{ route('contacts.show', $contact->contactid) }}" class="btn btn-outline-secondary"><i class="bi bi-person me-2"></i>View CRM Contact</a>
-                    @endif
-                </div>
-            </div>
-        </div>
-
-        <div class="card contact-detail-card mb-4 client-summary-payments mpesa-ui">
-            <div class="card-body p-4">
-                <h6 class="text-uppercase small fw-bold text-muted mb-3">Payments</h6>
-                <p class="text-muted small mb-3">Collect premium via M-Pesa STK push and track prompts sent to this client.</p>
-                <button type="button" class="btn btn-success w-100 {{ $mpesaConfigured ? 'mpesa-stk-trigger' : '' }}"
-                    @if($mpesaConfigured) data-bs-toggle="modal" data-bs-target="#mpesaStkModal" @endif
-                    @if(! $mpesaConfigured) disabled title="M-Pesa unavailable" @endif>
-                    <i class="bi bi-phone me-1"></i>Collect premium via M-Pesa
-                </button>
             </div>
         </div>
 
@@ -405,43 +377,28 @@
 </div>
 
 @elseif($tab === 'updates')
+@include('support.partials.client-comments', [
+    'clientPolicy' => $clientPolicy,
+    'clientComments' => $clientComments ?? collect(),
+    'clientShowBase' => $clientShowBase,
+    'commentReturnTab' => 'updates',
+])
+@if($contact ?? null)
+@include('contacts.partials.activities-related-list', [
+    'activitiesPageRoute' => 'support.clients.show',
+    'activitiesPageParams' => $clientShowBase,
+    'activitiesTab' => 'updates',
+])
+@else
 <div class="card contact-detail-card mb-4">
-    <div class="card-body p-4">
-        <h6 class="text-uppercase small fw-bold text-muted mb-3">Updates</h6>
-        @if($client->notes)
-        <div class="mb-4">
-            <p class="small text-muted mb-1 fw-semibold">Client notes</p>
-            <p class="mb-0">{{ $client->notes }}</p>
-        </div>
-        @endif
-        @if(($activities ?? collect())->isNotEmpty())
-        <ul class="list-unstyled mb-0">
-            @foreach($activities as $act)
-            <li class="py-2 border-bottom">
-                <strong>{{ $act->subject ?? 'Untitled' }}</strong>
-                <span class="badge bg-secondary ms-1">{{ $act->activitytype ?? 'Task' }}</span>
-                <p class="text-muted small mb-0">{{ $act->date_start ?? '' }}</p>
-            </li>
-            @endforeach
-        </ul>
-        @else
-        <div class="summary-empty-box py-5 text-center text-muted">
-            <i class="bi bi-chat-left-text opacity-50 d-block mb-2 fs-3"></i>
-            No updates yet for this client.
-            @if($contact ?? null)
-            <div class="mt-3">
-                <a href="{{ route('activities.create', [
-                    'type' => 'Task',
-                    'related_to' => $contact->contactid,
-                    'lock_related' => 1,
-                    'return_to' => $clientTabUrl('updates'),
-                ]) }}" class="btn btn-sm btn-outline-primary">Add task</a>
-            </div>
-            @endif
-        </div>
-        @endif
+    <div class="card-body p-5 text-center">
+        <i class="bi bi-calendar3 display-6 text-muted d-block mb-3"></i>
+        <h6 class="mb-2">Tasks &amp; events require a linked CRM prospect</h6>
+        <p class="text-muted mb-3">Activities are stored against CRM prospects. No prospect is linked to policy <code>{{ $clientPolicy }}</code> yet.</p>
+        <a href="{{ route('support.clients.create-ticket', ['policy' => $clientPolicy]) }}" class="btn btn-primary btn-sm">Create ticket for this client</a>
     </div>
 </div>
+@endif
 
 @elseif($tab === 'premiums')
 <div class="card contact-detail-card mb-4 client-mpesa-summary-card mpesa-ui">
@@ -451,11 +408,12 @@
                 <h6 class="text-uppercase small fw-bold mb-1" style="color:var(--agile-primary,#0E4385)">M-Pesa premium collection</h6>
                 <p class="text-muted small mb-0">Policy <code>{{ $clientPolicy }}</code> — sandbox STK for POC.</p>
             </div>
-            <button type="button" class="btn btn-success {{ $mpesaConfigured ? 'mpesa-stk-trigger' : '' }}"
-                @if($mpesaConfigured) data-bs-toggle="modal" data-bs-target="#mpesaStkModal" @endif
-                @if(! $mpesaConfigured) disabled @endif>
-                <i class="bi bi-phone me-1"></i>Collect via M-Pesa
-            </button>
+            @include('support.partials.client-mpesa-trigger-button', [
+                'mpesaTriggerClass' => 'btn btn-success',
+                'mpesaTriggerLabel' => '<i class="bi bi-phone me-1"></i>Collect via M-Pesa',
+                'mpesaConfigured' => $mpesaConfigured,
+                'mpesaSandboxSimulate' => $mpesaSandboxSimulate,
+            ])
         </div>
         @if($mpesaTransactions->isNotEmpty())
         <div class="mpesa-tx-list border-top pt-3">

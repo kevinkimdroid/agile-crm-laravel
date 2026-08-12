@@ -21,7 +21,8 @@
             </div>
         </form>
         @if(($contactComments ?? collect())->isNotEmpty())
-        <ul class="list-unstyled mb-0 mt-4 border-top pt-3">
+        <h6 class="text-uppercase small fw-bold text-muted mt-4 mb-0 pt-3 border-top">Recent Comments</h6>
+        <ul class="list-unstyled mb-0 mt-2">
             @foreach($contactComments as $c)
             <li class="py-3 {{ ! $loop->last ? 'border-bottom' : '' }}">
                 <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
@@ -38,7 +39,8 @@
             @endforeach
         </ul>
         @elseif(($comments ?? collect())->isNotEmpty())
-        <ul class="list-unstyled mb-0 mt-4 border-top pt-3">
+        <h6 class="text-uppercase small fw-bold text-muted mt-4 mb-0 pt-3 border-top">Recent Comments</h6>
+        <ul class="list-unstyled mb-0 mt-2">
             @foreach($comments as $c)
             <li class="py-3 {{ ! $loop->last ? 'border-bottom' : '' }}">
                 <p class="mb-1 small">{{ $c->commentcontent ?? $c->comments ?? '' }}</p>
@@ -49,7 +51,7 @@
         @else
         <div class="summary-empty-box py-4 text-center text-muted mt-3 border-top">
             <i class="bi bi-chat-dots opacity-50 d-block mb-2"></i>
-            No comments yet.
+            No comments
         </div>
         @endif
     </div>

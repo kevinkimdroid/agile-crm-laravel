@@ -406,6 +406,10 @@ class ContactController extends Controller
             try {
                 $deals = $this->crm->getContactDeals($id, 5);
                 $activities = $this->crm->getContactActivities($id, 5);
+                $contactComments = ContactComment::where('contact_id', $id)
+                    ->orderByDesc('created_at')
+                    ->limit(30)
+                    ->get();
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('Contact summary data failed', ['id' => $id, 'error' => $e->getMessage()]);
             }
@@ -621,7 +625,7 @@ class ContactController extends Controller
         ]);
 
         return redirect()
-            ->to(route('contacts.show', ['contact' => $contact, 'tab' => 'updates']) . '#contact-comments')
+            ->to(route('contacts.show', ['contact' => $contact, 'tab' => 'summary']) . '#contact-comments')
             ->with('success', 'Comment posted.');
     }
 
