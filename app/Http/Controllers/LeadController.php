@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Lead;
 use App\Models\SocialInteraction;
 use App\Services\CrmService;
+use App\Services\PrpUnprocessedLeadsService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\Request;
@@ -17,9 +18,12 @@ class LeadController extends Controller
     /** @var CrmService */
     protected $crm;
 
-    public function __construct(CrmService $crm)
+    protected PrpUnprocessedLeadsService $prpLeads;
+
+    public function __construct(CrmService $crm, PrpUnprocessedLeadsService $prpLeads)
     {
         $this->crm = $crm;
+        $this->prpLeads = $prpLeads;
     }
 
     public function index(Request $request): View
@@ -28,31 +32,78 @@ class LeadController extends Controller
         $status = $request->filled('status') ? trim((string) $request->get('status')) : null;
         $perPage = 25;
         $page = max(1, (int) $request->get('page', 1));
-        $offset = ($page - 1) * $perPage;
+        $source = $this->resolveLeadSource($request->get('source'));
 
+        $offset = ($page - 1) * $perPage;
         $ownerId = crm_owner_filter();
-        $leads = $this->crm->getLeads($perPage, $offset, $search, $ownerId, $status);
-        $total = $this->crm->getLeadsCount($search, $ownerId, $status);
+        $prpEnabled = $this->prpLeads->isEnabled() && $this->prpLeads->hasCacheTable();
         $statusCounts = $this->crm->getLeadsByStatus();
         $todayCount = $this->crm->getLeadsTodayCount($ownerId);
 
-        $leads = new LengthAwarePaginator(
-            $leads instanceof Collection ? $leads : collect($leads),
-            $total,
-            $perPage,
-            $page,
-            ['path' => $request->url(), 'query' => $request->query()]
-        );
+        if ($source === 'prp' && $prpEnabled) {
+            $total = $this->prpLeads->getCount($search);
+            $leads = $this->prpLeads->makePaginator(
+                $this->prpLeads->get($perPage, $offset, $search),
+                $total,
+                $perPage,
+                $page,
+                $request->url(),
+                $request->query()
+            );
+        } elseif ($source === 'all' && $prpEnabled) {
+            $combined = $this->prpLeads->paginateCombined(
+                $perPage,
+                $page,
+                $search,
+                fn (int $limit, int $offset, ?string $term) => $this->crm->getLeads($limit, $offset, $term, $ownerId, $status),
+                fn (?string $term) => $this->crm->getLeadsCount($term, $ownerId, $status)
+            );
+            $leads = $this->prpLeads->makePaginator(
+                $combined['items'],
+                $combined['total'],
+                $perPage,
+                $page,
+                $request->url(),
+                $request->query()
+            );
+            $total = $combined['total'];
+        } else {
+            $total = $this->crm->getLeadsCount($search, $ownerId, $status);
+            $leads = new LengthAwarePaginator(
+                $this->crm->getLeads($perPage, $offset, $search, $ownerId, $status),
+                $total,
+                $perPage,
+                $page,
+                ['path' => $request->url(), 'query' => $request->query()]
+            );
+        }
 
         return view('leads.index', [
             'leads' => $leads,
-            'total' => $total,
+            'total' => $total ?? $leads->total(),
             'search' => $search,
             'currentStatus' => $status,
             'statusCounts' => $statusCounts,
             'todayCount' => $todayCount,
             'grandTotal' => array_sum($statusCounts) ?: ($total ?: 0),
+            'leadSource' => $source,
+            'prpEnabled' => $prpEnabled,
+            'prpCount' => $prpEnabled ? $this->prpLeads->getCount($search) : 0,
         ]);
+    }
+
+    protected function resolveLeadSource(?string $source): string
+    {
+        $source = strtolower(trim((string) ($source ?? '')));
+        if (in_array($source, ['crm', 'prp', 'all'], true)) {
+            return $source;
+        }
+
+        if ($this->prpLeads->isEnabled() && $this->prpLeads->hasCacheTable()) {
+            return 'all';
+        }
+
+        return 'crm';
     }
 
     public function create(): View
@@ -140,7 +191,18 @@ class LeadController extends Controller
         if (!crm_user_can_access_record($lead)) {
             return redirect()->route('leads.index')->with('info', 'That lead is assigned to someone else. Showing your leads.');
         }
-        return view('leads.show', ['lead' => $lead]);
+        return view('leads.show', ['lead' => $lead, 'isPrpLead' => false]);
+    }
+
+    /** @return View|RedirectResponse */
+    public function showPrp(string $policyNumber)
+    {
+        $lead = $this->prpLeads->findByPolicyNumber($policyNumber);
+        if (! $lead) {
+            return redirect()->route('leads.index', ['source' => 'prp'])->with('error', 'PRP lead not found. Run prp-leads:sync if data is missing.');
+        }
+
+        return view('leads.show', ['lead' => $lead, 'isPrpLead' => true]);
     }
 
     /** @return View|RedirectResponse */

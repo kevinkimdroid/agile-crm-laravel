@@ -4,7 +4,6 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 /**
@@ -126,24 +125,19 @@ class UserManagementService
 
     protected function send(string $to, ?string $toName, string $subject, string $body): bool
     {
-        $graph = app(MicrosoftGraphMailService::class);
-        if ($graph->isConfigured()) {
-            if ($graph->sendMail($to, $toName, $subject, $body, false)) {
-                return true;
-            }
-            Log::warning('UserManagementService: Graph send failed, falling back to Laravel Mail', ['to' => $to]);
+        $sender = app(PlainTextMailSender::class);
+        if ($sender->sendViaSmtp($to, $toName, $subject, $body)) {
+            return true;
         }
 
-        try {
-            $from = config('mail.from.address', config('email-service.sender', 'info@agilecraft.co.ke'));
-            $fromName = config('mail.from.name', config('app.name'));
-            Mail::raw($body, function ($message) use ($to, $toName, $subject, $from, $fromName) {
-                $message->to($to, $toName)->from($from, $fromName)->subject($subject);
-            });
-            return true;
-        } catch (\Throwable $e) {
-            Log::warning('UserManagementService: send failed', ['to' => $to, 'error' => $e->getMessage()]);
-            return false;
-        }
+        Log::warning('UserManagementService: send failed', [
+            'to' => $to,
+            'error' => $sender->getLastError(),
+            'mail_host' => config('mail.mailers.smtp.host'),
+            'mail_port' => config('mail.mailers.smtp.port'),
+            'mail_encryption' => config('mail.mailers.smtp.encryption'),
+        ]);
+
+        return false;
     }
 }

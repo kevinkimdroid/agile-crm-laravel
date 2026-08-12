@@ -316,4 +316,32 @@ return [
 
     'finance_http_token' => env('FINANCE_ERP_HTTP_TOKEN', env('ERP_API_TOKEN', '')),
 
+    /*
+    |--------------------------------------------------------------------------
+    | PRP leads — active policies with unprocessed receipts (LMS proposers)
+    |--------------------------------------------------------------------------
+    |
+    | Shown on Marketing → Leads alongside vtiger leads when enabled.
+    | Sync: php artisan prp-leads:sync (Oracle direct or ERP HTTP API).
+    |
+    */
+
+    'prp_leads_enabled' => (bool) env('PRP_LEADS_ENABLED', true),
+
+    'prp_leads_http_url' => (function () {
+        $explicit = rtrim(trim((string) env('PRP_LEADS_HTTP_URL', '')), '/');
+        if ($explicit !== '') {
+            return $explicit;
+        }
+
+        $base = \App\Support\ErpHttpBaseUrl::deriveFromClientsHttpUrl((string) env('ERP_CLIENTS_HTTP_URL', ''));
+        if ($base === '') {
+            return '';
+        }
+
+        return $base . '/clients/prp-unprocessed-leads';
+    })(),
+
+    'prp_leads_oracle_page_size' => max(1, min(100, (int) env('PRP_LEADS_ORACLE_PAGE_SIZE', 25))),
+
 ];

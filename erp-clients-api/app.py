@@ -1159,6 +1159,95 @@ def get_maturities():
         return jsonify({"data": [], "error": str(e)}), 500
 
 
+def _prp_unprocessed_leads_sql():
+    """
+    Active policies (proposers) with unprocessed receipts — matches Laravel prp-leads:sync.
+    """
+    pol = _lms_qualified("LMS_POLICIES")
+    prod = _lms_qualified("LMS_PRODUCTS")
+    prp = _lms_qualified("LMS_PROPOSERS")
+    fn = f"{VIEW_SCHEMA}.lms_process_receipts.unprocessed_receipts" if VIEW_SCHEMA else "lms_process_receipts.unprocessed_receipts"
+    return f"""
+        SELECT POL_CODE,
+               TO_CHAR(POL_POLICY_NO) AS POLICY_NUMBER,
+               {fn}(POL_CODE) AS UNPROCESSED_RCT,
+               TO_CHAR(POL_PAID_TO_DATE, 'YYYY-MM-DD') AS PAID_TO,
+               TRIM(PRP_FIRST_NAME || '   ' || PRP_SURNAME || '   ' || PRP_OTHER_NAMES) AS CLIENT_NAME,
+               PRP_TEL
+          FROM {pol}, {prod}, {prp}
+         WHERE POL_STATUS = 'A'
+           AND POL_PROD_CODE = PROD_CODE
+           AND PROD_TYPE NOT IN ('IN')
+           AND PRP_CODE = POL_PRP_CODE
+      GROUP BY POL_CODE,
+               POL_POLICY_NO,
+               POL_STATUS,
+               PROD_TYPE,
+               POL_PROD_CODE,
+               PROD_CODE,
+               POL_PAID_TO_DATE,
+               PRP_FIRST_NAME,
+               PRP_SURNAME,
+               PRP_OTHER_NAMES,
+               PRP_TEL
+        HAVING {fn}(POL_CODE) > 0
+        ORDER BY UNPROCESSED_RCT DESC, POL_POLICY_NO ASC
+    """
+
+
+@app.route("/clients/prp-unprocessed-leads", methods=["GET"])
+@app.route("/api/clients/prp-unprocessed-leads", methods=["GET"])
+def get_prp_unprocessed_leads():
+    """
+    Active PRP policies with unprocessed receipts (premium follow-up leads).
+    GET /clients/prp-unprocessed-leads?limit=500&offset=0
+    """
+    if not PASSWORD:
+        return jsonify({"data": [], "error": "ORACLE_PASSWORD not set"}), 503
+    try:
+        limit = min(max(int(request.args.get("limit", 500)), 1), 2000)
+        offset = max(int(request.args.get("offset", 0)), 0)
+        inner = _prp_unprocessed_leads_sql()
+        sql = f"""
+            SELECT * FROM (
+                SELECT a.*, ROWNUM rn FROM ({inner}) a WHERE ROWNUM <= :upper
+            ) WHERE rn > :lower
+        """
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(sql, {"upper": offset + limit, "lower": offset})
+        rows = cursor.fetchall()
+        col_names = [d[0] for d in cursor.description] if cursor.description else []
+        data = []
+        for r in rows:
+            row_dict = {}
+            for i, col in enumerate(col_names):
+                if col.upper() == "RN":
+                    continue
+                val = r[i] if i < len(r) else None
+                key = col.lower()
+                row_dict[key] = val
+            data.append({
+                "pol_code": row_dict.get("pol_code"),
+                "policy_number": row_dict.get("policy_number"),
+                "unprocessed_rct": row_dict.get("unprocessed_rct"),
+                "paid_to": row_dict.get("paid_to"),
+                "client_name": row_dict.get("client_name"),
+                "prp_tel": row_dict.get("prp_tel"),
+            })
+        cursor.close()
+        conn.close()
+        return jsonify({
+            "data": data,
+            "total": len(data),
+            "offset": offset,
+            "limit": limit,
+            "has_more": len(data) >= limit,
+        })
+    except Exception as e:
+        return jsonify({"data": [], "error": str(e)}), 500
+
+
 @app.route("/clients", methods=["GET"])
 @app.route("/api/clients", methods=["GET"])
 def get_clients():

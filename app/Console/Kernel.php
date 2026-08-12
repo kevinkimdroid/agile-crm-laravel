@@ -16,6 +16,7 @@ class Kernel extends ConsoleKernel
         $runHeavy = ! app()->environment('local') || $runHeavyInLocal;
 
         $schedule->command('maturities:sync')->dailyAt('06:00');
+        $schedule->command('prp-leads:sync --replace')->dailyAt('06:15');
         $schedule->command('tickets:create-maturity-reminders')->dailyAt('08:00');
         $schedule->command('tickets:sla-violation-reminders')->hourly();
         $schedule->command('maturities:notify-investment')

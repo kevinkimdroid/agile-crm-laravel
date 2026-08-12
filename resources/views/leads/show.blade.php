@@ -1,24 +1,40 @@
 @extends('layouts.app')
 
-@section('title', $lead->full_name . ' — Lead')
+@php
+    $isPrpLead = !empty($isPrpLead);
+    $displayName = $lead->full_name ?? trim(($lead->firstname ?? '') . ' ' . ($lead->lastname ?? ''));
+@endphp
+
+@section('title', $displayName . ' — Lead')
 
 @section('content')
 <div class="page-header d-flex flex-wrap justify-content-between align-items-start gap-3">
     <div>
         <nav class="breadcrumb-nav mb-2">
-            <a href="{{ route('leads.index') }}" class="text-muted">Leads</a>
+            <a href="{{ route('leads.index', $isPrpLead ? ['source' => 'prp'] : []) }}" class="text-muted">Leads</a>
             <span class="mx-2 text-muted">/</span>
-            <span class="text-dark fw-semibold">{{ $lead->full_name }}</span>
+            <span class="text-dark fw-semibold">{{ $displayName }}</span>
         </nav>
-        <h1 class="page-title">{{ $lead->full_name }}</h1>
-        <p class="page-subtitle">{{ $lead->company ?: 'No company' }}</p>
+        <h1 class="page-title">{{ $displayName }}</h1>
+        <p class="page-subtitle">
+            @if ($isPrpLead)
+                Policy {{ $lead->policy_number ?? '—' }} · {{ $lead->leadsource ?? 'PRP' }}
+            @else
+                {{ $lead->company ?: 'No company' }}
+            @endif
+        </p>
     </div>
     <div class="d-flex gap-2">
-        @if((isset($can) ? $can('tickets') : true))
+        @if ($isPrpLead && !empty($lead->policy_number))
+            <a href="{{ route('support.serve-client', ['search' => $lead->policy_number]) }}" class="btn btn-primary-custom">
+                <i class="bi bi-person-badge me-1"></i>Serve Client
+            </a>
+        @elseif((isset($can) ? $can('tickets') : true))
         <a href="{{ route('tickets.create', ['from' => 'lead', 'lead_id' => $lead->leadid]) }}" class="btn btn-primary-custom">
             <i class="bi bi-ticket-perforated me-1"></i>Create Ticket
         </a>
         @endif
+        @if (! $isPrpLead)
         <a href="{{ route('leads.edit', $lead->leadid) }}" class="btn btn-primary-custom">
             <i class="bi bi-pencil me-1"></i>Edit
         </a>
@@ -29,6 +45,7 @@
                 <i class="bi bi-trash me-1"></i>Delete
             </button>
         </form>
+        @endif
     </div>
 </div>
 
@@ -48,8 +65,14 @@
                     {{ strtoupper(substr($lead->firstname ?? '?', 0, 1)) }}{{ strtoupper(substr($lead->lastname ?? '', 0, 1)) }}
                 </div>
                 <div class="flex-grow-1">
-                    <h5 class="mb-1">{{ $lead->full_name }}</h5>
-                    <p class="text-muted mb-2">{{ $lead->company ?: 'No company' }}</p>
+                    <h5 class="mb-1">{{ $displayName }}</h5>
+                    <p class="text-muted mb-2">
+                        @if ($isPrpLead)
+                            Policy {{ $lead->policy_number ?? '—' }}
+                        @else
+                            {{ $lead->company ?: 'No company' }}
+                        @endif
+                    </p>
                     @if($lead->leadstatus)
                         <span class="badge lead-status-badge lead-status-{{ Str::slug($lead->leadstatus) }}">{{ $lead->leadstatus }}</span>
                     @endif
@@ -76,15 +99,42 @@
                 <div class="col-md-6">
                     <div class="detail-item">
                         <span class="detail-label">Name</span>
-                        <span class="detail-value">{{ $lead->full_name }}</span>
+                        <span class="detail-value">{{ $displayName }}</span>
                     </div>
                 </div>
+                @if ($isPrpLead)
+                <div class="col-md-6">
+                    <div class="detail-item">
+                        <span class="detail-label">Policy number</span>
+                        <span class="detail-value">{{ $lead->policy_number ?? '—' }}</span>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="detail-item">
+                        <span class="detail-label">Unprocessed receipts</span>
+                        <span class="detail-value">{{ number_format((int) ($lead->unprocessed_rct ?? 0)) }}</span>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="detail-item">
+                        <span class="detail-label">Paid to date</span>
+                        <span class="detail-value">
+                            @if (!empty($lead->paid_to))
+                                {{ \Carbon\Carbon::parse($lead->paid_to)->format('d M Y') }}
+                            @else
+                                —
+                            @endif
+                        </span>
+                    </div>
+                </div>
+                @else
                 <div class="col-md-6">
                     <div class="detail-item">
                         <span class="detail-label">Company</span>
                         <span class="detail-value">{{ $lead->company ?: '—' }}</span>
                     </div>
                 </div>
+                @endif
                 <div class="col-md-6">
                     <div class="detail-item">
                         <span class="detail-label">Email</span>
@@ -130,10 +180,17 @@
         <div class="card p-4">
             <h6 class="card-section-title"><i class="bi bi-info-circle me-2"></i>Quick Info</h6>
             <div class="quick-info-list">
+                @if ($isPrpLead)
+                <div class="quick-info-item">
+                    <i class="bi bi-database text-muted"></i>
+                    <span>From LMS PRP cache (unprocessed receipts)</span>
+                </div>
+                @else
                 <div class="quick-info-item">
                     <i class="bi bi-calendar3 text-muted"></i>
                     <span>Created {{ $lead->createdtime ? \Carbon\Carbon::parse($lead->createdtime)->diffForHumans() : '—' }}</span>
                 </div>
+                @endif
             </div>
         </div>
     </div>

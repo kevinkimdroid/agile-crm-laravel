@@ -315,7 +315,18 @@
     </div>
 </form>
 
-<script id="clientsData" type="application/json">@json(collect($clients ?? [])->map(fn($c) => ['id' => $c->contactid, 'name' => trim(($c->firstname ?? '') . ' ' . ($c->lastname ?? '')) ?: 'Client #' . $c->contactid, 'policy' => $c->policy_number ?? '', 'phone' => $c->mobile ?? $c->phone ?? '', 'email' => personal_email_only($c->email ?? null) ?? ($c->email ?? '')])->values())</script>
+@php
+    $clientsJson = collect($clients ?? [])->map(function ($c) {
+        return [
+            'id' => $c->contactid,
+            'name' => trim(($c->firstname ?? '') . ' ' . ($c->lastname ?? '')) ?: 'Client #' . $c->contactid,
+            'policy' => $c->policy_number ?? '',
+            'phone' => $c->mobile ?? $c->phone ?? '',
+            'email' => personal_email_only($c->email ?? null) ?? ($c->email ?? ''),
+        ];
+    })->values();
+@endphp
+<script id="clientsData" type="application/json">@json($clientsJson)</script>
 <script>
 (function() {
     const initialClients = JSON.parse(document.getElementById('clientsData').textContent || '[]');
