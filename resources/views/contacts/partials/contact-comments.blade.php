@@ -15,7 +15,7 @@
                         <i class="bi bi-paperclip me-1"></i>Attach Files
                     </label>
                     <span class="small text-muted" id="contactCommentFileName"></span>
-                    <i class="bi bi-info-circle text-muted" title="Attach files to your comment"></i>
+                    <i class="bi bi-info-circle text-muted" title="PDF, Office, image or text files up to 10 MB"></i>
                 </div>
                 <button type="submit" class="btn btn-sm btn-success">Post</button>
             </div>

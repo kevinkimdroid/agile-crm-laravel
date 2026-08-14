@@ -3,6 +3,7 @@
 namespace App\Exceptions;
 
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Session\TokenMismatchException;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
@@ -42,6 +43,15 @@ class Handler extends ExceptionHandler
                     'refresh_url' => $request->fullUrl(),
                 ], 419);
             }
+        }
+
+        if ($e instanceof PostTooLargeException) {
+            $message = 'The file is too large. Attachments must be 10 MB or smaller.';
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['message' => $message], 413);
+            }
+
+            return redirect()->back()->with('error', $message);
         }
 
         return parent::render($request, $e);

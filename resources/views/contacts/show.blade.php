@@ -1054,10 +1054,31 @@ document.addEventListener('DOMContentLoaded', function() {
 
     var input = document.getElementById('contactCommentAttachment');
     var label = document.getElementById('contactCommentFileName');
+    var form = input ? input.closest('form') : null;
+    var maxBytes = 10 * 1024 * 1024;
     if (!input || !label) return;
+    function fileTooLarge() {
+        return input.files && input.files[0] && input.files[0].size > maxBytes;
+    }
     input.addEventListener('change', function () {
+        if (fileTooLarge()) {
+            label.textContent = 'File is larger than 10 MB. Choose a smaller file.';
+            label.classList.add('text-danger');
+            input.value = '';
+            return;
+        }
+        label.classList.remove('text-danger');
         label.textContent = input.files && input.files[0] ? input.files[0].name : '';
     });
+    if (form) {
+        form.addEventListener('submit', function (e) {
+            if (fileTooLarge()) {
+                e.preventDefault();
+                label.textContent = 'File is larger than 10 MB. Choose a smaller file.';
+                label.classList.add('text-danger');
+            }
+        });
+    }
 })();
 </script>
 @endsection

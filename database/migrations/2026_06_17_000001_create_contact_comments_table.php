@@ -8,7 +8,12 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::connection(config('database.default'))->create('contact_comments', function (Blueprint $table) {
+        $connection = config('database.default');
+        if (Schema::connection($connection)->hasTable('contact_comments')) {
+            return;
+        }
+
+        Schema::connection($connection)->create('contact_comments', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('contact_id');
             $table->unsignedBigInteger('user_id')->nullable();
