@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('maturity_client_notifications')) {
+            return;
+        }
+
         Schema::create('maturity_client_notifications', function (Blueprint $table) {
             $table->id();
             $table->string('screen', 32);

@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('agile_profile_settings')) {
+            return;
+        }
+
         Schema::create('agile_profile_settings', function (Blueprint $table) {
             $table->unsignedInteger('profileid')->primary();
             $table->json('client_segments')->nullable();

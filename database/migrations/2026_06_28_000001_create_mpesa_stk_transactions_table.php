@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('mpesa_stk_transactions')) {
+            return;
+        }
+
         Schema::create('mpesa_stk_transactions', function (Blueprint $table) {
             $table->id();
             $table->string('policy_number', 64)->index();

@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agile Craft CRM — User Manual</title>
+<style>
+body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.35; max-width: 7.2in; margin: 0.9in auto; color: #000; }
+h1 { font-size: 18pt; margin-top: 0; }
+h2 { font-size: 13pt; margin-top: 1.3em; border-bottom: 1px solid #333; padding-bottom: 2px; page-break-after: avoid; }
+h3 { font-size: 12pt; margin-top: 1em; page-break-after: avoid; }
+p { margin: 0.45em 0; }
+ul, ol { margin: 0.35em 0; padding-left: 1.3em; }
+li { margin: 0.18em 0; }
+table { border-collapse: collapse; width: 100%; margin: 0.55em 0; font-size: 10.5pt; }
+th, td { border: 1px solid #333; padding: 5px 7px; text-align: left; vertical-align: top; }
+th { background: #f0f0f0; }
+.note { font-style: italic; margin: 0.7em 0; }
+.box { background: #f8f8f8; border: 1px solid #ccc; padding: 10px 12px; margin: 1em 0; }
+.meta { color: #333; margin-bottom: 1.2em; }
+.toc a { text-decoration: none; color: #000; }
+.toc li { margin: 0.12em 0; }
+</style>
+</head>
+<body>
+
+<h1>Agile Craft CRM — User Manual</h1>
+
+<div class="box">
+<p><strong>Open in Microsoft Word:</strong> Right-click this file → Open with → Word. Then edit and use <em>File → Save As → Word Document (.docx)</em> or <em>Save as PDF</em>.</p>
+<p>A Markdown copy is also in the project: <code>docs/USER-MANUAL.md</code>.</p>
+</div>
+
+<p class="meta">
+<strong>For:</strong> staff using Kenya Orient CRM (Agile Craft)<br>
+<strong>Audience:</strong> customer service, sales, finance, compliance, and administrators<br>
+<strong>Date:</strong> August 2026
+</p>
+
+<p>This guide explains how to use the CRM day to day. What you see in the left menu depends on your role; if a section is missing, you do not have access.</p>
+
+<h2>Contents</h2>
+<ol class="toc">
+  <li>Getting started</li>
+  <li>Finding your way around</li>
+  <li>Dashboard</li>
+  <li>Prospects</li>
+  <li>Clients</li>
+  <li>Tickets</li>
+  <li>FAQ and knowledge base</li>
+  <li>Maturities and renewals</li>
+  <li>Complaint register</li>
+  <li>Sales: leads, deals, campaigns</li>
+  <li>Marketing: social, WhatsApp, broadcast</li>
+  <li>Finance</li>
+  <li>Credit Life statements</li>
+  <li>Work tickets</li>
+  <li>Calendar</li>
+  <li>Reports</li>
+  <li>Tools</li>
+  <li>Settings (administrators)</li>
+  <li>Customer feedback</li>
+  <li>Tips and troubleshooting</li>
+  <li>Glossary</li>
+</ol>
+
+<h2>1. Getting started</h2>
+
+<h3>Sign in</h3>
+<ol>
+  <li>Open the CRM in your browser.</li>
+  <li>Enter your username (or email) and password.</li>
+  <li>Click <strong>Sign in</strong>.</li>
+</ol>
+<p>You land on the Dashboard.</p>
+
+<h3>Forgot password</h3>
+<ol>
+  <li>On the sign-in page, click <strong>Forgot password</strong>.</li>
+  <li>Enter the email on your user account.</li>
+  <li>Open the reset link sent to that inbox and choose a new password.</li>
+</ol>
+<p>If you do not receive the email, ask an administrator to send a reset link from <strong>Settings → Users</strong>.</p>
+
+<h3>Sign out</h3>
+<p>Click your name (top right) → <strong>Log out</strong>.</p>
+
+<h3>What you can see</h3>
+<p>Menus and buttons follow your role and profile.</p>
+<table>
+  <tr><th>Role</th><th>Typical access</th></tr>
+  <tr><td>Customer service / support</td><td>Clients, tickets, FAQ, maturities, complaints</td></tr>
+  <tr><td>Sales / marketing</td><td>Prospects, leads, campaigns, social, WhatsApp, broadcast</td></tr>
+  <tr><td>Finance</td><td>Cheques, agency advances, receipt reprint</td></tr>
+  <tr><td>Administrator</td><td>Settings, users, SLA, modules, all reports</td></tr>
+</table>
+<p>If you need a screen that is hidden, ask an administrator to update your profile.</p>
+
+<h2>2. Finding your way around</h2>
+
+<h3>Left sidebar</h3>
+<table>
+  <tr><th>Group</th><th>Items</th></tr>
+  <tr><td>Main</td><td>Dashboard, Prospects, Clients</td></tr>
+  <tr><td>Support</td><td>Tickets, FAQ &amp; Categories, Maturities, Investment maturities, Renewals, Complaint Register</td></tr>
+  <tr><td>Sales</td><td>Leads, Social Media, WhatsApp, Campaigns, Broadcast</td></tr>
+  <tr><td>Finance</td><td>Finance cheques, Agency advances, Receipt reprint</td></tr>
+  <tr><td>Statements</td><td>Credit Life Statements</td></tr>
+  <tr><td>Work Management</td><td>Work Tickets</td></tr>
+  <tr><td>Tools</td><td>Calendar, Reports, PBX &amp; Calls, Email Templates, Mail Manager, ERP Messaging, Protect PDF</td></tr>
+  <tr><td>Settings</td><td>CRM Settings, Users (admins)</td></tr>
+</table>
+<p>On a phone or small screen, tap the menu icon (top left) to open the sidebar.</p>
+
+<h3>Top bar</h3>
+<ul>
+  <li><strong>Search</strong> — type a name, email, phone, policy, or ticket keyword. Results appear as you type.</li>
+  <li><strong>Quick Create</strong> — add a Lead, Opportunity, Ticket, Work Ticket, Event, or Task without leaving the page.</li>
+  <li>Reports and Tickets shortcuts.</li>
+  <li>Your name — Profile, Settings, Log out.</li>
+</ul>
+
+<h3>Prospects vs clients</h3>
+<ul>
+  <li><strong>Prospects</strong> are people in the CRM who are not yet (or not only) policyholders — sales contacts.</li>
+  <li><strong>Clients</strong> are policyholders from the insurance systems (Group Life, Individual Life, Mortgage, Group Pension, and related lines).</li>
+</ul>
+<p>Use <strong>Serve Client</strong> when a caller is already a policyholder. Use <strong>Prospects</strong> for sales follow-up.</p>
+
+<h2>3. Dashboard</h2>
+<p>The dashboard is your home screen. It shows pipeline value and active deals; prospect, lead, and client counts; ticket volumes (Open, In Progress, Awaiting, Closed); and shortcuts for insurance operations (Clients, Group Life, Individual, New Ticket, Maturities).</p>
+<p><strong>Typical start of day</strong></p>
+<ol>
+  <li>Check open and overdue tickets.</li>
+  <li>Open Clients or Serve Client if you take calls.</li>
+  <li>Use New Ticket when a customer needs a logged issue.</li>
+</ol>
+
+<h2>4. Prospects</h2>
+<p><strong>Sidebar → Prospects</strong></p>
+
+<h3>Find a prospect</h3>
+<p>Search by name, email, phone, or mobile. Click a name or <strong>Open</strong> to view the record.</p>
+
+<h3>Add a prospect</h3>
+<ol>
+  <li>Click <strong>Add Prospect</strong>.</li>
+  <li>Enter name and contact details.</li>
+  <li>Save.</li>
+</ol>
+
+<h3>Prospect record</h3>
+<p>The profile shows phone, email, and tabs such as Summary, Details, Tickets, Updates/comments, Campaigns, Calendar, and Calls/SMS/emails where available.</p>
+<p><strong>Useful actions:</strong> Edit contact details; add a follow-up; add a comment; add or remove the prospect from a campaign; click the phone number to call (uses the office PBX if it is set up for you).</p>
+
+<h2>5. Clients</h2>
+<p><strong>Sidebar → Clients</strong></p>
+<p>Clients come from the insurance / ERP systems. You can filter by line of business (for example Group Life or Individual).</p>
+
+<h3>Search and open a client</h3>
+<ol>
+  <li>Go to Clients.</li>
+  <li>Search by name, policy number, phone, or ID as available.</li>
+  <li>Open the client.</li>
+</ol>
+
+<h3>Serve Client (fast path for the phone)</h3>
+<p>Support → Serve Client (also linked from the Support hub).</p>
+<ol>
+  <li>Search the client.</li>
+  <li>Confirm the policy and product.</li>
+  <li>Create a ticket from that screen if needed.</li>
+</ol>
+<p>Use this when you already have a policy number or a caller who is a known client.</p>
+
+<h3>Client record</h3>
+<p>Header shows name, phone, line of business, policy number, and consent status.</p>
+<table>
+  <tr><th>Tab</th><th>What it is for</th></tr>
+  <tr><td>Summary</td><td>Snapshot of the client and policy</td></tr>
+  <tr><td>Details</td><td>KYC / policy fields (editable where allowed)</td></tr>
+  <tr><td>Updates</td><td>Comments and activity</td></tr>
+  <tr><td>Premiums</td><td>Premium history and M-Pesa STK collection (if configured)</td></tr>
+  <tr><td>Tickets</td><td>Tickets linked to this client</td></tr>
+  <tr><td>Emails</td><td>Emails sent to the client</td></tr>
+  <tr><td>Documents</td><td>Uploaded files</td></tr>
+  <tr><td>Policies</td><td>Other policies for the same person</td></tr>
+  <tr><td>Calls</td><td>Call history</td></tr>
+  <tr><td>SMS</td><td>SMS sent</td></tr>
+</table>
+<p><strong>Common actions:</strong> create a ticket from the client or a related policy; email the client; record consent; add a comment; upload a document; send an M-Pesa payment prompt from the Premiums tab if M-Pesa is enabled.</p>
+
+<h3>Create or import clients</h3>
+<p>If your role allows it: <strong>Create Client</strong> adds a record in CRM; <strong>Import</strong> uses a downloadable template. Skipped rows are listed after import. Most live policy data still comes from ERP — treat CRM create/import as the exception unless your team has a defined process.</p>
+
+<h2>6. Tickets</h2>
+<p>Tickets are customer issues in the help desk. Sidebar → Tickets (or the ticket icon in the top bar).</p>
+
+<h3>Statuses</h3>
+<table>
+  <tr><th>Status</th><th>Meaning</th></tr>
+  <tr><td>Open</td><td>New or not yet being worked</td></tr>
+  <tr><td>In Progress</td><td>Someone is working it</td></tr>
+  <tr><td>Wait For Response (Awaiting)</td><td>Waiting on the customer or another party</td></tr>
+  <tr><td>Closed</td><td>Resolved</td></tr>
+  <tr><td>Inactive</td><td>Parked; hidden from active lists</td></tr>
+  <tr><td>Unassigned</td><td>No owner (shown when any exist)</td></tr>
+</table>
+<p>Filter with the status pills at the top of the list. Search with Ctrl+K or the search box (ticket text, prospect, assigned to / by).</p>
+
+<h3>Create a ticket</h3>
+<p>From New Ticket, Quick Create → Ticket, a client, Serve Client, Mail Manager, or a finance cheque.</p>
+<ol>
+  <li>Enter a title.</li>
+  <li>Choose Assigned To.</li>
+  <li>Link a prospect or client (required). Policy number fills when the record has one.</li>
+  <li>Choose category (drives SLA / TAT).</li>
+  <li>Optionally add description, source, product line, and severity.</li>
+  <li>Optionally add a custom message for the client notification email.</li>
+  <li>Save.</li>
+</ol>
+<p>Default priority is Normal unless your form is set otherwise.</p>
+
+<h3>Work a ticket</h3>
+<p>Open the ticket. You will see status, priority, category, policy, and ticket number.</p>
+<ul>
+  <li><strong>Comment</strong> — keep the trail on the ticket.</li>
+  <li><strong>Reassign</strong> — send to another user or group. History appears on the ticket.</li>
+  <li><strong>Knowledge Base</strong> tab — search FAQs, click Use as solution, then close.</li>
+  <li><strong>Close Ticket</strong> — enter a short resolution (or leave blank). Closing can trigger a feedback email/SMS to the customer.</li>
+  <li><strong>Inactivate</strong> — remove from active lists without closing (confirm when prompted).</li>
+  <li><strong>Edit</strong> — change fields if you have permission.</li>
+  <li>Jump to the linked Client or Prospect.</li>
+</ul>
+
+<h3>Recommended close flow</h3>
+<ol>
+  <li>Open the ticket.</li>
+  <li>Open the Knowledge Base tab.</li>
+  <li>Search FAQs → Use as solution.</li>
+  <li>Click Close Ticket and confirm the solution text.</li>
+</ol>
+<p>Use <strong>Export</strong> on the tickets list when you need a spreadsheet of the current view.</p>
+
+<h2>7. FAQ and knowledge base</h2>
+<p><strong>Sidebar → FAQ &amp; Categories</strong></p>
+<p>Staff use FAQs to answer tickets consistently: browse or search articles, mark an article helpful, and from a ticket search FAQs and Use as solution.</p>
+<p>Users who manage content can create and edit categories and articles. Keep titles short and answers specific so agents can find them while the customer is on the line.</p>
+
+<h2>8. Maturities and renewals</h2>
+
+<h3>Maturities</h3>
+<p><strong>Support → Maturities</strong></p>
+<ul>
+  <li>Lists policies approaching maturity.</li>
+  <li>Update renewal status.</li>
+  <li>Notify client (looks up contact details first).</li>
+  <li>Generate or email a discharge voucher (PDF).</li>
+  <li>Export the list.</li>
+</ul>
+
+<h3>Investment maturities</h3>
+<p><strong>Support → Investment maturities</strong></p>
+<ul>
+  <li>Policies maturing in the next 14 days (default window).</li>
+  <li>Shows whether a notification was already sent.</li>
+  <li>Send one notification email per policy; sent rows are tracked so you do not double-send.</li>
+</ul>
+
+<h3>Renewals (mortgage)</h3>
+<p><strong>Support → Renewals</strong></p>
+<p>Renewal dates due in the coming period (default 30 days; change the period on the page). Export for follow-up lists.</p>
+
+<h2>9. Complaint register</h2>
+<p><strong>Support → Complaint Register</strong></p>
+<p>Used for IRA-style complaint tracking. Complaints can also be created from inbound mail when automation is enabled.</p>
+
+<h3>Register a complaint</h3>
+<ol>
+  <li>Click to create / register a complaint.</li>
+  <li>Optionally look up a client / policy (fills name, policy, email, phone).</li>
+  <li>Optionally link a prospect.</li>
+  <li>Enter date received (required) and source (Phone, Email, In person, Written letter, IRA referral, Other).</li>
+  <li>Complete complainant details and the complaint description.</li>
+  <li>Save.</li>
+</ol>
+
+<p><strong>Case status:</strong> Received, Under Investigation, Pending Response, Resolved, Escalated to IRA, Closed.</p>
+<p><strong>Register classification:</strong> Complaint, Needs review, Not a complaint.</p>
+<p>Update register status when a logged item is not a formal complaint, or when it needs review. Use Export for compliance reporting.</p>
+
+<h2>10. Sales: leads, deals, campaigns</h2>
+
+<h3>Leads</h3>
+<p><strong>Sales → Leads</strong> (or sidebar Add Lead)</p>
+<ol>
+  <li>Click Add Lead.</li>
+  <li>Enter name, contact, source, and status.</li>
+  <li>Save and follow up from the lead record.</li>
+</ol>
+<p>Filter by status and search from the list. Leads can also be created from a social media interaction.</p>
+
+<h3>Deals (opportunities)</h3>
+<p>Create from Quick Create → Opportunity or Deals. Track stage and value. Pipeline value on the dashboard comes from active deals.</p>
+
+<h3>Campaigns</h3>
+<p><strong>Sales → Campaigns</strong></p>
+<p>Create campaigns, then add prospects from a prospect record (Campaigns tab) or from campaign tools. Use campaigns together with Broadcast when you need a mail or SMS drop.</p>
+
+<h2>11. Marketing: social, WhatsApp, broadcast</h2>
+
+<h3>Social media</h3>
+<p><strong>Sales → Social Media</strong></p>
+<ul>
+  <li>Review inbound interactions.</li>
+  <li>Schedule a post or Publish now.</li>
+  <li>Cancel a scheduled post.</li>
+  <li>Create lead from an interaction.</li>
+  <li>Connect or disconnect Facebook / other platforms via Social auth if your account is allowed.</li>
+</ul>
+
+<h3>WhatsApp</h3>
+<p><strong>Sales → WhatsApp</strong></p>
+<p>Company WhatsApp inbox: read conversations and send replies. The same chat may also appear under Support, depending on your menu.</p>
+
+<h3>Email &amp; SMS broadcast</h3>
+<p><strong>Sales → Broadcast</strong> (also under Support for some roles)</p>
+<ol>
+  <li>Filter the audience (client type, search, skip recently emailed/SMS’d if offered).</li>
+  <li>Compose the message or pick an email / SMS template.</li>
+  <li>Select recipients (list, or upload using the recipients template).</li>
+  <li>Send.</li>
+</ol>
+<p>You can create broadcast templates from this screen. Check Bounced Emails under Reports after large sends.</p>
+
+<h2>12. Finance</h2>
+<p>Finance screens are restricted to Finance department users and Administrators.</p>
+
+<h3>Finance cheques</h3>
+<p><strong>Finance → Finance cheques</strong></p>
+<p>Live cheque feed from FMS. Filter by system source and other fields, then create a ticket from a cheque when a payment needs follow-up.</p>
+
+<h3>Agency advances</h3>
+<p><strong>Finance → Agency advances</strong></p>
+<p>Same idea for agency advance records from FMS.</p>
+
+<h3>Receipt reprint</h3>
+<p><strong>Finance → Receipt reprint</strong></p>
+<ol>
+  <li>Choose search type: Receipt No., Policy No., or Client Name.</li>
+  <li>Enter the value (internal number, branch receipt code, policy, or name).</li>
+  <li>Open a result to preview.</li>
+  <li>Reprint a sealed duplicate, or download XML if required.</li>
+</ol>
+<p>If the receipt service is down, the page shows an error — contact IT rather than retrying endlessly.</p>
+
+<h2>13. Credit Life statements</h2>
+<p><strong>Statements → Credit Life Statements</strong></p>
+<p>Select the period / recipients as shown on the page and send statements. Use this only if your team owns Credit Life communication.</p>
+
+<h2>14. Work tickets</h2>
+<p><strong>Work Management → Work Tickets</strong></p>
+<p>Internal work tracking (not the customer help desk). Useful for remote / daily work with manager visibility.</p>
+<ul>
+  <li><strong>My Tickets</strong> — assigned to you.</li>
+  <li><strong>Team Activity</strong> — your team (managers).</li>
+  <li><strong>All Tickets</strong> — organisation-wide (admins / senior managers).</li>
+</ul>
+<p>Statuses: Open, In Progress, Blocked, Closed, Cancelled. The list also shows TAT breached counts.</p>
+<ol>
+  <li>New Work Ticket (or Quick Create).</li>
+  <li>Fill title, description, assignee, priority.</li>
+  <li>Open a ticket to post updates.</li>
+  <li>Reassign when ownership changes.</li>
+</ol>
+<p>Managers configure reporting lines from Setup / Users so Team Activity is accurate. Export is available from the list.</p>
+
+<h2>15. Calendar</h2>
+<p><strong>Tools → Calendar</strong></p>
+<p>Create Events and Tasks from the calendar or Quick Create. List and edit activities; filter overdue from the dashboard menu; link activities to contacts where the form allows it.</p>
+<p>This calendar is the CRM activity list. It is not a full replacement for a personal Outlook calendar.</p>
+
+<h2>16. Reports</h2>
+<p><strong>Tools → Reports</strong> (or the chart icon in the top bar)</p>
+
+<p><strong>Audit &amp; compliance:</strong> Client Tickets – Broken SLA; Work Tickets – Broken SLA; Ticket Aging (open tickets older than 7+ days); Tickets by Date; Ticket Audit Trail (reassignments); Assignment Handlers; Bounced Emails.</p>
+<p><strong>Performance &amp; workload:</strong> Usage &amp; Top Issues; Ticket Workload; Automation Analysis; Work Activities.</p>
+<p><strong>CRM &amp; operations:</strong> Prospects Summary; Calls Summary; Deals Pipeline / Leads (links into those modules).</p>
+<p>Most reports support Excel export; some support PDF. Use Export all (Excel) or Export all (PDF) from the hub when you need a pack. Set date from / date to before exporting so the file matches the period you intend to review.</p>
+
+<h2>17. Tools</h2>
+
+<h3>PBX &amp; Calls</h3>
+<p><strong>Tools → PBX &amp; Calls</strong></p>
+<ul>
+  <li>See recent calls and recordings (where stored).</li>
+  <li>Make a call (click-to-call) if your extension is mapped.</li>
+  <li>Claim an unassigned incoming call so it sits on your user.</li>
+  <li>Live view for current call activity.</li>
+</ul>
+<p>Clicking a phone number on a client or prospect uses this integration when your extension is mapped in Settings.</p>
+
+<h3>Mail Manager</h3>
+<p><strong>Tools → Mail Manager</strong></p>
+<p>Shared company mailbox (Microsoft 365 or IMAP, depending on setup).</p>
+<ul>
+  <li>Fetch Emails if the inbox looks stale (health banner shows last successful fetch).</li>
+  <li>Open an email.</li>
+  <li>Create ticket from email when the message is a customer issue.</li>
+  <li>Create Email to send from the shared mailbox.</li>
+</ul>
+<p>Tickets and complaints may also be created automatically from inbound mail when automation is on.</p>
+
+<h3>Email templates</h3>
+<p><strong>Tools → Email Templates</strong></p>
+<p>Create and edit templates used by tickets, broadcast, and other sends. Keep merge fields intact; do not delete placeholders you do not understand.</p>
+
+<h3>ERP Messaging</h3>
+<p><strong>Tools → ERP Messaging</strong></p>
+<p>Send messages related to ERP client data and review the Sent log.</p>
+
+<h3>Protect PDF</h3>
+<p><strong>Tools → Protect PDF</strong></p>
+<p>Upload a PDF and apply password protection before sending to a client. PDF Maker (template layout for modules) is available to users with PDF Maker access, usually via Tools.</p>
+
+<h2>18. Settings (administrators)</h2>
+<p><strong>Settings → CRM Settings</strong></p>
+<p>Search the settings hub, or open a card.</p>
+
+<h3>People</h3>
+<table>
+  <tr><th>Screen</th><th>Use it to</th></tr>
+  <tr><td>Users</td><td>Create accounts, edit, send reset link, set department and reporting manager, offboard or reactivate</td></tr>
+  <tr><td>Departments</td><td>Organise teams (used by SLA and finance access)</td></tr>
+  <tr><td>Roles</td><td>Assign a profile to a CRM role</td></tr>
+  <tr><td>Profiles</td><td>Module and field permissions</td></tr>
+  <tr><td>Client Access</td><td>Restrict selected clients so only assigned users see them (single, bulk, or CSV template)</td></tr>
+  <tr><td>Sharing Rules</td><td>Record visibility</td></tr>
+  <tr><td>Groups</td><td>Assignment groups</td></tr>
+  <tr><td>Login History</td><td>Recent sign-ins</td></tr>
+</table>
+
+<h3>Tickets</h3>
+<table>
+  <tr><th>Screen</th><th>Use it to</th></tr>
+  <tr><td>Create Ticket Form</td><td>Categories and sources on new tickets</td></tr>
+  <tr><td>SLA &amp; TAT</td><td>Category and department turnaround; import from Excel; close rules</td></tr>
+  <tr><td>Assignment Rules</td><td>Auto-route tickets by keywords</td></tr>
+  <tr><td>Scheduler / Workflows</td><td>Scheduled jobs and automated CRM workflows</td></tr>
+</table>
+
+<h3>Modules and system</h3>
+<table>
+  <tr><th>Screen</th><th>Use it to</th></tr>
+  <tr><td>Modules</td><td>Turn features on or off</td></tr>
+  <tr><td>Layouts &amp; Fields</td><td>Field labels and layout per module</td></tr>
+  <tr><td>Numbering</td><td>Ticket / record number prefixes</td></tr>
+  <tr><td>General</td><td>Core CRM options</td></tr>
+  <tr><td>PBX Mapping</td><td>Map extensions to users (sync from PBX if available)</td></tr>
+  <tr><td>Marketing / Integrations / Other</td><td>Campaign and external system options</td></tr>
+</table>
+<p>Setup → Users / Roles (admin) also edits reporting managers in bulk and which modules each role may use. Offboarding should reassign open tickets and work before the user is deactivated.</p>
+
+<h2>19. Customer feedback</h2>
+<p>When a support ticket is closed, the customer may receive a link to a public form. They choose whether they were happy or not satisfied, may add comments, then submit and see a thank-you page.</p>
+<p>You do not log in to fill this form. Staff should not complete it on the customer’s behalf.</p>
+
+<h2>20. Tips and troubleshooting</h2>
+<table>
+  <tr><th>Situation</th><th>What to do</th></tr>
+  <tr><td>Menu item missing</td><td>You likely lack permission. Ask an admin to adjust your profile.</td></tr>
+  <tr><td>Cannot open Finance</td><td>Finance is limited to Finance department and Administrators.</td></tr>
+  <tr><td>Search finds nothing</td><td>Try policy number, phone, or a shorter name. Use Serve Client for policyholders.</td></tr>
+  <tr><td>Mail looks old</td><td>Open Mail Manager and click Fetch Emails. If health stays stale, tell IT.</td></tr>
+  <tr><td>Click-to-call fails</td><td>Confirm your PBX extension is mapped and you are logged in to the phone.</td></tr>
+  <tr><td>Receipt / cheque error</td><td>ERP/FMS may be unavailable. Note the message and contact IT.</td></tr>
+  <tr><td>Duplicate client emails</td><td>Check consent and existing tickets before creating another ticket.</td></tr>
+  <tr><td>Ticket SLA red / broken</td><td>Work or close it, or reassign. Managers use Broken SLA reports.</td></tr>
+  <tr><td>Forgot password email missing</td><td>Check spam; ask an admin to send a reset link.</td></tr>
+  <tr><td>Page looks wrong on phone</td><td>Use the menu icon; prefer landscape for tables and reports.</td></tr>
+</table>
+
+<p><strong>Do</strong></p>
+<ul>
+  <li>Search for an existing client or ticket before creating a new one.</li>
+  <li>Write ticket titles that another agent can understand.</li>
+  <li>Close tickets with a real solution (FAQ text is preferred).</li>
+  <li>Treat client documents, receipts, and IDs as confidential.</li>
+</ul>
+
+<p><strong>Do not</strong></p>
+<ul>
+  <li>Share your password.</li>
+  <li>Close tickets without a note when the customer is still waiting.</li>
+  <li>Send broadcasts without checking the audience filters.</li>
+  <li>Reprint receipts unless you are in Finance (or an admin covering that role).</li>
+</ul>
+
+<h2>21. Glossary</h2>
+<table>
+  <tr><th>Term</th><th>Meaning</th></tr>
+  <tr><td>Prospect</td><td>Sales contact in CRM (Contacts module)</td></tr>
+  <tr><td>Client</td><td>Policyholder from insurance / ERP systems</td></tr>
+  <tr><td>Ticket</td><td>Customer help-desk issue</td></tr>
+  <tr><td>Work ticket</td><td>Internal task for staff / managers</td></tr>
+  <tr><td>SLA / TAT</td><td>Service level / turnaround time for a category or department</td></tr>
+  <tr><td>Serve Client</td><td>Quick search → assist → create ticket for a policyholder</td></tr>
+  <tr><td>Deal / Opportunity</td><td>Sales pipeline record</td></tr>
+  <tr><td>Broadcast</td><td>Mass email or SMS</td></tr>
+  <tr><td>PBX</td><td>Office phone system (click-to-call and recordings)</td></tr>
+  <tr><td>FMS / ERP</td><td>Finance and policy source systems behind cheques, receipts, and many client records</td></tr>
+  <tr><td>Consent</td><td>Permission to contact the client (shown on the client header)</td></tr>
+  <tr><td>Discharge voucher</td><td>PDF generated from a maturity for payout / discharge</td></tr>
+  <tr><td>IRA</td><td>Insurance Regulatory Authority — complaints may be escalated here</td></tr>
+</table>
+
+<p class="note">Kenya Orient CRM, powered by Agile Craft. Screens can vary slightly after an update; if a button has moved, use the sidebar names in this manual or ask your administrator.</p>
+
+</body>
+</html>
