@@ -40,7 +40,7 @@ class MortgageRenewalController extends Controller
     /** POC: use seeded Orient demo renewals (10 per product). Default on. */
     protected function useDemoRenewals(): bool
     {
-        return filter_var(env('RENEWALS_DEMO', true), FILTER_VALIDATE_BOOLEAN);
+        return filter_var(env('RENEWALS_DEMO', false), FILTER_VALIDATE_BOOLEAN);
     }
 
     protected function normalizeWindow(Request $request): int

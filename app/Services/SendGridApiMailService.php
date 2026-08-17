@@ -22,7 +22,8 @@ class SendGridApiMailService
         string $body,
         bool $bodyIsHtml = false,
         ?string $fromAddress = null,
-        ?string $fromName = null
+        ?string $fromName = null,
+        array $ccAddresses = []
     ): bool {
         $apiKey = trim((string) config('services.sendgrid.api_key', ''));
         if ($apiKey === '') {
@@ -38,17 +39,21 @@ class SendGridApiMailService
             return false;
         }
 
-        $payload = [
-            'personalizations' => [
+        $personalization = [
+            'to' => [
                 [
-                    'to' => [
-                        [
-                            'email' => $toAddress,
-                            'name' => $toName ?: null,
-                        ],
-                    ],
+                    'email' => $toAddress,
+                    'name' => $toName ?: null,
                 ],
             ],
+        ];
+        $cc = array_values(array_filter(array_map('trim', $ccAddresses), fn ($e) => filter_var($e, FILTER_VALIDATE_EMAIL)));
+        if ($cc !== []) {
+            $personalization['cc'] = array_map(fn ($e) => ['email' => $e], $cc);
+        }
+
+        $payload = [
+            'personalizations' => [$personalization],
             'from' => [
                 'email' => $fromAddress,
                 'name' => $fromName !== '' ? $fromName : null,
@@ -78,6 +83,8 @@ class SendGridApiMailService
 
             return false;
         }
+
+        Log::info('SendGridApiMailService: sent', ['to' => $toAddress, 'subject' => $subject]);
 
         return true;
     }

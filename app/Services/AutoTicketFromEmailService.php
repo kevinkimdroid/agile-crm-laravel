@@ -4,7 +4,6 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 
 /**
  * Auto-create ticket from inbound email and send confirmation with ticket number.
@@ -251,28 +250,16 @@ class AutoTicketFromEmailService
         $subject = trim($config['auto_reply_subject'] ?? '') ?: 'Re: ' . $originalSubject;
         $subject = str_replace(['{ticket_no}', '{{ticket_number}}', '{{subject}}'], [$ticketNo, $ticketNo, $originalSubject], $subject);
 
-        $graph = app(MicrosoftGraphMailService::class);
-        if ($graph->isConfigured()) {
-            if ($graph->sendMail($toAddress, $toName ?: null, $subject, $body, false)) {
-                return true;
-            }
-            Log::warning('AutoTicketFromEmailService: Graph send failed, falling back to Laravel Mail');
+        $sender = app(PlainTextMailSender::class);
+        if ($sender->sendForAuth($toAddress, $toName ?: null, $subject, $body)) {
+            return true;
         }
 
-        try {
-            $fromAddress = config('mail.from.address', config('email-service.sender', 'info@agilecraft.co.ke'));
-            if (config('mail.default') === 'log') {
-                Log::info('AutoTicketFromEmailService: MAIL_MAILER=log – email not actually sent. Set MAIL_MAILER=smtp for delivery.');
-            }
-            Mail::raw($body, function ($message) use ($toAddress, $toName, $subject, $fromAddress, $fromName) {
-                $message->to($toAddress, $toName ?: null)
-                    ->from($fromAddress, $fromName)
-                    ->subject($subject);
-            });
-            return true;
-        } catch (\Throwable $e) {
-            Log::warning('AutoTicketFromEmailService: auto-reply failed', ['to' => $toAddress, 'error' => $e->getMessage()]);
-            return false;
-        }
+        Log::warning('AutoTicketFromEmailService: auto-reply failed', [
+            'to' => $toAddress,
+            'error' => $sender->getLastError(),
+        ]);
+
+        return false;
     }
 }

@@ -27,9 +27,16 @@ class UserManagementService
     {
         $email = trim($user->email1 ?? '');
         if ($email === '') {
-            Log::warning('UserManagementService: user has no email', ['user_id' => $user->id]);
+            Log::warning('UserManagementService: user has no email', ['user_id' => $user->id ?? null]);
+
             return false;
         }
+
+        Log::info('UserManagementService: sending setup/reset email', [
+            'to' => $email,
+            'user_id' => $user->id ?? null,
+            'new_account' => $isNewAccount,
+        ]);
 
         $token = Str::random(64);
         $hashedToken = hash('sha256', $token);
@@ -127,6 +134,11 @@ class UserManagementService
     {
         $sender = app(PlainTextMailSender::class);
         if ($sender->sendForAuth($to, $toName, $subject, $body)) {
+            Log::info('UserManagementService: setup/reset email sent', [
+                'to' => $to,
+                'subject' => $subject,
+            ]);
+
             return true;
         }
 

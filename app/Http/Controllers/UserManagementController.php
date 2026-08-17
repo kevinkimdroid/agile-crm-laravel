@@ -115,6 +115,11 @@ class UserManagementController extends Controller
             $newUser = VtigerUser::on('vtiger')->find($userId);
             if ($newUser) {
                 $emailSent = app(UserManagementService::class)->sendPasswordResetEmail($newUser, true);
+            } else {
+                \Illuminate\Support\Facades\Log::warning('UserManagementController: user created but Eloquent find failed — setup email skipped', [
+                    'user_id' => $userId,
+                    'email1' => $validated['email1'],
+                ]);
             }
         }
 

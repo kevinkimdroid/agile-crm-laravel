@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\InvestmentMaturityService;
 use App\Services\MaturityClientNotificationService;
 use App\Services\MicrosoftGraphMailService;
+use App\Services\SendGridApiMailService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -255,6 +256,14 @@ class InvestmentMaturitiesController extends Controller
      */
     private function sendNotificationEmail(string $to, array $cc, string $subject, string $html): bool
     {
+        $sendGrid = app(SendGridApiMailService::class);
+        if ($sendGrid->isConfigured()) {
+            if ($sendGrid->sendMail($to, null, $subject, $html, true, null, null, $cc)) {
+                return true;
+            }
+            Log::warning('Investment maturities mail: SendGrid send failed', ['to' => $to]);
+        }
+
         $graph = app(MicrosoftGraphMailService::class);
         if ($graph->isConfigured()) {
             $ok = $graph->sendMail($to, null, $subject, $html, true);

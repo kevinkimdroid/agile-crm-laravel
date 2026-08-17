@@ -11,7 +11,7 @@ return [
     ],
 
     'investment_notifications' => [
-        'demo' => filter_var(env('INVESTMENT_MATURITIES_DEMO', true), FILTER_VALIDATE_BOOLEAN),
+        'demo' => filter_var(env('INVESTMENT_MATURITIES_DEMO', false), FILTER_VALIDATE_BOOLEAN),
         'to' => env('INVESTMENT_MATURITY_NOTIFY_TO', 'douglas.nyakwara@geminialife.co.ke'),
         'cc' => array_values(array_filter(array_map(
             'trim',

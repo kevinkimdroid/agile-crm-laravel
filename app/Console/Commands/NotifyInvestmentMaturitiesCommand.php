@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\InvestmentMaturityService;
 use App\Services\MicrosoftGraphMailService;
+use App\Services\SendGridApiMailService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -97,6 +98,14 @@ class NotifyInvestmentMaturitiesCommand extends Command
      */
     private function sendNotificationEmail(string $to, array $cc, string $subject, string $html): bool
     {
+        $sendGrid = app(SendGridApiMailService::class);
+        if ($sendGrid->isConfigured()) {
+            if ($sendGrid->sendMail($to, null, $subject, $html, true, null, null, $cc)) {
+                return true;
+            }
+            Log::warning('Investment maturities command: SendGrid send failed', ['to' => $to]);
+        }
+
         $graph = app(MicrosoftGraphMailService::class);
         if ($graph->isConfigured()) {
             $ok = $graph->sendMail($to, null, $subject, $html, true);

@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\WorkTicket;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 
 class WorkTicketNotificationService
 {
@@ -115,22 +114,17 @@ class WorkTicketNotificationService
             return false;
         }
 
-        if ($this->graph->isConfigured()) {
-            if ($this->graph->sendMail($to, $toName, $subject, $body, false)) {
-                return true;
-            }
-            Log::warning('WorkTicketNotificationService: Graph send failed, falling back to Mail', ['to' => $to]);
+        $sender = app(PlainTextMailSender::class);
+        if ($sender->sendForAuth($to, $toName, $subject, $body)) {
+            return true;
         }
 
-        try {
-            Mail::raw($body, function ($message) use ($to, $toName, $subject) {
-                $message->to($to, $toName)->subject($subject);
-            });
-            return true;
-        } catch (\Throwable $e) {
-            Log::warning('WorkTicketNotificationService: send failed', ['to' => $to, 'error' => $e->getMessage()]);
-            return false;
-        }
+        Log::warning('WorkTicketNotificationService: send failed', [
+            'to' => $to,
+            'error' => $sender->getLastError(),
+        ]);
+
+        return false;
     }
 }
 

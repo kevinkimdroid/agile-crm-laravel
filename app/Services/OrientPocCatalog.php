@@ -509,4 +509,44 @@ class OrientPocCatalog
             ],
         ];
     }
+
+    /** Policy prefixes used by POC / demo seeders. */
+    public static function demoPolicyPrefixes(): array
+    {
+        return ['KOL-', 'DEMO-', 'DEMO-R-', 'DEMO-X-'];
+    }
+
+    public static function isDemoPolicy(?string $policy): bool
+    {
+        $policy = trim((string) $policy);
+        if ($policy === '') {
+            return false;
+        }
+        foreach (self::demoPolicyPrefixes() as $prefix) {
+            if (str_starts_with(strtoupper($policy), strtoupper($prefix))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function isDemoEmail(?string $email): bool
+    {
+        $email = strtolower(trim((string) $email));
+
+        return $email !== '' && (
+            str_contains($email, '@orient-demo.ke')
+            || str_contains($email, '@orient-demo.')
+        );
+    }
+
+    /** @return list<string> */
+    public static function demoTicketTitlePatterns(): array
+    {
+        return array_values(array_unique(array_map(
+            fn (array $row) => (string) ($row['title'] ?? ''),
+            self::brokenSlaClientTickets()
+        )));
+    }
 }
