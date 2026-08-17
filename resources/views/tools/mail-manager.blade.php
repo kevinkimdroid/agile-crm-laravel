@@ -58,6 +58,8 @@
         <strong>Mail Fetch Health:</strong>
         @if($healthIsStale)
             <span class="fw-semibold text-warning-emphasis">Stale</span> (no successful fetch in {{ $staleMinutes }}+ min).
+        @else
+            <span class="fw-semibold text-success">OK</span>
         @endif
         @if($lastSuccess)
             Last success {{ $lastSuccess->diffForHumans() }} ({{ $lastSuccess->format('M d, Y H:i') }})
@@ -72,6 +74,12 @@
             · error: {{ \Illuminate\Support\Str::limit($mailHealth['error'], 180) }}
         @endif
     </div>
+    <form action="{{ route('tools.mail-manager.fetch') }}" method="POST" class="m-0">
+        @csrf
+        <button type="submit" class="btn btn-sm {{ ($healthIsOk && !$healthIsStale) ? 'btn-outline-primary' : 'btn-warning' }}">
+            <i class="bi bi-arrow-repeat me-1"></i>Fetch now
+        </button>
+    </form>
 </div>
 
 {{-- Fixed-height container: only inner panels scroll, not the page --}}

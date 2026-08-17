@@ -80,8 +80,22 @@ class MailManagerController extends Controller
         $lastSuccess = ! empty($mailFetchHealth['last_success_at'])
             ? Carbon::parse($mailFetchHealth['last_success_at'])
             : null;
+        $lastAttempt = ! empty($mailFetchHealth['last_attempt_at'])
+            ? Carbon::parse($mailFetchHealth['last_attempt_at'])
+            : null;
         $mailFetchHealth['is_stale'] = ! $lastSuccess || $lastSuccess->lt(now()->subMinutes($staleMinutes));
         $mailFetchHealth['stale_minutes'] = $staleMinutes;
+
+        $recentAttempt = $lastAttempt && $lastAttempt->gt(now()->subMinutes(2));
+        $shouldAutoFetch = $mailFetchHealth['is_stale']
+            && ! $recentAttempt
+            && ! $request->boolean('skip_autofetch')
+            && ! $request->filled('search')
+            && (int) $request->get('page', 1) === 1;
+
+        if ($shouldAutoFetch) {
+            return $this->fetch($request);
+        }
 
         return view('tools.mail-manager', [
             'emails' => $emails,
@@ -190,18 +204,20 @@ class MailManagerController extends Controller
             $result = $this->mailService->fetchAndStoreEmails('INBOX', $limit);
         } catch (\Throwable $e) {
             MailFetchHealth::markFailure($e->getMessage(), 'manual');
+            $hint = 'IMAP fetch failed: '.$e->getMessage();
             if (strpos($e->getMessage(), 'NOOP completed') !== false) {
                 $hint = $this->mailService->useMicrosoftGraph()
-                    ? 'Check MSGRAPH_* config in .env.'
-                    : 'Enable Microsoft Graph (MSGRAPH_ENABLED=true) in .env for Office 365 - see docs.';
-                return back()->with('error', 'IMAP fetch failed (Office 365). ' . $hint);
+                    ? 'IMAP fetch failed (Office 365). Check MSGRAPH_* config in .env.'
+                    : 'IMAP fetch failed (Office 365). Enable Microsoft Graph (MSGRAPH_ENABLED=true) in .env.';
             }
-            throw $e;
+
+            return $this->redirectAfterFetch($request, 'error', $hint);
         }
 
-        if (!empty($result['errors']) && (int) ($result['stored'] ?? 0) === 0) {
+        if (! empty($result['errors']) && (int) ($result['stored'] ?? 0) === 0) {
             MailFetchHealth::markFailure(implode(' ', $result['errors']), 'manual');
-            return back()->with('error', implode(' ', array_unique($result['errors'])));
+
+            return $this->redirectAfterFetch($request, 'error', implode(' ', array_unique($result['errors'])));
         }
 
         MailFetchHealth::markSuccess($result, 'manual');
@@ -210,6 +226,19 @@ class MailManagerController extends Controller
         if (! empty($result['errors'])) {
             $msg .= ' Some messages skipped: '.implode('; ', array_slice(array_unique($result['errors']), 0, 2));
         }
-        return back()->with('success', $msg);
+
+        return $this->redirectAfterFetch($request, 'success', $msg);
+    }
+
+    protected function redirectAfterFetch(Request $request, string $flashType, string $message): RedirectResponse
+    {
+        $query = array_filter($request->only(['search', 'selected', 'per_page', 'page']), function ($v) {
+            return $v !== null && $v !== '';
+        });
+        if ($flashType === 'error') {
+            $query['skip_autofetch'] = 1;
+        }
+
+        return redirect()->route('tools.mail-manager', $query)->with($flashType, $message);
     }
 }

@@ -45,6 +45,19 @@
             </div>
         </div>
     </div>
+    <div class="col-md-6 col-lg-4">
+        <a href="{{ route('ai.integration') }}" class="text-decoration-none text-dark">
+        <div class="card tools-card h-100">
+            <div class="card-body p-4 d-flex align-items-center gap-3">
+                <div class="tools-icon"><i class="bi bi-stars"></i></div>
+                <div>
+                    <h6 class="fw-bold mb-0">AI Integration</h6>
+                    <p class="text-muted small mb-0">Own section — live automation and planned AI</p>
+                </div>
+            </div>
+        </div>
+        </a>
+    </div>
     <div class="col-12">
         <div class="card tools-coming-card overflow-hidden">
             <div class="card-body p-5 text-center">

@@ -30,8 +30,12 @@ class Kernel extends ConsoleKernel
             $schedule->command('pbx:health')->everyFiveMinutes();
         }
 
-        if ($runHeavy && filter_var(env('MAIL_AUTO_FETCH_ENABLED', true), FILTER_VALIDATE_BOOLEAN)) {
-            $schedule->command('mail:fetch')->everyFiveMinutes();
+        // Keep mail fetch on the schedule in local too — Mail Manager health depends on it.
+        if (filter_var(env('MAIL_AUTO_FETCH_ENABLED', true), FILTER_VALIDATE_BOOLEAN)) {
+            $schedule->command('mail:fetch')
+                ->everyFiveMinutes()
+                ->withoutOverlapping(8)
+                ->appendOutputTo(storage_path('logs/mail-fetch.log'));
         }
 
         if (config('erp.agency_advances_notify_enabled', false)) {

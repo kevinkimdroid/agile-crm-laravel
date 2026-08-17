@@ -31,13 +31,18 @@ class FetchEmailsCommand extends Command
         }
 
         $this->info("Fetched: {$result['fetched']}, Stored: {$result['stored']} new.");
-        if (! empty($result['errors'])) {
+        if (! empty($result['errors']) && (int) ($result['fetched'] ?? 0) === 0 && (int) ($result['stored'] ?? 0) === 0) {
             MailFetchHealth::markFailure(implode(' ', $result['errors']), 'scheduler');
             foreach ($result['errors'] as $err) {
                 $this->warn("  - {$err}");
             }
         } else {
             MailFetchHealth::markSuccess($result, 'scheduler');
+            if (! empty($result['errors'])) {
+                foreach ($result['errors'] as $err) {
+                    $this->warn("  - {$err}");
+                }
+            }
         }
 
         Cache::forget('agile_emails_count');

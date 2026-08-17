@@ -29,9 +29,12 @@ class DealController extends Controller
         $page = max(1, (int) $request->get('page', 1));
         $offset = ($page - 1) * $perPage;
 
-        $ownerId = crm_owner_filter();
-        $deals = $this->crm->getDeals($perPage, $offset, $ownerId);
-        $total = $this->crm->getDealsCount($ownerId);
+        $ownerId = config('dashboard.show_all_stats', true) ? null : crm_owner_filter();
+        $search = trim((string) $request->get('q', ''));
+        $stage = trim((string) $request->get('stage', ''));
+
+        $deals = $this->crm->getDeals($perPage, $offset, $ownerId, $search !== '' ? $search : null, $stage !== '' ? $stage : null);
+        $total = $this->crm->getDealsCount($ownerId, $search !== '' ? $search : null, $stage !== '' ? $stage : null);
 
         $deals = new LengthAwarePaginator(
             $deals instanceof Collection ? $deals : collect($deals),
@@ -41,12 +44,37 @@ class DealController extends Controller
             ['path' => $request->url(), 'query' => $request->query()]
         );
 
+        $stageSummary = $this->crm->getDealsByStage($ownerId);
+        $closedStages = ['Closed Won', 'Closed Lost', 'Dead', 'Closed'];
+        $openCount = 0;
+        $openValue = 0.0;
+        $wonCount = 0;
+        $wonValue = 0.0;
+        foreach ($stageSummary as $stageName => $row) {
+            if (in_array($stageName, $closedStages, true)) {
+                if (in_array($stageName, ['Closed Won', 'Closed'], true)) {
+                    $wonCount += $row['count'];
+                    $wonValue += $row['amount'];
+                }
+            } else {
+                $openCount += $row['count'];
+                $openValue += $row['amount'];
+            }
+        }
+
         $pipelineCacheKey = $ownerId !== null ? 'agile_pipeline_value_' . $ownerId : 'agile_pipeline_value';
         $pipelineValue = Cache::remember($pipelineCacheKey, 90, fn () => $this->crm->getPipelineValue($ownerId));
 
         return view('deals.index', [
             'deals' => $deals,
-            'pipelineValue' => $pipelineValue,
+            'pipelineValue' => $openValue ?: $pipelineValue,
+            'openCount' => $openCount,
+            'wonCount' => $wonCount,
+            'wonValue' => $wonValue,
+            'stageSummary' => $stageSummary,
+            'currentStage' => $stage,
+            'search' => $search,
+            'closingSoon' => $this->crm->getDealsClosingSoon(30, 8, $ownerId),
         ]);
     }
 

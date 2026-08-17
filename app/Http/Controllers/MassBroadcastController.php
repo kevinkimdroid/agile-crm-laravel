@@ -136,6 +136,10 @@ class MassBroadcastController extends Controller
         if ($ct !== '' && $ct !== 'all') {
             $q['client_type'] = $ct;
         }
+        $limit = trim((string) $request->get('limit', ''));
+        if ($limit !== '' && $limit !== 'all') {
+            $q['limit'] = $limit;
+        }
         if ($request->boolean('hide_list_email_recent')) {
             $q['hide_list_email_recent'] = '1';
         }
@@ -428,12 +432,18 @@ class MassBroadcastController extends Controller
 
         $search = trim((string) $request->get('search', ''));
         $clientType = (string) $request->get('client_type', 'all');
-        $limit = min(
-            (int) config('mass_broadcast.max_recipients', 500),
-            max(50, (int) $request->get('limit', 250))
-        );
+        $listMax = max(100, (int) config('mass_broadcast.excel_max_rows', 5000));
+        $limitParam = strtolower(trim((string) $request->get('limit', 'all')));
+        if ($limitParam === '' || $limitParam === 'all' || (int) $limitParam <= 0) {
+            $limit = $listMax;
+            $limitParam = 'all';
+        } else {
+            $limit = min($listMax, max(50, (int) $limitParam));
+            $limitParam = (string) $limit;
+        }
 
         $clientTypeNorm = $clientType !== '' ? $clientType : 'all';
+        $ownerId = config('dashboard.show_all_stats', true) ? null : crm_owner_filter();
 
         $skipDays = (int) config('mass_broadcast.skip_recent_days', 14);
         $excludeContactIds = [];
@@ -457,7 +467,7 @@ class MassBroadcastController extends Controller
             $limit,
             0,
             $search !== '' ? $search : null,
-            crm_owner_filter(),
+            $ownerId,
             'name',
             $clientTypeNorm,
             $excludeContactIds !== [] ? $excludeContactIds : null,
@@ -473,6 +483,16 @@ class MassBroadcastController extends Controller
         $deduped = $this->deduplicateBroadcastCustomers($customers);
         $customers = $deduped['customers'];
         $duplicatesCollapsed = $deduped['duplicatesCollapsed'];
+
+        $totalMatching = $crm->getCustomersForBroadcastCount(
+            $search !== '' ? $search : null,
+            $ownerId,
+            $clientTypeNorm,
+            $excludeContactIds !== [] ? $excludeContactIds : null,
+        );
+        if ($totalMatching < $customers->count()) {
+            $totalMatching = $customers->count() + $duplicatesCollapsed;
+        }
 
         $broadcastUsesErpClients = $erp->isClientsViewBackedByErp();
         $lifeSystemOptions = [];
@@ -518,6 +538,9 @@ class MassBroadcastController extends Controller
             'customers' => $customers,
             'search' => $search,
             'clientType' => $clientTypeNorm,
+            'listLimit' => $limitParam,
+            'listMax' => $listMax,
+            'totalMatching' => $totalMatching,
             'recordSources' => $crm->getDistinctContactRecordSources(),
             'contactTypeValues' => $crm->getDistinctBroadcastContactTypeValues(),
             'contactTypeCf' => config('mass_broadcast.contact_type_cf'),

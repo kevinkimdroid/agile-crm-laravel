@@ -435,8 +435,13 @@ class CrmService
         }
     }
 
-    public function getDealsCount(?int $ownerId = null): int
+    public function getDealsCount(?int $ownerId = null, ?string $search = null, ?string $stage = null): int
     {
+        $search = $search !== null ? trim($search) : '';
+        $stage = $stage !== null ? trim($stage) : '';
+        if ($search !== '' || $stage !== '') {
+            return $this->fetchDealsCount($ownerId, $search, $stage);
+        }
         $ttl = (int) config('performance.cache_ttl.counts', 300);
         if ($ownerId === null) {
             return (int) Cache::remember('agile_deals_count', $ttl, fn () => $this->fetchDealsCount(null));
@@ -444,7 +449,7 @@ class CrmService
         return $this->fetchDealsCount($ownerId);
     }
 
-    protected function fetchDealsCount(?int $ownerId = null): int
+    protected function fetchDealsCount(?int $ownerId = null, ?string $search = null, ?string $stage = null): int
     {
         try {
             $query = DB::connection('vtiger')
@@ -455,6 +460,7 @@ class CrmService
             if ($ownerId !== null && $ownerId > 0) {
                 $query->where('e.smownerid', $ownerId);
             }
+            $this->applyDealFilters($query, $search, $stage, 'vtiger_potential');
             return $query->count();
         } catch (\Throwable $e) {
             Log::warning('CrmService::fetchDealsCount: ' . $e->getMessage());
@@ -867,7 +873,7 @@ class CrmService
             }
 
             try {
-                $fetchCap = min(max($limit * 4, $limit + 40), 400);
+                $fetchCap = max($limit, min(max($limit * 2, $limit + 40), 5000));
                 $result = $erp->getClientsForListView($fetchCap, $offset, $search !== '' && $search !== null ? $search : null, $lifeSystem);
                 $out = collect();
                 $seen = [];
@@ -1201,6 +1207,85 @@ class CrmService
             Log::warning('CrmService::filterContactIdsByBroadcastClientType: ' . $e->getMessage());
 
             return $contactIds;
+        }
+    }
+
+    /**
+     * Count contacts matching the same filters as getCustomersForBroadcast (Vtiger list).
+     *
+     * @param  list<int>|null  $excludeContactIds
+     */
+    public function getCustomersForBroadcastCount(
+        ?string $search = null,
+        ?int $ownerId = null,
+        ?string $clientType = null,
+        ?array $excludeContactIds = null,
+    ): int {
+        $cfCol = $this->broadcastContactTypeColumn();
+        [$sourceFilter, $typeVal, $lifeSystem] = $this->parseBroadcastClientType((string) ($clientType ?? 'all'), $cfCol);
+
+        if ($lifeSystem !== null) {
+            $erp = app(ErpClientService::class);
+            if (! $erp->isClientsViewBackedByErp()) {
+                return 0;
+            }
+            try {
+                $result = $erp->getClientsForListView(1, 0, $search !== '' && $search !== null ? $search : null, $lifeSystem);
+
+                return (int) ($result['total'] ?? 0);
+            } catch (\Throwable $e) {
+                Log::warning('CrmService::getCustomersForBroadcastCount (life system): ' . $e->getMessage());
+
+                return 0;
+            }
+        }
+
+        try {
+            $query = DB::connection('vtiger')
+                ->table('vtiger_contactdetails as c')
+                ->join('vtiger_crmentity as e', 'c.contactid', '=', 'e.crmid')
+                ->leftJoin('vtiger_contactscf as cf', 'c.contactid', '=', 'cf.contactid')
+                ->where('e.deleted', 0)
+                ->whereIn('e.setype', ['Contacts', 'Contact']);
+
+            if ($ownerId !== null) {
+                $query->where('e.smownerid', $ownerId);
+            }
+            if ($sourceFilter !== null) {
+                $query->where('e.source', $sourceFilter);
+            }
+            if ($cfCol !== null && $typeVal !== null) {
+                $query->leftJoin('vtiger_contactscf as cfseg', 'c.contactid', '=', 'cfseg.contactid')
+                    ->where("cfseg.{$cfCol}", $typeVal);
+            }
+            if ($excludeContactIds !== null && $excludeContactIds !== []) {
+                $excludeContactIds = array_values(array_unique(array_filter(array_map('intval', $excludeContactIds))));
+                if ($excludeContactIds !== []) {
+                    $query->whereNotIn('c.contactid', $excludeContactIds);
+                }
+            }
+
+            if ($search && trim($search) !== '') {
+                $term = '%' . trim($search) . '%';
+                $query->where(function ($q) use ($term) {
+                    $q->where('c.firstname', 'like', $term)
+                        ->orWhere('c.lastname', 'like', $term)
+                        ->orWhere('c.email', 'like', $term)
+                        ->orWhere('c.otheremail', 'like', $term)
+                        ->orWhere('c.secondaryemail', 'like', $term)
+                        ->orWhere('c.mobile', 'like', $term)
+                        ->orWhere('cf.cf_860', 'like', $term)
+                        ->orWhere('cf.cf_856', 'like', $term)
+                        ->orWhere('cf.cf_872', 'like', $term)
+                        ->orWhere('cf.cf_852', 'like', $term);
+                });
+            }
+
+            return (int) $query->count();
+        } catch (\Throwable $e) {
+            Log::warning('CrmService::getCustomersForBroadcastCount: ' . $e->getMessage());
+
+            return 0;
         }
     }
 
@@ -2075,13 +2160,14 @@ class CrmService
         }
     }
 
-    public function getDeals(int $limit = 50, int $offset = 0, ?int $ownerId = null)
+    public function getDeals(int $limit = 50, int $offset = 0, ?int $ownerId = null, ?string $search = null, ?string $stage = null)
     {
         try {
             $query = Deal::listQuery();
             if ($ownerId !== null && $ownerId > 0) {
                 $query->where('e.smownerid', $ownerId);
             }
+            $this->applyDealFilters($query, $search, $stage, 'vtiger_potential');
             return $query
                 ->orderByDesc('e.createdtime')
                 ->offset($offset)
@@ -2090,6 +2176,57 @@ class CrmService
         } catch (\Throwable $e) {
             Log::warning('CrmService::getDeals: ' . $e->getMessage());
             return collect();
+        }
+    }
+
+    /**
+     * Deal counts and amounts grouped by sales stage.
+     *
+     * @return array<string, array{count: int, amount: float}>
+     */
+    public function getDealsByStage(?int $ownerId = null): array
+    {
+        try {
+            $query = DB::connection('vtiger')
+                ->table('vtiger_potential as p')
+                ->join('vtiger_crmentity as e', 'p.potentialid', '=', 'e.crmid')
+                ->where('e.deleted', 0)
+                ->whereIn('e.setype', ['Potentials', 'Opportunity']);
+            if ($ownerId !== null && $ownerId > 0) {
+                $query->where('e.smownerid', $ownerId);
+            }
+            $rows = $query
+                ->selectRaw('COALESCE(NULLIF(TRIM(p.sales_stage), ""), "Unknown") as stage, count(*) as cnt, COALESCE(SUM(p.amount), 0) as total')
+                ->groupByRaw('COALESCE(NULLIF(TRIM(p.sales_stage), ""), "Unknown")')
+                ->get();
+
+            return $rows->mapWithKeys(fn ($r) => [$r->stage => [
+                'count' => (int) $r->cnt,
+                'amount' => (float) $r->total,
+            ]])->toArray();
+        } catch (\Throwable $e) {
+            Log::warning('CrmService::getDealsByStage: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder  $query
+     */
+    protected function applyDealFilters($query, ?string $search, ?string $stage, string $alias = 'vtiger_potential'): void
+    {
+        $search = $search !== null ? trim($search) : '';
+        $stage = $stage !== null ? trim($stage) : '';
+        if ($stage !== '') {
+            $query->where($alias . '.sales_stage', $stage);
+        }
+        if ($search !== '') {
+            $like = '%' . $search . '%';
+            $query->where(function ($q) use ($like, $alias) {
+                $q->where($alias . '.potentialname', 'like', $like)
+                    ->orWhere($alias . '.potential_no', 'like', $like)
+                    ->orWhere($alias . '.sales_stage', 'like', $like);
+            });
         }
     }
 
@@ -3142,12 +3279,12 @@ class CrmService
     /**
      * Get deals closing in the next N days (renewal/retention alerts).
      */
-    public function getDealsClosingSoon(int $days = 30, int $limit = 10): \Illuminate\Support\Collection
+    public function getDealsClosingSoon(int $days = 30, int $limit = 10, ?int $ownerId = null): \Illuminate\Support\Collection
     {
         try {
             $from = now()->format('Y-m-d');
             $to = now()->addDays($days)->format('Y-m-d');
-            return DB::connection('vtiger')
+            $query = DB::connection('vtiger')
                 ->table('vtiger_potential as p')
                 ->join('vtiger_crmentity as e', 'p.potentialid', '=', 'e.crmid')
                 ->leftJoin('vtiger_contactdetails as c', 'p.contact_id', '=', 'c.contactid')
@@ -3155,7 +3292,11 @@ class CrmService
                 ->whereIn('e.setype', ['Potentials', 'Opportunity'])
                 ->whereNotNull('p.closingdate')
                 ->whereBetween('p.closingdate', [$from, $to])
-                ->whereNotIn('p.sales_stage', ['Closed Won', 'Closed Lost', 'Dead'])
+                ->whereNotIn('p.sales_stage', ['Closed Won', 'Closed Lost', 'Dead']);
+            if ($ownerId !== null && $ownerId > 0) {
+                $query->where('e.smownerid', $ownerId);
+            }
+            return $query
                 ->select('p.potentialid', 'p.potentialname', 'p.amount', 'p.sales_stage', 'p.closingdate', 'c.firstname', 'c.lastname')
                 ->orderBy('p.closingdate')
                 ->limit($limit)

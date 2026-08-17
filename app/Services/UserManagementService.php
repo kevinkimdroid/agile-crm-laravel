@@ -63,10 +63,12 @@ class UserManagementService
         $loginUsername = $user->user_name ?? '';
         $baseUrl = rtrim(config('services.password_reset.base_url') ?? config('app.url', ''), '/');
         $resetUrl = $baseUrl . '/password/reset?token=' . urlencode($token) . '&email=' . urlencode($email);
-        $appName = config('app.name', 'Agile Craft');
+        $brandName = config('branding.client_name', config('app.name', 'CRM'));
+        $brandShort = config('branding.client_short', 'Kenya Orient');
+        $appName = $brandShort . ' CRM';
 
         if ($isNewAccount) {
-            $subject = 'Set your password — ' . $appName;
+            $subject = $brandShort . ' CRM — set your password';
             $body = "Hello {$displayName},\n\n"
                 . "An account has been created for you on {$appName}. "
                 . "Your username for sign-in is: {$loginUsername}\n\n"
@@ -74,17 +76,30 @@ class UserManagementService
                 . "{$resetUrl}\n\n"
                 . "This link expires in {$this->tokenExpiryMinutes} minutes. "
                 . "If you were not expecting this message, contact your administrator.\n\n"
-                . "Kind regards,\n{$appName}";
+                . "Kind regards,\n{$brandName}";
         } else {
-            $subject = 'Reset your password — ' . $appName;
+            $subject = $brandShort . ' CRM — password reset';
             $body = "Hello {$displayName},\n\n"
-                . "A password reset was requested for your account. Click the link below to set a new password:\n\n"
+                . "A password reset was requested for your {$appName} account ({$email}).\n\n"
+                . "Set a new password using this link (expires in {$this->tokenExpiryMinutes} minutes):\n\n"
                 . "{$resetUrl}\n\n"
-                . "This link expires in {$this->tokenExpiryMinutes} minutes. If you did not request this, please ignore this email.\n\n"
-                . "Kind regards,\n{$appName}";
+                . "If you did not request this, ignore this email. Your password will not change.\n\n"
+                . "Kind regards,\n{$brandName}";
         }
 
-        return $this->send($email, $displayName, $subject, $body);
+        $html = view('emails.password-reset', [
+            'subject' => $subject,
+            'displayName' => $displayName,
+            'loginUsername' => $loginUsername,
+            'email' => $email,
+            'resetUrl' => $resetUrl,
+            'expiryMinutes' => $this->tokenExpiryMinutes,
+            'isNewAccount' => $isNewAccount,
+            'brandName' => $brandName,
+            'brandShort' => $brandShort,
+        ])->render();
+
+        return $this->send($email, $displayName, $subject, $body, $html);
     }
 
     /**
@@ -130,15 +145,14 @@ class UserManagementService
         return true;
     }
 
-    protected function send(string $to, ?string $toName, string $subject, string $body): bool
+    protected function send(string $to, ?string $toName, string $subject, string $body, ?string $html = null): bool
     {
         $sender = app(PlainTextMailSender::class);
-        if ($sender->sendForAuth($to, $toName, $subject, $body)) {
+        if ($sender->sendForAuth($to, $toName, $subject, $body, $html)) {
             Log::info('UserManagementService: setup/reset email sent', [
                 'to' => $to,
                 'subject' => $subject,
             ]);
-
             return true;
         }
 

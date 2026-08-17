@@ -27,10 +27,11 @@ This guide explains how to use the CRM day to day. What you see in the left menu
 15. [Calendar](#15-calendar)
 16. [Reports](#16-reports)
 17. [Tools](#17-tools)
-18. [Settings (administrators)](#18-settings-administrators)
-19. [Customer feedback](#19-customer-feedback)
-20. [Tips and troubleshooting](#20-tips-and-troubleshooting)
-21. [Glossary](#21-glossary)
+18. [AI Integration](#18-ai-integration)
+19. [Settings (administrators)](#19-settings-administrators)
+20. [Customer feedback](#20-customer-feedback)
+21. [Tips and troubleshooting](#21-tips-and-troubleshooting)
+22. [Glossary](#22-glossary)
 
 ---
 
@@ -84,6 +85,7 @@ If you need a screen that is hidden, ask an administrator to update your profile
 | **Statements** | Credit Life Statements |
 | **Work Management** | Work Tickets |
 | **Tools** | Calendar, Reports, PBX & Calls, Email Templates, Mail Manager, ERP Messaging, Protect PDF |
+| **AI Integration** | Overview (own menu, not under Tools) |
 | **Settings** | CRM Settings, Users (admins) |
 
 On a phone or small screen, tap the **menu** icon (top left) to open the sidebar.
@@ -574,7 +576,26 @@ PDF Maker (template layout for modules) is available to users with PDF Maker acc
 
 ---
 
-## 18. Settings (administrators)
+## 18. AI Integration
+
+**AI Integration → Overview** (own sidebar group, not under Tools)
+
+This page lists what the CRM already automates and what language-model AI can add later.
+
+**Live now (rules, not a model):**
+
+- Inbound mail scored as a complaint vs inquiry (Complaint Register) — only if the message is already in Mail Manager.
+- Ticket assignment by keywords (Settings → Assignment Rules).
+
+**Emails (own item — not live on this PC):** Mail fetch needs Mail Manager or the scheduler. Outbound SMTP is timing out, so CRM emails and auto-replies are not sending.
+
+**Planned (needs an AI provider):** Email AI, smarter classify, suggest reply, broadcast/SMS draft, search in your own words, call/email summary, FAQ helper.
+
+No AI API is connected yet. Staff still send every message; AI drafts would be suggestions only.
+
+---
+
+## 19. Settings (administrators)
 
 **Settings → CRM Settings**
 
@@ -619,7 +640,7 @@ Offboarding should **reassign** open tickets and work before the user is deactiv
 
 ---
 
-## 19. Customer feedback
+## 20. Customer feedback
 
 When a support ticket is closed, the customer may receive a link to a public form:
 
@@ -631,7 +652,7 @@ You do not log in to fill this form. Staff should not complete it on the custome
 
 ---
 
-## 20. Tips and troubleshooting
+## 21. Tips and troubleshooting
 
 | Situation | What to do |
 | --- | --- |
@@ -662,7 +683,7 @@ You do not log in to fill this form. Staff should not complete it on the custome
 
 ---
 
-## 21. Glossary
+## 22. Glossary
 
 | Term | Meaning |
 | --- | --- |

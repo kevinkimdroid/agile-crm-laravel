@@ -314,12 +314,17 @@
                     @endif
                 </div>
                 @endif
-                @if($can('leads') || $can('marketing') || $can('marketing.whatsapp') || $can('marketing.social-media') || $can('marketing.campaigns') || $can('marketing.broadcast'))
+                @if($can('leads') || $can('deals') || $can('marketing') || $can('marketing.whatsapp') || $can('marketing.social-media') || $can('marketing.campaigns') || $can('marketing.broadcast'))
                 <div class="app-nav-group">
                     <div class="app-nav-label">Sales</div>
                     @if($can('leads'))
                     <a href="{{ Route::has('leads') ? route('leads') : route('leads.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('leads') || request()->routeIs('leads.*') ? 'active' : '' }}">
                         <i class="bi bi-people-fill"></i><span>Leads</span>
+                    </a>
+                    @endif
+                    @if($can('deals'))
+                    <a href="{{ route('deals.index') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('deals.*') ? 'active' : '' }}">
+                        <i class="bi bi-briefcase-fill"></i><span>Deals</span>
                     </a>
                     @endif
                     @if($can('marketing.social-media'))
@@ -412,6 +417,14 @@
                     </a>
                     @endif
                 </div>
+                @if($can('ai.integration'))
+                <div class="app-nav-group">
+                    <div class="app-nav-label">AI Integration</div>
+                    <a href="{{ route('ai.integration') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('ai.integration*') ? 'active' : '' }}">
+                        <i class="bi bi-stars"></i><span>Overview</span>
+                    </a>
+                </div>
+                @endif
                 @if($can('settings'))
                 <div class="app-nav-group">
                     <div class="app-nav-label">Settings</div>

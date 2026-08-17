@@ -17,6 +17,7 @@ class ErpMessagingController extends Controller
         $previewCount = null;
         $totalPending = null;
         $loadError = null;
+        $loadHint = null;
         $canLoad = $messages->canLoadPendingMessages();
         $previewLimit = 50;
 
@@ -26,7 +27,8 @@ class ErpMessagingController extends Controller
                 $previewCount = $pending->count();
                 $totalPending = $messages->pendingCount();
             } else {
-                $loadError = 'ERP SMS cannot be loaded. Set ERP_MESSAGES_HTTP_BASE or FINANCE_ERP_HTTP_BASE (erp-clients-api with /messages/sms routes), or enable OCI8 and ERP Oracle on this server.';
+                $loadError = 'Draft SMS cannot be loaded on this computer yet.';
+                $loadHint = 'Start erp-clients-api, set FINANCE_ERP_HTTP_BASE (for example http://127.0.0.1:5000), then refresh.';
             }
         } catch (\Throwable $e) {
             $loadError = $e->getMessage();
@@ -38,6 +40,7 @@ class ErpMessagingController extends Controller
             'totalPending' => $totalPending,
             'previewLimit' => $previewLimit,
             'loadError' => $loadError,
+            'loadHint' => $loadHint,
             'canLoad' => $canLoad,
             'canSendLive' => $messages->isReady(),
             'autoSendEnabled' => (bool) config('erp.messages_auto_send_enabled', false),
@@ -58,12 +61,18 @@ class ErpMessagingController extends Controller
             'pending_delivery' => 0,
         ];
         $loadError = null;
+        $draftTotal = 0;
 
         try {
             if ($messages->canLoadPendingMessages()) {
                 $result = $messages->sentMessagesWithTracking(200, $filter);
                 $rows = $result['rows'];
                 $counts = $result['counts'];
+                try {
+                    $draftTotal = $messages->pendingCount();
+                } catch (\Throwable $e) {
+                    $draftTotal = 0;
+                }
             } else {
                 $loadError = 'ERP SMS cannot be loaded. Set ERP_MESSAGES_HTTP_BASE or FINANCE_ERP_HTTP_BASE (erp-clients-api with /messages/sms routes), or enable OCI8 and ERP Oracle on this server.';
             }
@@ -76,6 +85,7 @@ class ErpMessagingController extends Controller
             'counts' => $counts,
             'filter' => $filter,
             'loadError' => $loadError,
+            'draftTotal' => $draftTotal,
             'erpSmsTransport' => $messages->activeTransport(),
         ]);
     }

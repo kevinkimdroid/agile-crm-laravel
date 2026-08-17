@@ -55,6 +55,7 @@ return [
         'settings.crm' => null,
         'settings.manage-users' => null,
         'compliance.complaints' => null, // IRA complaint register - compliance requirement
+        'ai.integration' => null,
     ],
 
     /*
@@ -93,6 +94,9 @@ return [
             ['key' => 'calendar', 'label' => 'Calendar', 'icon' => 'bi-calendar3', 'route' => 'activities.index'],
             ['key' => 'reports', 'label' => 'Reports', 'icon' => 'bi-file-text', 'route' => 'reports'],
             ['key' => 'settings', 'label' => 'Settings', 'icon' => 'bi-gear-fill', 'route' => 'settings'],
+        ],
+        'ai' => [
+            ['key' => 'ai.integration', 'label' => 'AI Integration', 'icon' => 'bi-stars', 'route' => 'ai.integration'],
         ],
     ],
 ];

@@ -110,8 +110,8 @@ return [
     */
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
-        'name' => env('MAIL_FROM_NAME', 'Example'),
+        'address' => env('MAIL_FROM_ADDRESS', env('EMAIL_SERVICE_SENDER', 'info@agilecraft.co.ke')),
+        'name' => env('MAIL_FROM_NAME', 'Kenya Orient CRM'),
     ],
 
 ];

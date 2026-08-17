@@ -18,11 +18,20 @@ class PlainTextMailSender
     }
 
     /**
-     * Deliver auth / password emails: Graph → SendGrid API → SMTP.
+     * Password / login emails: always from MAIL_FROM (info@agilecraft.co.ke).
+     * Skips Microsoft Graph / Geminia Outlook.
      */
-    public function sendForAuth(string $to, ?string $toName, string $subject, string $body): bool
+    public function sendForAuth(string $to, ?string $toName, string $subject, string $body, ?string $htmlBody = null): bool
     {
-        return $this->send($to, $toName, $subject, $body, []);
+        $this->lastError = null;
+        $useHtml = is_string($htmlBody) && trim($htmlBody) !== '';
+        $htmlOrText = $useHtml ? $htmlBody : $body;
+
+        if ($this->deliverViaSendGridApi($to, $toName, $subject, $htmlOrText, $useHtml)) {
+            return true;
+        }
+
+        return $this->deliverViaLaravelMail($to, $toName, $subject, $body, [], $htmlBody);
     }
 
     /**
@@ -38,9 +47,12 @@ class PlainTextMailSender
     /**
      * @param  array<int, array{name: string, contentType?: string, content: string}>  $attachments
      */
-    public function send(string $to, ?string $toName, string $subject, string $body, array $attachments = []): bool
+    public function send(string $to, ?string $toName, string $subject, string $body, array $attachments = [], ?string $htmlBody = null): bool
     {
         $this->lastError = null;
+        $useHtml = is_string($htmlBody) && trim($htmlBody) !== '';
+        $graphBody = $useHtml ? $htmlBody : $body;
+        $graphIsHtml = $useHtml;
 
         $graph = app(MicrosoftGraphMailService::class);
         $graphConfigured = $graph->isConfigured();
@@ -76,18 +88,18 @@ class PlainTextMailSender
         }
 
         if ($graphConfigured) {
-            if ($graph->sendMail($to, $toName, $subject, $body, false, [])) {
+            if ($graph->sendMail($to, $toName, $subject, $graphBody, $graphIsHtml, [])) {
                 return true;
             }
             $this->lastError = 'Graph: sendMail failed.';
             Log::warning('PlainTextMailSender: Graph send failed, trying SendGrid API / SMTP', ['to' => $to]);
         }
 
-        if ($this->deliverViaSendGridApi($to, $toName, $subject, $body, false)) {
+        if ($this->deliverViaSendGridApi($to, $toName, $subject, $graphBody, $graphIsHtml)) {
             return true;
         }
 
-        return $this->deliverViaLaravelMail($to, $toName, $subject, $body, []);
+        return $this->deliverViaLaravelMail($to, $toName, $subject, $body, [], $htmlBody);
     }
 
     protected function deliverViaSendGridApi(string $to, ?string $toName, string $subject, string $body, bool $bodyIsHtml): bool
@@ -109,7 +121,7 @@ class PlainTextMailSender
     /**
      * @param  array<int, array{name: string, contentType?: string, content: string}>  $attachments
      */
-    protected function deliverViaLaravelMail(string $to, ?string $toName, string $subject, string $body, array $attachments): bool
+    protected function deliverViaLaravelMail(string $to, ?string $toName, string $subject, string $body, array $attachments, ?string $htmlBody = null): bool
     {
         $mailer = config('mail.default');
         if ($mailer === 'log') {
@@ -118,13 +130,18 @@ class PlainTextMailSender
 
         $maxAttempts = max(1, (int) config('mass_broadcast.smtp_retry_attempts', 3));
         $retryDelayMs = max(100, (int) config('mass_broadcast.smtp_retry_delay_ms', 800));
+        $useHtml = is_string($htmlBody) && trim($htmlBody) !== '';
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             try {
                 Mail::purge($mailer);
                 $from = $this->mailFromAddress();
                 $fromName = config('mail.from.name', config('app.name'));
-                Mail::raw($body, function ($message) use ($to, $toName, $subject, $from, $fromName, $attachments) {
+                Mail::raw($body, function ($message) use ($to, $toName, $subject, $from, $fromName, $attachments, $body, $htmlBody, $useHtml) {
                     $message->to($to, $toName)->from($from, $fromName)->subject($subject);
+                    if ($useHtml) {
+                        $message->setBody($htmlBody, 'text/html');
+                        $message->addPart($body, 'text/plain');
+                    }
                     foreach ($attachments as $attachment) {
                         if (empty($attachment['name']) || ! isset($attachment['content'])) {
                             continue;
@@ -165,9 +182,10 @@ class PlainTextMailSender
 
     protected function mailFromAddress(): string
     {
-        $from = config('mail.from.address', config('email-service.sender', 'info@agilecraft.co.ke'));
+        $from = config('mail.from.address') ?: config('email-service.sender', 'info@agilecraft.co.ke');
+        $from = trim((string) $from, " \t\n\r\0\x0B\"'");
 
-        return trim((string) $from, " \t\n\r\0\x0B\"'");
+        return $from !== '' ? $from : 'info@agilecraft.co.ke';
     }
 
     /**

@@ -4,9 +4,14 @@
 
 @section('content')
 @php
+    $listLimit = $listLimit ?? 'all';
+    $listMax = (int) ($listMax ?? 5000);
+    $totalMatching = (int) ($totalMatching ?? 0);
     $hasListFilters = ($search ?? '') !== '' || ($clientType ?? 'all') !== 'all'
+        || ($listLimit !== 'all' && $listLimit !== '')
         || !empty($hideListEmailRecent) || !empty($hideListSmsRecent);
     $customerList = $customers ?? collect();
+    $duplicatesCollapsed = (int) ($duplicatesCollapsed ?? 0);
     $withEmailCount = 0;
     $withPhoneCount = 0;
     foreach ($customerList as $c) {
@@ -33,24 +38,23 @@
 @endphp
 
 <div class="bc-page">
-    {{-- Hero --}}
-    <div class="bc-hero mb-4">
-        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+    <div class="bc-hero mb-3">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
             <div>
-                <div class="bc-hero-icon mb-3"><i class="bi bi-broadcast"></i></div>
-                <h1 class="bc-hero-title mb-1">Email &amp; SMS broadcast</h1>
-                <p class="bc-hero-desc mb-0">Reach clients in a few steps — filter your audience, compose a message, pick recipients, and send.</p>
+                <h1 class="bc-hero-title mb-1">Broadcast</h1>
+                <p class="bc-hero-desc mb-0">Pick Email or SMS, choose people, write the message, send.</p>
             </div>
-            <div class="d-flex flex-wrap gap-2">
-                <a href="{{ route('tools.email-templates.create', ['module' => 'Broadcast', 'return' => 'broadcast']) }}" class="btn btn-light btn-sm fw-semibold">
-                    <i class="bi bi-envelope-plus me-1"></i>Email template
-                </a>
-                <a href="{{ route('tools.email-templates.create', ['module' => 'Broadcast SMS', 'return' => 'broadcast']) }}" class="btn btn-sm fw-semibold bc-hero-sms-btn">
-                    <i class="bi bi-chat-square-text me-1"></i>SMS template
-                </a>
-                <a href="{{ route('marketing') }}" class="btn btn-outline-light btn-sm">
-                    <i class="bi bi-arrow-left me-1"></i>Marketing
-                </a>
+            <div class="d-flex flex-wrap gap-2 bc-hero-stats">
+                <span class="bc-chip"><strong>{{ number_format($customerList->count()) }}</strong> people
+                    @if ($duplicatesCollapsed > 0)
+                        <span class="opacity-75">· {{ number_format($duplicatesCollapsed) }} merged</span>
+                    @elseif ($totalMatching > $customerList->count())
+                        <span class="opacity-75">of {{ number_format($totalMatching) }}</span>
+                    @endif
+                </span>
+                <span class="bc-chip bc-chip-email"><i class="bi bi-envelope"></i> {{ number_format($withEmailCount) }} email</span>
+                <span class="bc-chip bc-chip-sms"><i class="bi bi-phone"></i> {{ number_format($withPhoneCount) }} phone</span>
+                <span class="bc-chip bc-chip-pick"><strong id="bcStatSelected">0</strong> selected</span>
             </div>
         </div>
     </div>
@@ -84,159 +88,76 @@
         </div>
     @endif
 
-    {{-- Live stats --}}
-    <div class="row g-3 mb-4">
-        <div class="col-6 col-lg-3">
-            <div class="bc-stat">
-                <span class="bc-stat-label">In list</span>
-                <span class="bc-stat-value">{{ number_format($customerList->count()) }}</span>
-                <span class="bc-stat-hint">Max {{ $maxRecipients ?? 500 }} per send</span>
+    {{-- Find people --}}
+    <form method="GET" action="{{ route('marketing.broadcast') }}" id="bcFilterForm" class="bc-filter-bar mb-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label fw-semibold small mb-1" for="bcSearchInput">Search</label>
+                <input type="search" name="search" id="bcSearchInput" class="form-control form-control-sm"
+                    value="{{ $search ?? '' }}" placeholder="Name, policy, email, or phone">
             </div>
-        </div>
-        <div class="col-6 col-lg-3">
-            <div class="bc-stat bc-stat-email">
-                <span class="bc-stat-label"><i class="bi bi-envelope me-1"></i>With email</span>
-                <span class="bc-stat-value">{{ number_format($withEmailCount) }}</span>
-                <span class="bc-stat-hint">Mass email ready</span>
+            <div class="col-md-4">
+                <label class="form-label fw-semibold small mb-1" for="bcClientTypeFilter">Segment</label>
+                <select name="client_type" id="bcClientTypeFilter" class="form-select form-select-sm">
+                    <option value="all" {{ ($clientType ?? 'all') === 'all' ? 'selected' : '' }}>All contacts</option>
+                    @if (!empty($broadcastUsesErpClients) && !empty($lifeSystemOptions))
+                        <optgroup label="Support → Clients">
+                            @foreach ($lifeSystemOptions as $opt)
+                                <option value="{{ $opt['value'] }}" {{ ($clientType ?? '') === $opt['value'] ? 'selected' : '' }}>{{ $opt['label'] }}</option>
+                            @endforeach
+                        </optgroup>
+                    @endif
+                    @foreach ($recordSources ?? [] as $src)
+                        @php $sv = 's|' . $src; @endphp
+                        <option value="{{ $sv }}" {{ ($clientType ?? '') === $sv ? 'selected' : '' }}>Record source: {{ $src }}</option>
+                    @endforeach
+                    @foreach ($contactTypeValues ?? [] as $tv)
+                        @php $tvv = 't|' . $tv; @endphp
+                        <option value="{{ $tvv }}" {{ ($clientType ?? '') === $tvv ? 'selected' : '' }}>Vtiger field: {{ $tv }}</option>
+                    @endforeach
+                </select>
             </div>
-        </div>
-        <div class="col-6 col-lg-3">
-            <div class="bc-stat bc-stat-sms">
-                <span class="bc-stat-label"><i class="bi bi-chat-dots me-1"></i>With phone</span>
-                <span class="bc-stat-value">{{ number_format($withPhoneCount) }}</span>
-                <span class="bc-stat-hint">Mass SMS ready</span>
+            <div class="col-md-2">
+                <label class="form-label fw-semibold small mb-1" for="bcListLimit">Show</label>
+                <select name="limit" id="bcListLimit" class="form-select form-select-sm">
+                    @foreach ([250, 500, 1000] as $n)
+                        @if ($n <= $listMax)
+                            <option value="{{ $n }}" {{ (string) $listLimit === (string) $n ? 'selected' : '' }}>{{ number_format($n) }}</option>
+                        @endif
+                    @endforeach
+                    <option value="all" {{ $listLimit === 'all' ? 'selected' : '' }}>All</option>
+                </select>
             </div>
-        </div>
-        <div class="col-6 col-lg-3">
-            <div class="bc-stat bc-stat-highlight">
-                <span class="bc-stat-label">Selected</span>
-                <span class="bc-stat-value" id="bcStatSelected">0</span>
-                <span class="bc-stat-hint">+ optional file upload</span>
-            </div>
-        </div>
-    </div>
-
-    {{-- Step 1: Audience --}}
-    <section class="bc-step mb-4">
-        <div class="bc-step-head">
-            <span class="bc-step-num">1</span>
-            <div>
-                <h2 class="bc-step-title">Find your audience</h2>
-                <p class="bc-step-desc mb-0">Search and filter contacts, then apply to refresh the list below.</p>
-            </div>
-        </div>
-        <div class="card bc-card">
-            <div class="card-body">
-                <form method="GET" action="{{ route('marketing.broadcast') }}" id="bcFilterForm">
-                    <div class="row g-3 align-items-end">
-                        <div class="col-md-5">
-                            <label class="form-label fw-semibold small" for="bcSearchInput">
-                                <i class="bi bi-search me-1 text-muted"></i>Search
-                            </label>
-                            <input type="search" name="search" id="bcSearchInput" class="form-control"
-                                value="{{ $search ?? '' }}" placeholder="Name, policy, email, or phone">
-                        </div>
-                        <div class="col-md-5">
-                            <label class="form-label fw-semibold small" for="bcClientTypeFilter">
-                                <i class="bi bi-funnel me-1 text-muted"></i>Segment
-                            </label>
-                            <select name="client_type" id="bcClientTypeFilter" class="form-select">
-                                <option value="all" {{ ($clientType ?? 'all') === 'all' ? 'selected' : '' }}>All contacts</option>
-                                @if (!empty($broadcastUsesErpClients) && !empty($lifeSystemOptions))
-                                    <optgroup label="Support → Clients">
-                                        @foreach ($lifeSystemOptions as $opt)
-                                            <option value="{{ $opt['value'] }}" {{ ($clientType ?? '') === $opt['value'] ? 'selected' : '' }}>{{ $opt['label'] }}</option>
-                                        @endforeach
-                                    </optgroup>
-                                @endif
-                                @foreach ($recordSources ?? [] as $src)
-                                    @php $sv = 's|' . $src; @endphp
-                                    <option value="{{ $sv }}" {{ ($clientType ?? '') === $sv ? 'selected' : '' }}>Record source: {{ $src }}</option>
-                                @endforeach
-                                @foreach ($contactTypeValues ?? [] as $tv)
-                                    @php $tvv = 't|' . $tv; @endphp
-                                    <option value="{{ $tvv }}" {{ ($clientType ?? '') === $tvv ? 'selected' : '' }}>Vtiger field: {{ $tv }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="col-md-2 d-flex gap-2">
-                            <button type="submit" class="btn btn-primary-custom flex-grow-1">
-                                <i class="bi bi-funnel-fill me-1"></i>Apply
-                            </button>
-                            @if ($hasListFilters)
-                                <a href="{{ route('marketing.broadcast') }}" class="btn btn-outline-secondary" title="Clear filters">
-                                    <i class="bi bi-x-lg"></i>
-                                </a>
-                            @endif
-                        </div>
-                    </div>
-
-                    <div class="bc-filter-extras mt-3 pt-3 border-top">
-                        <button class="btn btn-link btn-sm text-decoration-none p-0 bc-toggle-advanced" type="button"
-                            data-bs-toggle="collapse" data-bs-target="#bcAdvancedFilters" aria-expanded="{{ $hasListFilters ? 'true' : 'false' }}">
-                            <i class="bi bi-sliders me-1"></i>Duplicate protection on list
-                            <i class="bi bi-chevron-down small ms-1"></i>
-                        </button>
-                        <div class="collapse {{ $hasListFilters ? 'show' : '' }} mt-2" id="bcAdvancedFilters">
-                            <div class="row g-2">
-                                <div class="col-md-6">
-                                    <div class="bc-toggle-card">
-                                        <div class="form-check form-switch mb-0">
-                                            <input type="checkbox" class="form-check-input" name="hide_list_email_recent" value="1" id="hideListEmailRecent"
-                                                @checked(!empty($hideListEmailRecent)) @disabled(empty($broadcastHistoryReady))>
-                                            <label class="form-check-label" for="hideListEmailRecent">
-                                                Hide recent mass <strong>email</strong> recipients ({{ (int) ($skipRecentDays ?? 14) }} days)
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="bc-toggle-card">
-                                        <div class="form-check form-switch mb-0">
-                                            <input type="checkbox" class="form-check-input" name="hide_list_sms_recent" value="1" id="hideListSmsRecent"
-                                                @checked(!empty($hideListSmsRecent)) @disabled(empty($broadcastHistoryReady))>
-                                            <label class="form-check-label" for="hideListSmsRecent">
-                                                Hide recent mass <strong>SMS</strong> recipients ({{ (int) ($skipRecentDays ?? 14) }} days)
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </form>
-
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-sm btn-primary-custom flex-grow-1">Show</button>
                 @if ($hasListFilters)
-                    <div class="bc-active-filters mt-3">
-                        <span class="small text-muted me-1">Active:</span>
-                        @if (($search ?? '') !== '')
-                            <span class="bc-filter-chip">Search: {{ Str::limit($search, 40) }}</span>
-                        @endif
-                        @if (($clientType ?? 'all') !== 'all')
-                            <span class="bc-filter-chip">Segment filter</span>
-                        @endif
-                        @if (!empty($hideListEmailRecent))
-                            <span class="bc-filter-chip">No recent email</span>
-                        @endif
-                        @if (!empty($hideListSmsRecent))
-                            <span class="bc-filter-chip">No recent SMS</span>
-                        @endif
-                    </div>
-                @endif
-
-                @if (!empty($duplicatesCollapsed))
-                    <p class="small text-muted mb-0 mt-2">
-                        <i class="bi bi-layers me-1"></i>Merged {{ (int) $duplicatesCollapsed }} duplicate row(s) with matching email/phone.
-                    </p>
+                    <a href="{{ route('marketing.broadcast') }}" class="btn btn-sm btn-outline-secondary" title="Clear filters">
+                        <i class="bi bi-x-lg"></i>
+                    </a>
                 @endif
             </div>
         </div>
-    </section>
+        <div class="d-flex flex-wrap gap-3 mt-2">
+            <div class="form-check form-switch mb-0">
+                <input type="checkbox" class="form-check-input" name="hide_list_email_recent" value="1" id="hideListEmailRecent"
+                    {{ !empty($hideListEmailRecent) ? 'checked' : '' }} {{ empty($broadcastHistoryReady) ? 'disabled' : '' }}>
+                <label class="form-check-label small" for="hideListEmailRecent">Hide recent email</label>
+            </div>
+            <div class="form-check form-switch mb-0">
+                <input type="checkbox" class="form-check-input" name="hide_list_sms_recent" value="1" id="hideListSmsRecent"
+                    {{ !empty($hideListSmsRecent) ? 'checked' : '' }} {{ empty($broadcastHistoryReady) ? 'disabled' : '' }}>
+                <label class="form-check-label small" for="hideListSmsRecent">Hide recent SMS</label>
+            </div>
+        </div>
+    </form>
 
     <form method="POST" action="{{ route('marketing.broadcast.send') }}" id="broadcastForm" enctype="multipart/form-data">
         @csrf
         <input type="hidden" name="search" value="{{ $search ?? '' }}">
         <input type="hidden" name="client_type" id="bcSendClientType" value="{{ old('client_type', $clientType ?? 'all') }}">
+        @if (($listLimit ?? 'all') !== 'all')
+            <input type="hidden" name="limit" value="{{ $listLimit }}">
+        @endif
         @if (!empty($hideListEmailRecent))
             <input type="hidden" name="hide_list_email_recent" value="1">
         @endif
@@ -244,329 +165,192 @@
             <input type="hidden" name="hide_list_sms_recent" value="1">
         @endif
 
-        {{-- Step 2: Compose --}}
-        <section class="bc-step mb-4" id="bcComposeStep">
-            <div class="bc-step-head mb-3">
-                <span class="bc-step-num">2</span>
-                <div>
-                    <h2 class="bc-step-title">Compose your message</h2>
-                    <p class="bc-step-desc mb-0">Pick a channel — email and SMS use separate templates and content.</p>
+        <div class="bc-channel-cards mb-3" role="tablist">
+            <button type="button" class="bc-channel-card bc-channel-card-email active" id="tab-email"
+                data-bs-toggle="tab" data-bs-target="#pane-email" role="tab" data-channel="email" aria-selected="true">
+                <div class="bc-channel-card-icon"><i class="bi bi-envelope-fill"></i></div>
+                <div class="bc-channel-card-text">
+                    <strong>Email</strong>
+                    <span>Write and send</span>
                 </div>
-            </div>
-
-            <div class="bc-channel-cards mb-4" role="tablist">
-                <button type="button" class="bc-channel-card bc-channel-card-email active" id="tab-email"
-                    data-bs-toggle="tab" data-bs-target="#pane-email" role="tab" data-channel="email" aria-selected="true">
-                    <div class="bc-channel-card-icon"><i class="bi bi-envelope-fill"></i></div>
-                    <div class="bc-channel-card-text">
-                        <strong>Mass Email</strong>
-                        <span>Subject, plain-text body &amp; optional attachment</span>
-                    </div>
-                    <span class="bc-channel-card-badge">{{ number_format($withEmailCount) }} with email</span>
-                </button>
-                <button type="button" class="bc-channel-card bc-channel-card-sms" id="tab-sms"
-                    data-bs-toggle="tab" data-bs-target="#pane-sms" role="tab" data-channel="sms" aria-selected="false">
-                    <div class="bc-channel-card-icon"><i class="bi bi-chat-dots-fill"></i></div>
-                    <div class="bc-channel-card-text">
-                        <strong>Mass SMS</strong>
-                        <span>Short text via Advanta · max 1600 characters</span>
-                    </div>
-                    <span class="bc-channel-card-badge">{{ number_format($withPhoneCount) }} with phone</span>
-                </button>
-            </div>
+                <span class="bc-channel-card-badge">{{ number_format($withEmailCount) }} ready</span>
+            </button>
+            <button type="button" class="bc-channel-card bc-channel-card-sms" id="tab-sms"
+                data-bs-toggle="tab" data-bs-target="#pane-sms" role="tab" data-channel="sms" aria-selected="false">
+                <div class="bc-channel-card-icon"><i class="bi bi-chat-dots-fill"></i></div>
+                <div class="bc-channel-card-text">
+                    <strong>SMS</strong>
+                    <span>Short text message</span>
+                </div>
+                <span class="bc-channel-card-badge">{{ number_format($withPhoneCount) }} ready</span>
+            </button>
+        </div>
 
             <input type="hidden" name="channel" id="broadcastChannel" value="email">
 
+            <div class="bc-workspace">
+            <div class="bc-compose">
             <div class="tab-content">
                 <div class="tab-pane fade show active" id="pane-email" role="tabpanel">
-                    <div class="bc-pane-banner bc-pane-banner-email mb-0">
-                        <i class="bi bi-envelope-fill"></i>
-                        <div>
-                            <strong>Email broadcast</strong>
-                            <span>Microsoft Graph / SMTP · plain text · personalization tokens supported</span>
-                        </div>
-                    </div>
-                    <div class="card bc-composer-card bc-composer-email border-0 shadow-sm overflow-hidden">
-                        <div class="row g-0">
-                            <div class="col-lg-4 bc-tpl-sidebar text-white p-4 d-flex flex-column">
-                                <div class="d-flex align-items-center gap-2 mb-2">
-                                    <span class="bc-tpl-badge bc-tpl-badge-email">EMAIL</span>
-                                    <span class="small opacity-75">{{ ($emailAdvertTemplates ?? collect())->count() }} saved</span>
+                    @php
+                        $emailTplList = $emailAdvertTemplates ?? collect();
+                        $emailTplEmpty = $emailTplList->isEmpty();
+                        $emailMergeTokens = [
+                            ['token' => '{{'.'firstname}}', 'label' => 'First name'],
+                            ['token' => '{{'.'name}}', 'label' => 'Full name'],
+                            ['token' => '{{'.'email}}', 'label' => 'Email'],
+                        ];
+                    @endphp
+                    <div class="card bc-card bc-composer-card bc-letter-card">
+                        <div class="card-body p-0">
+                            <div class="bc-letter-head">
+                                <div>
+                                    <span class="bc-letter-kicker">New email</span>
+                                    <strong>Kenya Orient</strong>
                                 </div>
-                                <h3 class="h6 text-white mb-1">Email template library</h3>
-                                <p class="small opacity-90 mb-3">Modules <strong>Broadcast</strong> or <strong>Marketing</strong></p>
-                                @php $emailTplList = $emailAdvertTemplates ?? collect(); @endphp
-                                @if ($emailTplList->isEmpty())
-                                    <div class="rounded-3 small mb-3 p-3" style="background: rgba(255,255,255,.12);">No email templates yet. Create one below.</div>
-                                @endif
-                                <label class="form-label small mb-1 opacity-75" for="bcEmailTemplateSelect">Load template</label>
-                                <select id="bcEmailTemplateSelect" class="form-select form-select-sm mb-2" @disabled($emailTplList->isEmpty())>
-                                    <option value="">Choose a template…</option>
+                                <span class="bc-letter-stamp"><i class="bi bi-envelope-heart"></i></span>
+                            </div>
+                            <div class="p-3">
+                            <div class="bc-tpl-bar mb-3">
+                                <select id="bcEmailTemplateSelect" class="form-select form-select-sm" {{ $emailTplEmpty ? 'disabled' : '' }}>
+                                    <option value="">Email template…</option>
                                     @foreach ($emailTplList as $tpl)
                                         <option value="{{ $tpl->id }}">{{ $tpl->template_name }}</option>
                                     @endforeach
                                 </select>
-                                <p class="small opacity-90 mb-3 flex-grow-1" id="bcEmailTemplateHint">Select a template to preview its description.</p>
-                                <div class="d-grid gap-2">
-                                    <button type="button" class="btn btn-light btn-sm fw-semibold" id="bcApplyEmailTemplate" @disabled($emailTplList->isEmpty())>
-                                        <i class="bi bi-arrow-down-circle me-1"></i>Apply to composer
-                                    </button>
-                                    <div class="d-flex gap-2">
-                                        <button type="button" class="btn btn-sm btn-outline-light flex-fill" id="bcOpenEmailTplModal">
-                                            <i class="bi bi-plus-lg me-1"></i>New
-                                        </button>
-                                        <button type="button" class="btn btn-sm btn-outline-light flex-fill" id="bcSaveEmailAsTpl">
-                                            <i class="bi bi-bookmark-plus me-1"></i>Save current
-                                        </button>
-                                    </div>
-                                    <button type="button" class="btn btn-sm btn-outline-light" id="loadPensionTemplate">Quick: 2025 Pension</button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="bcApplyEmailTemplate" {{ $emailTplEmpty ? 'disabled' : '' }}>Use</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="bcSaveEmailAsTpl">Save</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="bcOpenEmailTplModal">New</button>
+                                <button type="button" class="btn btn-sm btn-link" id="loadPensionTemplate">Pension 2025</button>
+                            </div>
+                            <p class="small text-muted mb-2" id="bcEmailTemplateHint">Load a saved template or write a new message.</p>
+                            <div class="mb-2">
+                                <label class="form-label fw-semibold small mb-1" for="broadcastSubject">Subject <span class="text-danger">*</span></label>
+                                <input type="text" name="subject" id="broadcastSubject" class="form-control bc-email-field"
+                                    value="{{ old('subject') }}" maxlength="200" placeholder="e.g. Important update from Kenya Orient">
+                                @error('subject')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label fw-semibold small mb-0" for="broadcastBody">Message <span class="text-danger">*</span></label>
+                                <button type="button" class="btn btn-link btn-sm p-0" id="clearEmailTemplate">Clear</button>
+                            </div>
+                            <textarea name="body" id="broadcastBody" class="form-control bc-email-field bc-letter-body" rows="7"
+                                placeholder="Write like a letter. Insert first name or full name below.">{{ old('body') }}</textarea>
+                            @error('body')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                            <div class="d-flex flex-wrap gap-1 mt-2 mb-2">
+                                @foreach ($emailMergeTokens as $tok)
+                                    <button type="button" class="btn btn-sm bc-token-chip bc-insert-token" data-target="broadcastBody" data-token="{{ $tok['token'] }}">{{ $tok['label'] }}</button>
+                                @endforeach
+                            </div>
+                            <label class="form-label fw-semibold small mb-1" for="emailAttachmentInput">Attachment (optional)</label>
+                            <input type="file" name="email_attachment" id="emailAttachmentInput" class="form-control form-control-sm"
+                                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.ppt,.pptx">
+                            <div class="bc-email-mockup mt-3">
+                                <div class="bc-email-mockup-bar">
+                                    <span class="bc-email-mockup-dot"></span>
+                                    <span class="bc-email-mockup-dot"></span>
+                                    <span class="bc-email-mockup-dot"></span>
+                                </div>
+                                <div class="bc-email-mockup-body">
+                                    <div class="bc-email-mockup-subject" id="bcPreviewSubject">Subject line…</div>
+                                    <div class="bc-email-mockup-content small" id="bcEmailPreview">Start typing to see a preview with sample names.</div>
                                 </div>
                             </div>
-                            <div class="col-lg-8 p-4 bg-body">
-                                <div class="row g-3">
-                                    <div class="col-lg-7">
-                                        <div class="mb-3">
-                                            <label class="form-label fw-semibold" for="broadcastSubject">Subject <span class="text-danger">*</span></label>
-                                            <input type="text" name="subject" id="broadcastSubject" class="form-control form-control-lg bc-email-field"
-                                                value="{{ old('subject') }}" maxlength="200" placeholder="e.g. Important update from Kenya Orient">
-                                            @error('subject')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
-                                        </div>
-                                        <div>
-                                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                                <label class="form-label fw-semibold mb-0" for="broadcastBody">Message <span class="text-danger">*</span></label>
-                                                <button type="button" class="btn btn-link btn-sm p-0" id="clearEmailTemplate">Clear</button>
-                                            </div>
-                                            <textarea name="body" id="broadcastBody" class="form-control bc-email-field" rows="9"
-                                                placeholder="Plain text. Placeholders: @{{first_name}}, @{{firstname}}, @{{last_name}}, @{{name}}, @{{email}}">{{ old('body') }}</textarea>
-                                            @error('body')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
-                                            <div class="d-flex flex-wrap gap-1 mt-2">
-                                                @foreach (['{{firstname}}', '{{first_name}}', '{{name}}', '{{email}}'] as $tok)
-                                                    <button type="button" class="btn btn-sm btn-outline-secondary bc-insert-token" data-target="broadcastBody" data-token="{{ $tok }}">{{ $tok }}</button>
-                                                @endforeach
-                                            </div>
-                                        </div>
-                                        <div class="mt-3">
-                                            <label class="form-label fw-semibold" for="emailAttachmentInput">
-                                                <i class="bi bi-paperclip me-1"></i>Attachment <span class="text-muted fw-normal">(optional)</span>
-                                            </label>
-                                            <input type="file" name="email_attachment" id="emailAttachmentInput" class="form-control"
-                                                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.ppt,.pptx">
-                                            <small class="text-muted d-block mt-1">PDF, Word, Excel, etc. Max 10MB.</small>
-                                            @error('email_attachment')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
-                                        </div>
-                                    </div>
-                                    <div class="col-lg-5">
-                                        <span class="small text-muted d-block mb-2"><i class="bi bi-eye me-1"></i>Live preview</span>
-                                        <div class="bc-email-mockup">
-                                            <div class="bc-email-mockup-bar">
-                                                <span class="bc-email-mockup-dot"></span>
-                                                <span class="bc-email-mockup-dot"></span>
-                                                <span class="bc-email-mockup-dot"></span>
-                                            </div>
-                                            <div class="bc-email-mockup-body">
-                                                <div class="bc-email-mockup-subject" id="bcPreviewSubject">Subject line…</div>
-                                                <div class="bc-email-mockup-content small" id="bcEmailPreview">Start typing to see a preview with sample names.</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="tab-pane fade" id="pane-sms" role="tabpanel">
-                    @php $smsTplList = $smsAdvertTemplates ?? collect(); @endphp
-                    <div class="bc-pane-banner bc-pane-banner-sms mb-0">
-                        <i class="bi bi-chat-dots-fill"></i>
-                        <div>
-                            <strong>SMS broadcast</strong>
-                            <span>Advanta SMS · numbers normalized to 254… · ~160 chars per segment</span>
-                        </div>
-                    </div>
-                    <div class="card bc-composer-card bc-composer-sms border-0 shadow-sm overflow-hidden">
-                        <div class="row g-0">
-                            <div class="col-lg-4 bc-tpl-sidebar bc-tpl-sidebar-sms text-white p-4 d-flex flex-column">
-                                <div class="d-flex align-items-center gap-2 mb-2">
-                                    <span class="bc-tpl-badge bc-tpl-badge-sms">SMS</span>
-                                    <span class="small opacity-75">{{ $smsTplList->count() }} saved</span>
-                                </div>
-                                <h3 class="h6 text-white mb-1">SMS template library</h3>
-                                <p class="small opacity-90 mb-3">Module <strong>Broadcast SMS</strong> only</p>
-                                @if ($smsTplList->isEmpty())
-                                    <div class="rounded-3 small mb-3 p-3" style="background: rgba(255,255,255,.12);">No SMS templates yet. Create one below.</div>
-                                @endif
-                                <label class="form-label small mb-1 opacity-75" for="bcSmsTemplateSelect">Load template</label>
-                                <select id="bcSmsTemplateSelect" class="form-select form-select-sm mb-2" @disabled($smsTplList->isEmpty())>
-                                    <option value="">Choose a template…</option>
+                    @php
+                        $smsTplList = $smsAdvertTemplates ?? collect();
+                        $smsTplEmpty = $smsTplList->isEmpty();
+                        $smsMergeTokens = [
+                            ['token' => '{{'.'firstname}}', 'label' => 'First name'],
+                            ['token' => '{{'.'name}}', 'label' => 'Full name'],
+                        ];
+                    @endphp
+                    <div class="card bc-card bc-composer-card bc-sms-card">
+                        <div class="card-body p-3">
+                            <div class="bc-tpl-bar mb-3">
+                                <select id="bcSmsTemplateSelect" class="form-select form-select-sm" {{ $smsTplEmpty ? 'disabled' : '' }}>
+                                    <option value="">SMS template…</option>
                                     @foreach ($smsTplList as $tpl)
                                         <option value="{{ $tpl->id }}">{{ $tpl->template_name }}</option>
                                     @endforeach
                                 </select>
-                                <p class="small opacity-90 mb-3 flex-grow-1" id="bcSmsTemplateHint">Select a template to preview its description.</p>
-                                <div class="d-grid gap-2 mt-auto">
-                                    <button type="button" class="btn btn-light btn-sm fw-semibold" id="bcApplySmsTemplate" @disabled($smsTplList->isEmpty())>
-                                        <i class="bi bi-arrow-down-circle me-1"></i>Apply to composer
-                                    </button>
-                                    <div class="d-flex gap-2">
-                                        <button type="button" class="btn btn-sm btn-outline-light flex-fill" id="bcOpenSmsTplModal">
-                                            <i class="bi bi-plus-lg me-1"></i>New
-                                        </button>
-                                        <button type="button" class="btn btn-sm btn-outline-light flex-fill" id="bcSaveSmsAsTpl">
-                                            <i class="bi bi-bookmark-plus me-1"></i>Save current
-                                        </button>
-                                    </div>
-                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-success" id="bcApplySmsTemplate" {{ $smsTplEmpty ? 'disabled' : '' }}>Use</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="bcSaveSmsAsTpl">Save</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="bcOpenSmsTplModal">New</button>
                             </div>
-                            <div class="col-lg-8 p-4 bg-body">
-                                <div class="row g-3">
-                                    <div class="col-lg-7">
-                                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                                            <label class="form-label fw-semibold mb-0" for="broadcastSmsMessage">SMS text <span class="text-danger">*</span></label>
-                                            <span class="badge rounded-pill bc-sms-segments" id="bcSmsCharCount">0 / 1600</span>
-                                        </div>
-                                        <textarea name="message" id="broadcastSmsMessage" class="form-control bc-sms-field" rows="8" maxlength="1600"
-                                            placeholder="Keep it short and clear. Long messages split into multiple SMS segments.">{{ old('message') }}</textarea>
-                                        @error('message')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
-                                        <div class="d-flex flex-wrap gap-1 mt-2">
-                                            @foreach (['{{firstname}}', '{{name}}'] as $tok)
-                                                <button type="button" class="btn btn-sm btn-outline-secondary bc-insert-token" data-target="broadcastSmsMessage" data-token="{{ $tok }}">{{ $tok }}</button>
-                                            @endforeach
-                                        </div>
-                                    </div>
-                                    <div class="col-lg-5 d-flex justify-content-center">
-                                        <div class="bc-phone-mockup">
-                                            <div class="bc-phone-notch"></div>
-                                            <div class="bc-phone-screen">
-                                                <div class="bc-phone-header">Kenya Orient</div>
-                                                <div class="bc-phone-bubble" id="bcSmsPreview">Your SMS preview appears here…</div>
-                                                <div class="bc-phone-time small text-muted" id="bcSmsSegmentsHint">1 segment</div>
-                                            </div>
-                                        </div>
-                                    </div>
+                            <p class="small text-muted mb-2" id="bcSmsTemplateHint">Load a saved SMS or type a new one.</p>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label fw-semibold small mb-0" for="broadcastSmsMessage">SMS text <span class="text-danger">*</span></label>
+                                <span class="badge rounded-pill bc-sms-segments" id="bcSmsCharCount">0 / 1600</span>
+                            </div>
+                            <textarea name="message" id="broadcastSmsMessage" class="form-control bc-sms-field" rows="6" maxlength="1600"
+                                placeholder="Keep it short. Long texts split into extra SMS.">{{ old('message') }}</textarea>
+                            @error('message')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                            <div class="d-flex flex-wrap gap-1 mt-2 mb-3">
+                                @foreach ($smsMergeTokens as $tok)
+                                    <button type="button" class="btn btn-sm bc-token-chip bc-insert-token" data-target="broadcastSmsMessage" data-token="{{ $tok['token'] }}">{{ $tok['label'] }}</button>
+                                @endforeach
+                            </div>
+                            <div class="bc-phone-mockup mx-auto">
+                                <div class="bc-phone-notch"></div>
+                                <div class="bc-phone-screen">
+                                    <div class="bc-phone-header">Kenya Orient</div>
+                                    <div class="bc-phone-bubble" id="bcSmsPreview">Your SMS preview appears here…</div>
+                                    <div class="bc-phone-time small text-muted" id="bcSmsSegmentsHint">1 segment</div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </section>
-
-        {{-- Step 3: Recipients --}}
-        <section class="bc-step mb-4">
-            <div class="bc-step-head">
-                <span class="bc-step-num">3</span>
-                <div>
-                    <h2 class="bc-step-title">Choose recipients</h2>
-                    <p class="bc-step-desc mb-0">Tick contacts in the table, upload a file, or both — then review and send.</p>
-                </div>
             </div>
 
-            <div class="row g-3 mb-3">
-                <div class="col-lg-6">
-                    <div class="card bc-card h-100">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                                <label class="form-label fw-semibold mb-0">
-                                    <i class="bi bi-file-earmark-spreadsheet me-1 text-primary"></i>Upload list
-                                </label>
-                                <a href="{{ route('marketing.broadcast.template') }}" class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-download me-1"></i>Template
-                                </a>
-                            </div>
-                            <div class="bc-upload-zone" id="bcUploadZone">
-                                <input type="file" name="recipients_file" id="bcRecipientsFile" class="bc-upload-input"
-                                    accept=".xlsx,.xls,.csv,.txt">
-                                <i class="bi bi-cloud-arrow-up bc-upload-icon"></i>
-                                <span class="bc-upload-text">Drop Excel/CSV here or click to browse</span>
-                                <span class="bc-upload-meta small text-muted">Contact ID, Email, Policy, or Mobile columns · up to {{ $excelMaxRows ?? 5000 }} rows</span>
-                                <span class="bc-upload-filename small fw-semibold text-primary" id="bcUploadFilename" hidden></span>
-                            </div>
-                            @error('recipients_file')<div class="invalid-feedback d-block mt-2">{{ $message }}</div>@enderror
-                        </div>
-                    </div>
-                </div>
-                <div class="col-lg-6">
-                    <div class="card bc-card h-100">
-                        <div class="card-body">
-                            <label class="form-label fw-semibold mb-2">
-                                <i class="bi bi-shield-check me-1 text-primary"></i>Send options
-                            </label>
-                            <input type="hidden" name="skip_recent_sends" value="0">
-                            <div class="bc-toggle-card mb-2">
-                                <div class="form-check form-switch mb-0">
-                                    <input type="checkbox" class="form-check-input" name="skip_recent_sends" id="skipRecentSends" value="1"
-                                        @checked((string) old('skip_recent_sends', '1') !== '0')
-                                        @disabled(empty($broadcastHistoryReady))>
-                                    <label class="form-check-label" for="skipRecentSends">
-                                        <strong>Skip duplicate sends</strong>
-                                        <span class="d-block small text-muted">Skip contacts who got a mass <span id="skipChannelLabel">email</span> in the last {{ (int) ($skipRecentDays ?? 14) }} days</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <details class="small mt-2">
-                                <summary class="text-muted" style="cursor:pointer">Advanced: override segment on send</summary>
-                                <select class="form-select form-select-sm mt-2" id="bcSendClientTypeOverride">
-                                    <option value="">Same as list filter</option>
-                                    <option value="all">All (no extra filter)</option>
-                                    @if (!empty($broadcastUsesErpClients) && !empty($lifeSystemOptions))
-                                        @foreach ($lifeSystemOptions as $opt)
-                                            <option value="{{ $opt['value'] }}">{{ $opt['label'] }}</option>
-                                        @endforeach
-                                    @endif
-                                    @foreach ($recordSources ?? [] as $src)
-                                        @php $sv = 's|' . $src; @endphp
-                                        <option value="{{ $sv }}">Record source: {{ $src }}</option>
-                                    @endforeach
-                                    @foreach ($contactTypeValues ?? [] as $tv)
-                                        @php $tvv = 't|' . $tv; @endphp
-                                        <option value="{{ $tvv }}">Vtiger field: {{ $tv }}</option>
-                                    @endforeach
-                                </select>
-                                <span class="text-muted d-block mt-1">Uploaded file rows must match this segment or they are skipped.</span>
-                            </details>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card bc-card mb-4">
+        {{-- Recipients --}}
+        <section class="bc-people">
+            <div class="card bc-card">
                 <div class="card-header bc-recipients-head">
                     <div class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
-                        <span class="fw-semibold"><i class="bi bi-people me-1"></i>Contact list</span>
-                        <span class="badge bg-light text-dark border" id="bcVisibleCount">{{ $customerList->count() }} shown</span>
+                        <span class="fw-semibold"><i class="bi bi-people me-1"></i>Audience</span>
+                        <span class="badge bg-light text-dark border" id="bcVisibleCount">{{ $customerList->count() }} people</span>
+                        @if ($duplicatesCollapsed > 0)
+                            <span class="small text-muted">{{ $duplicatesCollapsed }} duplicate{{ $duplicatesCollapsed === 1 ? '' : 's' }} merged</span>
+                        @elseif ($totalMatching > $customerList->count())
+                            <span class="small text-muted">of {{ number_format($totalMatching) }} matching</span>
+                        @endif
                     </div>
                     <div class="d-flex flex-wrap gap-2 align-items-center">
                         <div class="input-group input-group-sm bc-table-search">
                             <span class="input-group-text"><i class="bi bi-search"></i></span>
-                            <input type="search" class="form-control" id="bcTableSearch" placeholder="Filter table…" autocomplete="off">
+                            <input type="search" class="form-control" id="bcTableSearch" placeholder="Find a person…" autocomplete="off">
                         </div>
-                        <div class="btn-group btn-group-sm">
-                            <button type="button" class="btn btn-outline-primary" id="bcSelectAllEmail" title="Select all with email">
-                                <i class="bi bi-envelope-check"></i><span class="d-none d-md-inline ms-1">Email</span>
-                            </button>
-                            <button type="button" class="btn btn-outline-success" id="bcSelectAllSms" title="Select all with phone">
-                                <i class="bi bi-phone"></i><span class="d-none d-md-inline ms-1">SMS</span>
-                            </button>
-                            <button type="button" class="btn btn-outline-secondary" id="bcSelectNone" title="Clear selection">
-                                <i class="bi bi-x-lg"></i>
-                            </button>
-                        </div>
+                    </div>
+                </div>
+                <div class="bc-select-bar">
+                    <label class="bc-select-all" for="bcSelectAll">
+                        <input type="checkbox" class="form-check-input bc-check-lg" id="bcSelectAll">
+                        <span>
+                            <strong>Select all</strong>
+                            <span class="d-block small text-muted" id="bcSelectAllHint">Tick everyone on this list</span>
+                        </span>
+                    </label>
+                    <div class="d-flex flex-wrap gap-1">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="bcSelectAllEmail" title="Only people with an email">Email only</button>
+                        <button type="button" class="btn btn-sm btn-outline-success" id="bcSelectAllSms" title="Only people with a phone">Phone only</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="bcSelectNone">Clear</button>
                     </div>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive bc-table-wrap">
-                        <table class="table table-hover table-sm mb-0 align-middle bc-recipients-table">
-                            <thead>
+                        <table class="table mb-0 align-middle bc-recipients-table bc-people-cards">
+                            <thead class="visually-hidden">
                                 <tr>
-                                    <th style="width:44px"></th>
-                                    <th>Name</th>
-                                    <th class="d-none d-lg-table-cell">Policy</th>
-                                    <th class="d-none d-xl-table-cell">Product</th>
-                                    <th>Email</th>
-                                    <th>Phone</th>
-                                    <th class="d-none d-md-table-cell text-nowrap">Last email</th>
-                                    <th class="d-none d-md-table-cell text-nowrap">Last SMS</th>
+                                    <th>Select</th>
+                                    <th>Person</th>
                                 </tr>
                             </thead>
                             <tbody id="bcRecipientsBody">
@@ -599,50 +383,57 @@
                                         $hasPh = $ph !== '';
                                         $lb = $lastBroadcastByContact[$cid] ?? ['email' => null, 'sms' => null];
                                         $searchBlob = strtolower($fullName . ' ' . $policyNo . ' ' . $product . ' ' . $em . ' ' . $ph);
+                                        $nameParts = preg_split('/\s+/', $fullName) ?: [];
+                                        $ini = strtoupper(substr($nameParts[0] ?? 'C', 0, 1) . substr(end($nameParts) ?: '', 0, 1));
+                                        $hue = abs(crc32($fullName)) % 360;
                                     @endphp
                                     <tr class="bc-row" data-has-email="{{ $hasEm ? '1' : '0' }}" data-has-phone="{{ $hasPh ? '1' : '0' }}"
                                         data-search="{{ $searchBlob }}" tabindex="0" role="button" aria-label="Toggle {{ $fullName }}">
-                                        <td onclick="event.stopPropagation()">
-                                            <input type="checkbox" class="form-check-input bc-check" name="contact_ids[]" value="{{ $c->contactid }}"
-                                                data-has-email="{{ $hasEm ? '1' : '0' }}" data-has-phone="{{ $hasPh ? '1' : '0' }}">
-                                        </td>
-                                        <td>
-                                            <span class="fw-medium">{{ $fullName }}</span>
-                                            @if ((int) ($c->duplicate_count ?? 0) > 0)
-                                                <span class="badge bg-light text-dark border ms-1" title="Merged duplicates">+{{ (int) $c->duplicate_count }}</span>
-                                            @endif
-                                            @if (!$hasEm)
-                                                <span class="badge bc-badge-warn ms-1 d-lg-none">No email</span>
-                                            @endif
-                                        </td>
-                                        <td class="small d-none d-lg-table-cell">{{ $policyNo !== '' ? $policyNo : '—' }}</td>
-                                        <td class="small d-none d-xl-table-cell">{{ $product !== '' ? Str::limit($product, 28) : '—' }}</td>
-                                        <td class="small">
-                                            @if ($hasEm)
-                                                <span class="text-truncate d-inline-block" style="max-width:10rem" title="{{ $em }}">{{ $em }}</span>
-                                            @else
-                                                <span class="text-muted">—</span>
-                                            @endif
-                                        </td>
-                                        <td class="small">{{ $hasPh ? $ph : '—' }}</td>
-                                        <td class="small d-none d-md-table-cell">
-                                            @if (!empty($broadcastHistoryReady) && !empty($lb['email']))
-                                                <span class="text-success" title="{{ $lb['email']->format('Y-m-d H:i') }}">{{ $lb['email']->diffForHumans() }}</span>
-                                            @else
-                                                <span class="text-muted">{{ !empty($broadcastHistoryReady) ? '—' : 'n/a' }}</span>
-                                            @endif
-                                        </td>
-                                        <td class="small d-none d-md-table-cell">
-                                            @if (!empty($broadcastHistoryReady) && !empty($lb['sms']))
-                                                <span class="text-success" title="{{ $lb['sms']->format('Y-m-d H:i') }}">{{ $lb['sms']->diffForHumans() }}</span>
-                                            @else
-                                                <span class="text-muted">{{ !empty($broadcastHistoryReady) ? '—' : 'n/a' }}</span>
-                                            @endif
+                                        <td class="bc-person-cell" colspan="2">
+                                            <div class="bc-person">
+                                                <div class="bc-person-check" onclick="event.stopPropagation()">
+                                                    <input type="checkbox" class="form-check-input bc-check" name="contact_ids[]" value="{{ $c->contactid }}"
+                                                        data-has-email="{{ $hasEm ? '1' : '0' }}" data-has-phone="{{ $hasPh ? '1' : '0' }}">
+                                                </div>
+                                                <div class="bc-avatar" style="--bc-hue: {{ $hue }}">{{ $ini }}</div>
+                                                <div class="bc-person-body">
+                                                    <div class="bc-person-name">
+                                                        {{ $fullName }}
+                                                        @if ((int) ($c->duplicate_count ?? 0) > 0)
+                                                            <span class="bc-merged" title="{{ (int) $c->duplicate_count }} duplicate record{{ (int) $c->duplicate_count === 1 ? '' : 's' }} merged into this row">merged</span>
+                                                        @endif
+                                                    </div>
+                                                    <div class="bc-person-sub">
+                                                        @if ($policyNo !== '')
+                                                            <span>{{ $policyNo }}</span>
+                                                        @endif
+                                                        @if ($product !== '')
+                                                            <span>{{ Str::limit($product, 28) }}</span>
+                                                        @endif
+                                                    </div>
+                                                    <div class="bc-person-reach">
+                                                        @if ($hasEm)
+                                                            <span title="{{ $em }}"><i class="bi bi-envelope"></i> {{ $em }}</span>
+                                                        @else
+                                                            <span class="text-muted">No email</span>
+                                                        @endif
+                                                        @if ($hasPh)
+                                                            <span><i class="bi bi-phone"></i> {{ $ph }}</span>
+                                                        @endif
+                                                        @if (!empty($broadcastHistoryReady) && !empty($lb['email']))
+                                                            <span class="text-success" title="{{ $lb['email']->format('Y-m-d H:i') }}">Last email {{ $lb['email']->diffForHumans() }}</span>
+                                                        @endif
+                                                        @if (!empty($broadcastHistoryReady) && !empty($lb['sms']))
+                                                            <span class="text-success" title="{{ $lb['sms']->format('Y-m-d H:i') }}">Last SMS {{ $lb['sms']->diffForHumans() }}</span>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </td>
                                     </tr>
                                 @empty
                                     <tr class="bc-empty-row">
-                                        <td colspan="8" class="text-center py-5">
+                                        <td colspan="2" class="text-center py-5">
                                             <i class="bi bi-inbox display-6 text-muted d-block mb-2"></i>
                                             <p class="text-muted mb-2">
                                                 @if (!empty($broadcastLifeSegmentNeedsErp))
@@ -664,8 +455,49 @@
                         No rows match your table filter. <button type="button" class="btn btn-link btn-sm p-0" id="bcClearTableSearch">Clear filter</button>
                     </div>
                 </div>
+                <div class="card-footer bc-people-footer">
+                    <div class="bc-upload-zone bc-upload-zone-compact" id="bcUploadZone">
+                        <input type="file" name="recipients_file" id="bcRecipientsFile" class="bc-upload-input"
+                            accept=".xlsx,.xls,.csv,.txt">
+                        <i class="bi bi-cloud-arrow-up"></i>
+                        <span class="bc-upload-text">Upload Excel/CSV</span>
+                        <span class="bc-upload-filename small fw-semibold text-primary" id="bcUploadFilename" hidden></span>
+                    </div>
+                    <a href="{{ route('marketing.broadcast.template') }}" class="btn btn-sm btn-outline-primary">Template</a>
+                    @error('recipients_file')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                    <input type="hidden" name="skip_recent_sends" value="0">
+                    <div class="form-check form-switch mb-0">
+                        <input type="checkbox" class="form-check-input" name="skip_recent_sends" id="skipRecentSends" value="1"
+                            {{ (string) old('skip_recent_sends', '1') !== '0' ? 'checked' : '' }}
+                            {{ empty($broadcastHistoryReady) ? 'disabled' : '' }}>
+                        <label class="form-check-label small" for="skipRecentSends">
+                            Skip recent <span id="skipChannelLabel">email</span> ({{ (int) ($skipRecentDays ?? 14) }} days)
+                        </label>
+                    </div>
+                    <details class="small">
+                        <summary class="text-muted">Advanced send filter</summary>
+                        <select class="form-select form-select-sm mt-2" id="bcSendClientTypeOverride">
+                            <option value="">Same as list filter</option>
+                            <option value="all">All (no extra filter)</option>
+                            @if (!empty($broadcastUsesErpClients) && !empty($lifeSystemOptions))
+                                @foreach ($lifeSystemOptions as $opt)
+                                    <option value="{{ $opt['value'] }}">{{ $opt['label'] }}</option>
+                                @endforeach
+                            @endif
+                            @foreach ($recordSources ?? [] as $src)
+                                @php $sv = 's|' . $src; @endphp
+                                <option value="{{ $sv }}">Record source: {{ $src }}</option>
+                            @endforeach
+                            @foreach ($contactTypeValues ?? [] as $tv)
+                                @php $tvv = 't|' . $tv; @endphp
+                                <option value="{{ $tvv }}">Vtiger field: {{ $tv }}</option>
+                            @endforeach
+                        </select>
+                    </details>
+                </div>
             </div>
         </section>
+            </div>{{-- /bc-workspace --}}
 
         {{-- Sticky action bar --}}
         <div class="bc-action-bar">
@@ -687,7 +519,7 @@
     <details class="bc-tips mt-2">
         <summary class="small text-muted"><i class="bi bi-lightbulb me-1"></i>Tips for large campaigns</summary>
         <ul class="small text-muted mb-0 mt-2 ps-3">
-            <li>Use <strong>Select all (email)</strong> or upload a spreadsheet for bulk sends (e.g. 700+ clients).</li>
+            <li>People with an email (or phone, for SMS) are selected automatically. Use the buttons to change that, or upload a spreadsheet.</li>
             <li>Keep <strong>Skip duplicate sends</strong> on to avoid messaging the same people twice within {{ (int) ($skipRecentDays ?? 14) }} days.</li>
             <li>Max {{ $maxRecipients ?? 500 }} recipients per send — split larger lists into batches.</li>
         </ul>
@@ -767,18 +599,92 @@
 .bc-page { padding-bottom: 0.5rem; }
 .bc-hero {
     background: linear-gradient(135deg, var(--agile-primary-dark, #122952) 0%, var(--agile-primary, #0E4385) 55%, #2563eb 100%);
-    border-radius: 16px; color: #fff; padding: 1.5rem 1.75rem; position: relative; overflow: hidden;
+    border-radius: 16px; color: #fff; padding: 1.1rem 1.35rem; position: relative; overflow: hidden;
 }
 .bc-hero::after {
-    content: ''; position: absolute; right: -2rem; top: -2rem; width: 10rem; height: 10rem;
+    content: ''; position: absolute; right: -2rem; top: -2rem; width: 8rem; height: 8rem;
     border-radius: 50%; background: rgba(255,255,255,0.06); pointer-events: none;
 }
 .bc-hero-icon {
     width: 3rem; height: 3rem; border-radius: 12px; background: rgba(255,255,255,0.15);
     display: inline-flex; align-items: center; justify-content: center; font-size: 1.35rem;
 }
-.bc-hero-title { font-size: 1.5rem; font-weight: 700; color: #fff; margin: 0; }
-.bc-hero-desc { font-size: 0.92rem; color: rgba(255,255,255,0.88); max-width: 36rem; }
+.bc-hero-title { font-size: 1.35rem; font-weight: 700; color: #fff; margin: 0; }
+.bc-hero-desc { font-size: 0.85rem; color: rgba(255,255,255,0.88); max-width: 36rem; }
+.bc-chip {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 999px; padding: 0.3rem 0.7rem; font-size: 0.78rem; color: #fff;
+}
+.bc-chip strong { font-weight: 700; }
+.bc-chip-email { background: rgba(147, 197, 253, 0.22); }
+.bc-chip-sms { background: rgba(110, 231, 183, 0.22); }
+.bc-chip-pick { background: rgba(253, 224, 71, 0.28); color: #fff; }
+.bc-token-chip {
+    border: 1px dashed #94a3b8; background: #f8fafc; color: #334155; border-radius: 999px; font-size: 0.75rem;
+}
+.bc-token-chip:hover { border-color: var(--agile-primary, #0E4385); color: var(--agile-primary, #0E4385); background: #eff6ff; }
+.bc-letter-card { overflow: hidden; }
+.bc-letter-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+    padding: 0.85rem 1rem; background: linear-gradient(90deg, #0b3569, #1560a8); color: #fff;
+}
+.bc-letter-kicker { display: block; font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8; }
+.bc-letter-stamp {
+    width: 2.25rem; height: 2.25rem; border-radius: 50%; background: rgba(255,255,255,0.18);
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.bc-letter-body { font-family: Georgia, "Times New Roman", serif; line-height: 1.55; }
+.bc-people-cards { border-collapse: separate; border-spacing: 0; }
+.bc-people-cards td { border: 0; padding: 0; }
+.bc-person-cell { padding: 0 !important; }
+.bc-person {
+    display: flex; align-items: flex-start; gap: 0.7rem; padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid #eef2f7;
+}
+.bc-person-check { padding-top: 0.55rem; }
+.bc-avatar {
+    width: 2.35rem; height: 2.35rem; border-radius: 50%; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; font-weight: 700; color: #fff; letter-spacing: 0.02em;
+    background: hsl(var(--bc-hue, 210) 42% 42%);
+}
+.bc-person-body { min-width: 0; flex: 1; }
+.bc-person-name { font-weight: 600; color: #0f172a; display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.bc-person-sub { font-size: 0.75rem; color: #64748b; display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.1rem; }
+.bc-person-reach { font-size: 0.75rem; color: #475569; display: flex; flex-wrap: wrap; gap: 0.65rem; margin-top: 0.25rem; }
+.bc-person-reach i { opacity: 0.7; }
+.bc-merged {
+    font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    background: #eef2ff; color: #3730a3; border-radius: 999px; padding: 0.12rem 0.45rem;
+}
+.bc-filter-bar {
+    background: #fff; border: 1px solid var(--agile-border, #e2e8f0); border-radius: 14px;
+    padding: 0.9rem 1rem; box-shadow: 0 2px 8px rgba(14, 67, 133, 0.04);
+}
+.bc-tpl-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;
+}
+.bc-tpl-bar .form-select { min-width: 10rem; flex: 1 1 12rem; }
+.bc-workspace { display: grid; gap: 1rem; }
+@media (min-width: 1100px) {
+    .bc-workspace {
+        grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
+        grid-template-areas: "people compose";
+        align-items: start;
+    }
+    .bc-people { grid-area: people; min-width: 0; }
+    .bc-compose { grid-area: compose; position: sticky; top: 0.75rem; }
+}
+.bc-people-footer {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.85rem;
+    background: #f8fafc; border-top: 1px solid #e2e8f0;
+}
+.bc-upload-zone-compact {
+    flex: 1 1 14rem; flex-direction: row; justify-content: flex-start; gap: 0.5rem;
+    padding: 0.45rem 0.75rem; text-align: left; min-height: 0;
+}
+.bc-upload-zone-compact .bc-upload-text { font-size: 0.8rem; }
 .bc-alert { border-radius: 12px; }
 .bc-stat {
     background: linear-gradient(135deg, #fff 0%, #f8fbff 100%);
@@ -815,11 +721,11 @@
 .bc-stat-sms .bc-stat-value { color: #0d5c4a; }
 .bc-hero-sms-btn { background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.35); }
 .bc-hero-sms-btn:hover { background: rgba(255,255,255,0.25); color: #fff; }
-.bc-channel-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
+.bc-channel-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
 @media (max-width: 767.98px) { .bc-channel-cards { grid-template-columns: 1fr; } }
 .bc-channel-card {
-    display: flex; align-items: center; gap: 0.85rem; padding: 1rem 1.15rem;
-    border: 2px solid #e2e8f0; border-radius: 14px; background: #fff; text-align: left;
+    display: flex; align-items: center; gap: 0.65rem; padding: 0.55rem 0.85rem;
+    border: 2px solid #e2e8f0; border-radius: 999px; background: #fff; text-align: left;
     cursor: pointer; transition: all 0.15s ease; width: 100%;
 }
 .bc-channel-card:hover { border-color: #94a3b8; }
@@ -865,7 +771,7 @@
 .bc-email-mockup-subject { font-weight: 700; font-size: 0.9rem; color: #0E4385; margin-bottom: 0.65rem; padding-bottom: 0.5rem; border-bottom: 1px dashed #e2e8f0; }
 .bc-email-mockup-content { white-space: pre-wrap; color: #334155; line-height: 1.55; min-height: 6rem; }
 .bc-phone-mockup {
-    width: 220px; background: #1e293b; border-radius: 28px; padding: 0.65rem;
+    width: 200px; background: #1e293b; border-radius: 28px; padding: 0.65rem;
     box-shadow: 0 12px 32px rgba(0,0,0,0.2);
 }
 .bc-phone-notch { width: 40%; height: 4px; background: #334155; border-radius: 999px; margin: 0 auto 0.5rem; }
@@ -894,6 +800,7 @@
     text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s;
     display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
 }
+.bc-upload-zone-compact i { font-size: 1.1rem; color: var(--agile-primary, #0E4385); }
 .bc-upload-zone:hover, .bc-upload-zone.bc-dragover { border-color: var(--agile-primary, #0E4385); background: rgba(14, 67, 133, 0.04); }
 .bc-upload-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
 .bc-upload-icon { font-size: 1.75rem; color: var(--agile-primary, #0E4385); opacity: 0.7; }
@@ -902,16 +809,25 @@
     display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem;
     background: #f8fafc; border-bottom: 1px solid #e2e8f0;
 }
+.bc-select-bar {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem;
+    padding: 0.7rem 1rem; background: #f0f7ff; border-bottom: 1px solid #dbe7f5; position: sticky; top: 0; z-index: 3;
+}
+.bc-select-all {
+    display: flex; align-items: center; gap: 0.65rem; margin: 0; cursor: pointer; user-select: none;
+}
+.bc-check-lg, .bc-person .bc-check {
+    width: 1.25rem; height: 1.25rem; margin: 0; cursor: pointer; flex-shrink: 0;
+}
 .bc-table-search { max-width: 14rem; }
-.bc-table-wrap { max-height: 420px; overflow-y: auto; }
+.bc-table-wrap { max-height: min(52vh, 520px); overflow-y: auto; }
 .bc-recipients-table thead { position: sticky; top: 0; z-index: 2; background: #f1f5f9; }
 .bc-recipients-table thead th {
     font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b;
     border-bottom: 1px solid #e2e8f0;
 }
-.bc-row { cursor: pointer; transition: background 0.1s; }
-.bc-row:hover { background: rgba(14, 67, 133, 0.04); }
-.bc-row.bc-row-selected { background: rgba(14, 67, 133, 0.07); }
+.bc-row.bc-row-selected .bc-person { background: rgba(14, 67, 133, 0.07); }
+.bc-row:hover .bc-person { background: rgba(14, 67, 133, 0.04); }
 .bc-row.bc-row-hidden { display: none; }
 .bc-row:focus { outline: 2px solid rgba(14, 67, 133, 0.35); outline-offset: -2px; }
 .bc-badge-warn { font-size: 0.65rem; background: #fef3c7; color: #92400e; }
@@ -1212,6 +1128,13 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Channel switching
+    function selectForChannel(ch) {
+        var attr = ch === 'sms' ? 'data-has-phone' : 'data-has-email';
+        document.querySelectorAll('.bc-row:not(.bc-row-hidden) .bc-check').forEach(function(cb) {
+            cb.checked = cb.getAttribute(attr) === '1';
+        });
+        updateCount();
+    }
     function setChannel(ch) {
         if (channelInput) channelInput.value = ch;
         if (attachmentInput) attachmentInput.disabled = ch === 'sms';
@@ -1233,8 +1156,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (submitLabel) submitLabel.textContent = ch === 'sms' ? 'Send SMS' : 'Send email';
     }
     function onTabShown(ch) {
+        var prev = channelInput ? channelInput.value : 'email';
         setChannel(ch);
         syncSkipLabel(ch);
+        if (prev !== ch) selectForChannel(ch);
     }
     tabEmail && tabEmail.addEventListener('shown.bs.tab', function() { onTabShown('email'); });
     tabSms && tabSms.addEventListener('shown.bs.tab', function() { onTabShown('sms'); });
@@ -1247,7 +1172,40 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     setChannel('email');
 
+    var filterForm = document.getElementById('bcFilterForm');
+    if (filterClientType && filterForm) {
+        filterClientType.addEventListener('change', function() { filterForm.submit(); });
+    }
+    var listLimit = document.getElementById('bcListLimit');
+    if (listLimit && filterForm) {
+        listLimit.addEventListener('change', function() { filterForm.submit(); });
+    }
+    ['hideListEmailRecent', 'hideListSmsRecent'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el && filterForm) el.addEventListener('change', function() { filterForm.submit(); });
+    });
+
     // Selection count
+    function visibleChecks() {
+        return document.querySelectorAll('.bc-row:not(.bc-row-hidden) .bc-check');
+    }
+    function syncMaster() {
+        var master = document.getElementById('bcSelectAll');
+        var hint = document.getElementById('bcSelectAllHint');
+        var boxes = visibleChecks();
+        var n = 0;
+        boxes.forEach(function(cb) { if (cb.checked) n++; });
+        if (master) {
+            master.checked = boxes.length > 0 && n === boxes.length;
+            master.indeterminate = n > 0 && n < boxes.length;
+        }
+        if (hint) {
+            if (boxes.length === 0) hint.textContent = 'No people on this list';
+            else if (n === boxes.length) hint.textContent = 'All ' + boxes.length + ' people selected';
+            else if (n === 0) hint.textContent = 'Tick to select all ' + boxes.length + ' people';
+            else hint.textContent = n + ' of ' + boxes.length + ' selected — tick to select the rest';
+        }
+    }
     function updateCount() {
         var n = document.querySelectorAll('.bc-check:checked').length;
         if (countEl) countEl.textContent = n;
@@ -1256,7 +1214,17 @@ document.addEventListener('DOMContentLoaded', function() {
             var cb = row.querySelector('.bc-check');
             if (cb) row.classList.toggle('bc-row-selected', cb.checked);
         });
+        syncMaster();
     }
+
+    document.getElementById('bcSelectAll')?.addEventListener('click', function(e) {
+        e.stopPropagation();
+    });
+    document.getElementById('bcSelectAll')?.addEventListener('change', function() {
+        var on = this.checked;
+        visibleChecks().forEach(function(cb) { cb.checked = on; });
+        updateCount();
+    });
 
     document.getElementById('bcSelectAllEmail')?.addEventListener('click', function() {
         document.querySelectorAll('.bc-row:not(.bc-row-hidden) .bc-check').forEach(function(cb) {
@@ -1286,7 +1254,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); row.click(); }
         });
     });
-    updateCount();
+    selectForChannel('email');
 
     // Table filter
     function filterTable() {
@@ -1297,8 +1265,9 @@ document.addEventListener('DOMContentLoaded', function() {
             row.classList.toggle('bc-row-hidden', !match);
             if (match) visible++;
         });
-        if (visibleCount) visibleCount.textContent = visible + ' shown';
+        if (visibleCount) visibleCount.textContent = visible + ' people';
         if (noResults) noResults.hidden = visible > 0 || !q;
+        syncMaster();
     }
     tableSearch && tableSearch.addEventListener('input', filterTable);
     document.getElementById('bcClearTableSearch')?.addEventListener('click', function() {

@@ -195,6 +195,7 @@ Route::get('/support/clients/documents/{document}/download', [\App\Http\Controll
 Route::get('/support/clients/debug-api', [\App\Http\Controllers\CustomerController::class, 'debugApi'])->name('support.clients.debug-api');
 Route::get('/support/clients/debug-products', [\App\Http\Controllers\CustomerController::class, 'debugProducts'])->name('support.clients.debug-products');
 Route::get('/support/clients/create-ticket', [\App\Http\Controllers\ServeClientController::class, 'createTicketFromPolicy'])->name('support.clients.create-ticket');
+Route::get('/ai-integration', fn () => view('ai.integration'))->name('ai.integration');
 Route::get('/tools', fn () => view('tools'))->name('tools');
 Route::get('/tools/erp-messaging', [\App\Http\Controllers\ErpMessagingController::class, 'index'])->name('tools.erp-messaging');
 Route::get('/tools/erp-messaging/sent', [\App\Http\Controllers\ErpMessagingController::class, 'sent'])->name('tools.erp-messaging.sent');
