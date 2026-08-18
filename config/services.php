@@ -29,6 +29,7 @@ return [
     ],
 
     'sendgrid' => [
+        'enabled' => filter_var(env('SENDGRID_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
         'api_key' => env('SENDGRID_API_KEY'),
     ],
 

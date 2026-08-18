@@ -18,18 +18,19 @@ class PlainTextMailSender
     }
 
     /**
-     * Password / login emails: always from MAIL_FROM (info@agilecraft.co.ke).
-     * Skips Microsoft Graph / Geminia Outlook.
+     * Password / login emails: SMTP only, From = MAIL_FROM (info@agilecraft.co.ke).
+     * Skips Microsoft Graph, Geminia Outlook, and SendGrid.
      */
     public function sendForAuth(string $to, ?string $toName, string $subject, string $body, ?string $htmlBody = null): bool
     {
         $this->lastError = null;
-        $useHtml = is_string($htmlBody) && trim($htmlBody) !== '';
-        $htmlOrText = $useHtml ? $htmlBody : $body;
 
-        if ($this->deliverViaSendGridApi($to, $toName, $subject, $htmlOrText, $useHtml)) {
-            return true;
-        }
+        Log::info('PlainTextMailSender: auth email via SMTP', [
+            'to' => $to,
+            'from' => $this->mailFromAddress(),
+            'host' => config('mail.mailers.smtp.host'),
+            'port' => config('mail.mailers.smtp.port'),
+        ]);
 
         return $this->deliverViaLaravelMail($to, $toName, $subject, $body, [], $htmlBody);
     }

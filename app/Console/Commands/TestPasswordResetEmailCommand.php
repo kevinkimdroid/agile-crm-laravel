@@ -14,7 +14,7 @@ class TestPasswordResetEmailCommand extends Command
                             {--to= : Recipient email address (required)}
                             {--smtp-only : Skip Graph/SendGrid API and test SMTP only}';
 
-    protected $description = 'Test password setup / reset email delivery (info@agilecraft.co.ke via SendGrid or SMTP; not Graph/Outlook)';
+    protected $description = 'Test password setup / reset email via SMTP from info@agilecraft.co.ke (not Graph/SendGrid)';
 
     public function handle(): int
     {
@@ -29,18 +29,14 @@ class TestPasswordResetEmailCommand extends Command
         $graph = app(MicrosoftGraphMailService::class);
         $sendGrid = app(SendGridApiMailService::class);
 
-        $this->info('Mail delivery paths (password email does not use Graph / Geminia Outlook)');
+        $this->info('Password email uses SMTP only (info@agilecraft.co.ke). Graph and SendGrid are skipped.');
         $this->table(['Key', 'Value'], [
             ['From', config('mail.from.address')],
-            ['SendGrid API (HTTPS)', $sendGrid->isConfigured() ? 'configured' : 'off — set SENDGRID_API_KEY'],
             ['SMTP', config('mail.mailers.smtp.host') . ':' . config('mail.mailers.smtp.port')],
-            ['Microsoft Graph (not used for password mail)', $graph->isConfigured() ? 'configured but skipped' : 'off'],
+            ['SendGrid', $sendGrid->isConfigured() ? 'configured but skipped for password mail' : 'off'],
+            ['Microsoft Graph', $graph->isConfigured() ? 'configured but skipped' : 'off'],
             ['password_reset_tokens', Schema::connection($connection)->hasTable('password_reset_tokens') ? 'yes' : 'NO — run migrate'],
         ]);
-
-        if (! $sendGrid->isConfigured() && (bool) $this->option('smtp-only') === false) {
-            $this->warn('If SMTP is blocked, set SENDGRID_API_KEY. Password mail is sent as MAIL_FROM (info@agilecraft.co.ke), not Geminia Outlook.');
-        }
 
         $this->newLine();
         $this->info("Sending test password email to {$to}...");

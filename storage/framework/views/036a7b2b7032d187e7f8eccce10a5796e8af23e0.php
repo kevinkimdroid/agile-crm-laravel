@@ -1,0 +1,1150 @@
+<?php $__env->startSection('title', ($listRoute ?? 'support.customers') === 'contacts.index' ? 'Prospects' : 'Clients'); ?>
+
+<?php $__env->startSection('content'); ?>
+<nav class="breadcrumb-nav mb-3">
+    <?php if(($listRoute ?? 'support.customers') === 'contacts.index'): ?>
+    <a href="<?php echo e(route('dashboard')); ?>" class="text-muted small text-decoration-none">Home</a>
+    <span class="text-muted mx-2">/</span>
+    <span class="text-dark small fw-semibold">Prospects</span>
+    <?php else: ?>
+    <a href="<?php echo e(route('support')); ?>" class="text-muted small text-decoration-none">Support</a>
+    <span class="text-muted mx-2">/</span>
+    <span class="text-dark small fw-semibold">Clients</span>
+    <?php endif; ?>
+</nav>
+<?php
+    $isProspects = ($listRoute ?? 'support.customers') === 'contacts.index';
+    $heroTotal = ($clientsGrandTotal !== null && ! ($system ?? '') && ($clientsSource ?? '') === 'erp_http')
+        ? (int) $clientsGrandTotal
+        : (int) ($clientsGrandTotal ?? $total ?? 0);
+    $segLabels = config('clients_ui.tab_labels', []);
+    $heroCountLabel = ($system ?? '') ? ($segLabels[$system] ?? 'Records') : 'Total records';
+?>
+<div class="clients-hero mb-4">
+    <div class="clients-hero-main">
+        <div class="clients-hero-icon"><i class="bi <?php echo e($isProspects ? 'bi-person-lines-fill' : 'bi-people-fill'); ?>"></i></div>
+        <div>
+            <h1 class="clients-hero-title"><?php echo e($isProspects ? 'Prospects' : 'Clients'); ?></h1>
+            <p class="clients-hero-subtitle"><?php echo e($isProspects ? 'Manage sales prospects before they become clients.' : 'Manage your clients, KYC details and policy assignments.'); ?></p>
+        </div>
+    </div>
+    <div class="clients-hero-side">
+        <?php if (! ($isProspects)): ?>
+        <div class="clients-hero-count">
+            <span class="clients-hero-count-value" id="clientsTotalValue"><?php echo e(number_format($heroTotal)); ?></span>
+            <span class="clients-hero-count-label" id="clientsTotalLabel"><?php echo e($heroCountLabel); ?></span>
+        </div>
+        <?php endif; ?>
+        <div class="clients-hero-actions">
+            <?php if($isProspects): ?>
+            <a href="<?php echo e(route('contacts.create')); ?>" class="btn clients-hero-btn-primary">
+                <i class="bi bi-plus-lg me-2"></i>Add Prospect
+            </a>
+            <?php else: ?>
+            <a href="<?php echo e(route('support.clients.import')); ?>" class="btn clients-hero-btn-ghost">
+                <i class="bi bi-upload me-2"></i>Import
+            </a>
+            <a href="<?php echo e(route('support.clients.create', array_filter(['system' => $system ?? null]))); ?>" class="btn clients-hero-btn-primary">
+                <i class="bi bi-plus-lg me-2"></i>Create Client
+            </a>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<?php if(session('success')): ?>
+<div class="alert alert-success alert-dismissible fade show d-flex align-items-center" role="alert">
+    <i class="bi bi-check-circle-fill me-2"></i>
+    <div><?php echo e(session('success')); ?></div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+<?php endif; ?>
+
+<?php if(session('import_errors')): ?>
+<div class="alert alert-warning alert-dismissible fade show" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i><strong>Some rows were skipped:</strong>
+    <ul class="mb-0 mt-1 small">
+        <?php $__currentLoopData = session('import_errors'); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $err): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+        <li><?php echo e($err); ?></li>
+        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+    </ul>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+<?php endif; ?>
+
+<?php if(session('error')): ?>
+<div class="alert alert-danger alert-dismissible fade show d-flex align-items-center" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <div><?php echo e(session('error')); ?></div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+<?php endif; ?>
+
+<?php if(!($isProspects ?? false) && user_is_limited_to_assigned_clients()): ?>
+<div class="alert alert-warning border-0 d-flex flex-wrap align-items-start gap-2 mb-3" role="alert" style="background:#fff7ed;border:1px solid #fed7aa!important;">
+    <i class="bi bi-shield-lock-fill mt-1" style="color:#c2410c"></i>
+    <div class="flex-grow-1">
+        <strong class="d-block" style="color:#9a3412">Assigned clients only</strong>
+        <span class="small" style="color:#9a3412">
+            You can only see and open clients that are assigned to you.
+            Clients assigned to other users are hidden.
+        </span>
+    </div>
+    <?php if(app(\App\Services\ClientAccessDemoService::class)->isDemoModeActive()): ?>
+    <form action="<?php echo e(route('demo.restricted-access.stop')); ?>" method="POST" class="ms-auto">
+        <?php echo csrf_field(); ?>
+        <button type="submit" class="btn btn-sm btn-outline-dark">Exit preview</button>
+    </form>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
+<?php if(user_is_limited_to_assigned_clients() && ($total ?? 0) === 0 && !($clientsError ?? null)): ?>
+<div class="alert alert-info alert-dismissible fade show" role="alert">
+    <i class="bi bi-info-circle-fill me-2"></i>
+    No clients are assigned to your account yet. Ask an administrator to assign your policies under
+    <strong>Settings → Client Access</strong>.
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+<?php endif; ?>
+
+<?php if($clientsError ?? null): ?>
+<?php
+    $clientsErrorRaw = (string) ($clientsError ?? '');
+    $crmFallbackNote = ' Showing CRM contacts below (if any).';
+    $clientsErrorTechnical = str_ends_with($clientsErrorRaw, $crmFallbackNote)
+        ? substr($clientsErrorRaw, 0, -strlen($crmFallbackNote))
+        : $clientsErrorRaw;
+    $isErpQueryBindError = str_contains($clientsErrorTechnical, 'DPY-4008')
+        || str_contains($clientsErrorTechnical, 'no bind placeholder')
+        || str_contains($clientsErrorTechnical, 'ORA-00932')
+        || preg_match('/\bDPY-\d+/i', $clientsErrorTechnical) === 1;
+    $isLikelyNetworkBlock = str_contains($clientsErrorTechnical, 'Connection refused')
+        || str_contains($clientsErrorTechnical, 'timed out')
+        || str_contains($clientsErrorTechnical, 'Could not resolve')
+        || str_contains($clientsErrorTechnical, 'cURL error')
+        || preg_match('/\bORA-12[56]\d{3}\b/', $clientsErrorTechnical) === 1;
+?>
+<div class="alert alert-warning alert-dismissible fade show d-flex align-items-center" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <div class="flex-grow-1">
+        <?php if($isErpQueryBindError): ?>
+        <strong>ERP client search failed</strong><br>
+        <span class="small">The ERP service returned a database error while loading clients (usually a temporary API bug or outdated <code>erp-clients-api</code>). Any CRM contacts in the list below are shown as a fallback—not a full ERP result. Ask IT to restart or redeploy <code>erp-clients-api</code> after updating it.</span>
+        <details class="small mt-2 mb-0"><summary class="text-muted" style="cursor: pointer;">Technical detail (for IT)</summary><code class="d-block mt-1 user-select-all text-break"><?php echo e(e($clientsErrorTechnical)); ?></code></details>
+        <?php else: ?>
+        <strong>ERP / Oracle connection issue</strong><br>
+        <span class="small"><?php echo e($clientsErrorRaw); ?></span>
+        <?php if(in_array($clientsSource ?? 'crm', ['erp_http', 'erp_sync']) && $isLikelyNetworkBlock): ?>
+        <p class="small mb-0 mt-2 text-muted">
+            <strong>If this server uses Apache on CentOS/RHEL with SELinux:</strong> allow outbound connections from HTTPd, then restart Apache:
+            <code>sudo setsebool -P httpd_can_network_connect 1</code> and <code>sudo systemctl restart httpd</code>.
+            Otherwise confirm the ERP API process is running and reachable from this app.
+        </p>
+        <?php elseif(in_array($clientsSource ?? 'crm', ['erp_http', 'erp_sync'])): ?>
+        <p class="small mb-0 mt-2 text-muted">
+            Ensure the <code>erp-clients-api</code> service is running and <code>ERP_CLIENTS_HTTP_URL</code> in <code>.env</code> points to it. Check the technical message above or your application logs.
+        </p>
+        <?php endif; ?>
+        <?php endif; ?>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+<?php endif; ?>
+
+<?php if(in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http'])): ?>
+<?php
+    $erpClientSvc = app(\App\Services\ErpClientService::class);
+    $allowedClientSegments = $allowedClientSegments ?? allowed_client_segments();
+    $segmentLabels = config('clients_ui.tab_labels', []);
+    $showAllClientsPill = count($allowedClientSegments) > 1;
+?>
+<?php if(!empty($allowedClientSegments)): ?>
+<div class="clients-system-pills mb-3">
+    <?php if($showAllClientsPill): ?>
+    <a href="<?php echo e(route($listRoute ?? 'support.customers', array_merge(collect(request()->query())->except('system')->all(), ['all' => 1]))); ?>" class="clients-system-pill <?php echo e(!($system ?? '') && request()->boolean('all') ? 'active' : ''); ?>">All</a>
+    <?php endif; ?>
+    <?php if(in_array('group', $allowedClientSegments, true)): ?>
+    <a href="<?php echo e(route($listRoute ?? 'support.customers', array_merge(collect(request()->query())->except('all')->all(), ['system' => 'group']))); ?>" class="clients-system-pill clients-system-group <?php echo e(($system ?? '') === 'group' ? 'active' : ''); ?>"><i class="bi bi-people-fill me-1"></i><?php echo e($segmentLabels['group'] ?? config('clients_ui.tab_labels.group')); ?></a>
+    <?php endif; ?>
+    <?php if(in_array('individual', $allowedClientSegments, true)): ?>
+    <a href="<?php echo e(route($listRoute ?? 'support.customers', array_merge(collect(request()->query())->except('all')->all(), ['system' => 'individual']))); ?>" class="clients-system-pill clients-system-individual <?php echo e(($system ?? '') === 'individual' ? 'active' : ''); ?>"><i class="bi bi-person-fill me-1"></i><?php echo e($segmentLabels['individual'] ?? config('clients_ui.tab_labels.individual')); ?></a>
+    <?php endif; ?>
+    <?php if(in_array('mortgage', $allowedClientSegments, true)): ?>
+    <a href="<?php echo e(route($listRoute ?? 'support.customers', array_merge(collect(request()->query())->except('all')->all(), ['system' => 'mortgage']))); ?>" class="clients-system-pill clients-system-mortgage <?php echo e(($system ?? '') === 'mortgage' ? 'active' : ''); ?>"><i class="bi bi-house-fill me-1"></i><?php echo e($segmentLabels['mortgage'] ?? config('clients_ui.tab_labels.mortgage')); ?></a>
+    <?php endif; ?>
+    <?php if(in_array('group_pension', $allowedClientSegments, true)): ?>
+    <a href="<?php echo e(route($listRoute ?? 'support.customers', array_merge(collect(request()->query())->except('all')->all(), ['system' => 'group_pension']))); ?>" class="clients-system-pill clients-system-group-pension <?php echo e(($system ?? '') === 'group_pension' ? 'active' : ''); ?>"><i class="bi bi-piggy-bank-fill me-1"></i><?php echo e($segmentLabels['group_pension'] ?? config('clients_ui.tab_labels.group_pension')); ?></a>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+<?php endif; ?>
+
+<?php
+    $isErpList = in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http']);
+    $columnFilters = $columnFilters ?? [
+        'name' => request('f_name', request('search', '')),
+        'id' => request('f_id', ''),
+        'phone' => request('f_phone', ''),
+        'intermediary' => request('f_intermediary', ''),
+        'prepared' => request('f_prepared', ''),
+        'product' => request('f_product', ''),
+        'status' => request('f_status', ''),
+        'policy' => request('f_policy', ''),
+    ];
+    $clientsStatTotal = ($clientsGrandTotal !== null && ! ($system ?? '') && ($clientsSource ?? '') === 'erp_http')
+        ? (int) $clientsGrandTotal
+        : (int) ($clientsGrandTotal ?? $total ?? 0);
+    $tableColspan = $isErpList ? 9 : (in_array($clientsSource ?? 'crm', ['erp']) ? 6 : 5);
+?>
+
+
+<div class="clients-table-card">
+    <div class="clients-table-toolbar">
+        <span class="clients-table-filter-status" id="clientsFilterStatus"><i class="bi bi-funnel me-1"></i>Filter by column — type at least 2 characters</span>
+        <span class="clients-toolbar-hint"><i class="bi bi-lightning-charge-fill me-1"></i>Live search</span>
+    </div>
+    <div class="clients-table-wrapper">
+        <table class="clients-table">
+            <thead>
+                <?php if($isErpList): ?>
+                <tr class="clients-table-head-labels">
+                    <th>Client</th>
+                    <th>ID Number</th>
+                    <th>Telephone</th>
+                    <th>Intermediary (Agent)</th>
+                    <th>Who Prepared</th>
+                    <th>Product</th>
+                    <th>System</th>
+                    <th>Policy Status</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+                <tr class="clients-table-head-filters">
+                    <th><input type="search" class="clients-col-filter" data-col-filter="name" placeholder="Name…" value="<?php echo e($columnFilters['name'] ?? ''); ?>" autocomplete="off" spellcheck="false"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="id" placeholder="ID…" value="<?php echo e($columnFilters['id'] ?? ''); ?>" autocomplete="off" spellcheck="false"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="phone" placeholder="Phone…" value="<?php echo e($columnFilters['phone'] ?? ''); ?>" autocomplete="off" spellcheck="false"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="intermediary" placeholder="Agent…" value="<?php echo e($columnFilters['intermediary'] ?? ''); ?>" autocomplete="off" spellcheck="false"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="prepared" placeholder="Prepared by…" value="<?php echo e($columnFilters['prepared'] ?? ''); ?>" autocomplete="off" spellcheck="false"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="product" placeholder="Product…" value="<?php echo e($columnFilters['product'] ?? ''); ?>" autocomplete="off" spellcheck="false"></th>
+                    <th><span class="clients-col-filter-spacer" aria-hidden="true"></span></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="status" placeholder="Status…" value="<?php echo e($columnFilters['status'] ?? ''); ?>" autocomplete="off" spellcheck="false"></th>
+                    <th class="text-end">
+                        <button type="button" class="clients-clear-filters" id="clearColumnFilters" title="Clear all filters">
+                            <i class="bi bi-x-circle"></i>
+                        </button>
+                    </th>
+                </tr>
+                <?php else: ?>
+                <tr class="clients-table-head-labels">
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Mobile</th>
+                    <?php if(in_array($clientsSource ?? 'crm', ['erp'])): ?>
+                    <th>Product</th>
+                    <?php endif; ?>
+                    <th>Assigned To</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+                <tr class="clients-table-head-filters">
+                    <th><input type="search" class="clients-col-filter" data-col-filter="name" placeholder="Name…" value="<?php echo e($columnFilters['name'] ?? ''); ?>" autocomplete="off"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="email" placeholder="Email…" value="<?php echo e(request('f_email', '')); ?>" autocomplete="off"></th>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="mobile" placeholder="Mobile…" value="<?php echo e(request('f_mobile', '')); ?>" autocomplete="off"></th>
+                    <?php if(in_array($clientsSource ?? 'crm', ['erp'])): ?>
+                    <th><input type="search" class="clients-col-filter" data-col-filter="product" placeholder="Product…" value="<?php echo e($columnFilters['product'] ?? ''); ?>" autocomplete="off"></th>
+                    <?php endif; ?>
+                    <th><span class="clients-col-filter-spacer" aria-hidden="true"></span></th>
+                    <th class="text-end">
+                        <button type="button" class="clients-clear-filters" id="clearColumnFilters" title="Clear all filters">
+                            <i class="bi bi-x-circle"></i>
+                        </button>
+                    </th>
+                </tr>
+                <?php endif; ?>
+            </thead>
+            <tbody id="clientsTableBody">
+                <?php if($clientsLazyLoad ?? false): ?>
+                <tr id="clientsLoadingRow">
+                    <td colspan="<?php echo e($tableColspan); ?>" class="text-center py-5">
+                        <div class="clients-empty">
+                            <div class="spinner-border text-primary mb-2" role="status"></div>
+                            <p class="text-muted mb-0">Loading clients...</p>
+                        </div>
+                    </td>
+                </tr>
+                <?php else: ?>
+                <?php $__empty_1 = true; $__currentLoopData = $customers; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $customer): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                    <?php if($customer->_local_client ?? false): ?>
+                        <?php $localShow = route('support.clients.show', ['policy' => $customer->policy_no]); ?>
+                        <tr class="clients-row-open" data-client-open="<?php echo e($localShow); ?>">
+                            <td>
+                                <a href="<?php echo e($localShow); ?>" class="clients-name-link text-decoration-none">
+                                    <span class="clients-name"><?php echo e($customer->life_assur ?? '—'); ?></span>
+                                    <span class="badge bg-info-subtle text-info-emphasis ms-1" style="font-size:0.62rem">New</span>
+                                </a>
+                                <div class="small text-muted font-monospace"><?php echo e($customer->policy_no); ?></div>
+                            </td>
+                            <?php if($isErpList): ?>
+                            <td class="font-monospace small"><?php echo e($customer->id_no ?? '—'); ?></td>
+                            <td><?php if(($customer->phone_no ?? '—') !== '—'): ?><a href="tel:<?php echo e(tel_href($customer->phone_no)); ?>" class="text-decoration-none"><?php echo e($customer->phone_no); ?></a><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
+                            <td><?php echo e(Str::limit($customer->intermediary ?? '—', 25)); ?></td>
+                            <td><?php echo e($customer->pol_prepared_by ?? '—'); ?></td>
+                            <td class="clients-product"><?php echo e(Str::limit($customer->product ?? '—', 40)); ?></td>
+                            <td><span class="clients-system-badge clients-system-<?php echo e($customer->life_system ?? 'individual'); ?>"><?php echo e(\App\Models\Client::SYSTEMS[$customer->life_system ?? 'individual'] ?? 'Individual'); ?></span></td>
+                            <td><span class="clients-status-badge clients-status-<?php echo e(($customer->status ?? 'A') === 'A' ? 'active' : (($customer->status ?? '') === 'FL' ? 'lapsed' : 'other')); ?>"><?php echo e($customer->status ?? '—'); ?></span></td>
+                            <?php else: ?>
+                            <td><?php if(($customer->email ?? '—') !== '—'): ?><a href="mailto:<?php echo e($customer->email); ?>" class="text-decoration-none"><?php echo e(Str::limit($customer->email, 35)); ?></a><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
+                            <td><?php if(($customer->phone_no ?? '—') !== '—'): ?><a href="tel:<?php echo e(tel_href($customer->phone_no)); ?>" class="text-decoration-none"><?php echo e($customer->phone_no); ?></a><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
+                            <?php if(in_array($clientsSource ?? 'crm', ['erp'])): ?><td><span class="badge bg-secondary"><?php echo e(Str::limit($customer->product ?? '—', 35)); ?></span></td><?php endif; ?>
+                            <td><span class="text-muted small"><?php echo e($customer->pol_prepared_by ?? '—'); ?></span></td>
+                            <?php endif; ?>
+                            <td class="text-end">
+                                <div class="clients-actions">
+                                    <a href="<?php echo e(route('support.clients.create-ticket', ['policy' => $customer->policy_no])); ?>" class="btn btn-sm btn-success" title="Create ticket"><i class="bi bi-ticket-perforated"></i> Ticket</a>
+                                    <a href="<?php echo e($localShow); ?>" class="btn btn-sm clients-btn-view" title="View full details"><i class="bi bi-eye"></i> View</a>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php continue; ?>
+                    <?php endif; ?>
+                    <?php
+                        $rowPolicy = $customer->policy_no ?? $customer->policy_number ?? $customer->ipol_policy_no ?? $customer->pol_policy_no ?? (is_array($customer) ? ($customer['policy_no'] ?? $customer['policy_number'] ?? $customer['ipol_policy_no'] ?? $customer['pol_policy_no'] ?? '') : '');
+                        $rowIdentifier = trim((string) $rowPolicy);
+                    ?>
+                    <tr <?php if($rowIdentifier && ($customer->_erp_source ?? false) && in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http'])): ?> class="clients-row-open" data-client-open="<?php echo e(route('support.clients.show', array_filter(['policy' => $rowIdentifier, 'system' => $system ?? null]))); ?>" <?php endif; ?>>
+                        <?php if(($customer->_erp_source ?? false) && in_array($clientsSource ?? 'crm', ['erp_sync', 'erp_http'])): ?>
+                        <td>
+                            <a href="<?php echo e(route('support.clients.show', array_filter(['policy' => $rowIdentifier, 'system' => $system ?? null]))); ?>" class="clients-name-link text-decoration-none">
+                                <span class="clients-name"><?php echo e($customer->life_assur ?? $customer->client_name ?? '—'); ?></span>
+                            </a>
+                            <?php if($rowIdentifier): ?>
+                            <div class="small text-muted font-monospace"><?php echo e($rowIdentifier); ?></div>
+                            <?php endif; ?>
+                        </td>
+                        <td class="font-monospace small"><?php echo e($customer->id_no ?? $customer->idNo ?? '—'); ?></td>
+                        <td>
+                            <?php $rowPhone = $customer->phone_no ?? $customer->mobile ?? $customer->phone ?? null; ?>
+                            <?php if($rowPhone): ?>
+                            <a href="tel:<?php echo e(tel_href($rowPhone)); ?>" class="text-decoration-none"><?php echo e($rowPhone); ?></a>
+                            <?php else: ?>
+                            <span class="text-muted">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <td><?php echo e(Str::limit($customer->intermediary ?? '—', 25)); ?></td>
+                        <td><?php echo e($customer->pol_prepared_by ?? '—'); ?></td>
+                        <td class="clients-product"><?php echo e(Str::limit($customer->product ?? '—', 40)); ?></td>
+                        <td>
+                            <?php
+                                $ls = $customer->life_system ?? $erpClientSvc->getLifeSystemFromProduct($customer->product ?? null);
+                                $lsLabel = $erpClientSvc->getClientSystemLabel($ls);
+                            ?>
+                            <span class="clients-system-badge clients-system-<?php echo e($ls); ?>"><?php echo e($lsLabel); ?></span>
+                        </td>
+                        <td>
+                            <?php $st = $customer->status ?? ''; ?>
+                            <span class="clients-status-badge clients-status-<?php echo e($st === 'A' ? 'active' : ($st === 'FL' ? 'lapsed' : 'other')); ?>">
+                                <?php echo e($st ?: '—'); ?>
+
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <div class="clients-actions">
+                                <?php if($rowIdentifier): ?>
+                                <a href="<?php echo e(route('support.clients.create-ticket', ['policy' => $rowIdentifier])); ?>" class="btn btn-sm btn-success" title="Create ticket">
+                                    <i class="bi bi-ticket-perforated"></i> Ticket
+                                </a>
+                                <a href="<?php echo e(route('support.clients.show', array_filter(['policy' => $rowIdentifier, 'system' => $system ?? null]))); ?>" class="btn btn-sm clients-btn-view" title="View full details">
+                                    <i class="bi bi-eye"></i> View
+                                </a>
+                                <?php else: ?>
+                                <span class="text-muted small">—</span>
+                                <?php endif; ?>
+                            </div>
+                        </td>
+                        <?php else: ?>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="clients-avatar"><?php echo e(strtoupper(substr($customer->firstname ?? '?', 0, 1))); ?><?php echo e(strtoupper(substr($customer->lastname ?? '', 0, 1))); ?></div>
+                                <?php if(($customer->_erp_source ?? false)): ?>
+                                <span class="clients-name"><?php echo e(trim(($customer->firstname ?? '') . ' ' . ($customer->lastname ?? '')) ?: ($rowPolicy ?: '—')); ?></span>
+                                <?php else: ?>
+                                <a href="<?php echo e(route('contacts.show', ['contact' => $customer->contactid, 'tab' => 'summary'])); ?>" class="clients-name-link"><?php echo e(trim(($customer->firstname ?? '') . ' ' . ($customer->lastname ?? '')) ?: '—'); ?></a>
+                                <?php endif; ?>
+                            </div>
+                        </td>
+                        <td>
+                            <?php $displayEmail = personal_email_only($customer->email ?? null); ?>
+                            <?php if($displayEmail): ?>
+                            <a href="mailto:<?php echo e($displayEmail); ?>" class="text-decoration-none"><?php echo e(Str::limit($displayEmail, 35)); ?></a>
+                            <?php else: ?>
+                            <span class="text-muted">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if($customer->mobile ?? $customer->phone): ?>
+                            <a href="tel:<?php echo e(tel_href($customer->mobile ?? $customer->phone)); ?>" class="text-decoration-none"><?php echo e($customer->mobile ?? $customer->phone); ?></a>
+                            <?php else: ?>
+                            <span class="text-muted">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <?php if(($clientsSource ?? 'crm') === 'erp'): ?>
+                        <td><span class="badge bg-secondary"><?php echo e(Str::limit($customer->product ?? '—', 35)); ?></span></td>
+                        <?php endif; ?>
+                        <td><span class="text-muted small"><?php echo e(trim(($customer->owner_first ?? '') . ' ' . ($customer->owner_last ?? '')) ?: ($customer->owner_username ?? '—') ?: '—'); ?></span></td>
+                        <td class="text-end">
+                            <?php if(($customer->_erp_source ?? false)): ?>
+                            <a href="<?php echo e(route('support.clients.show', array_filter(['policy' => $rowPolicy, 'system' => $system ?? null]))); ?>" class="btn btn-sm clients-btn-view" title="View full details"><i class="bi bi-eye"></i></a>
+                            <?php else: ?>
+                            <a href="<?php echo e(route('contacts.show', ['contact' => $customer->contactid, 'tab' => 'summary'])); ?>" class="btn btn-sm clients-btn-view"><i class="bi bi-eye"></i></a>
+                            <?php endif; ?>
+                        </td>
+                        <?php endif; ?>
+                    </tr>
+                <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+                    <tr>
+                        <td colspan="<?php echo e($tableColspan); ?>" class="text-center py-5">
+                            <div class="clients-empty">
+                                <div class="clients-empty-icon"><i class="bi bi-people"></i></div>
+                                <h6 class="mt-3 mb-2">No <?php echo e(($listRoute ?? 'support.customers') === 'contacts.index' ? 'prospects' : 'clients'); ?> found</h6>
+                                <p class="text-muted mb-3">
+                                    <?php if($search ?? ''): ?>
+                                    Try a different search or <a href="<?php echo e(route($listRoute ?? 'support.customers')); ?>">view all</a>.
+                                    <?php if(($system ?? '') === 'group' && in_array($clientsSource ?? 'crm', ['erp_http', 'erp_sync'])): ?>
+                                    <br><a href="<?php echo e(route('support.clients.debug-api', ['policy' => $search, 'search' => $search, 'system' => 'group', 'debug' => '1'])); ?>" target="_blank" class="small">Debug API response</a>
+                                    <?php endif; ?>
+                                    <?php else: ?>
+                                    Get started by searching for a client above.
+                                    <?php if(in_array($clientsSource ?? 'crm', ['erp_http', 'erp_sync']) && in_array(($system ?? ''), ['group', 'mortgage', 'group_pension'], true)): ?>
+                                    <br><span class="small text-muted">ERP list empty: confirm <code>erp-clients-api</code> is running and <code>ERP_CLIENTS_…_VIEW</code> matches Oracle.</span>
+                                    <br><a href="<?php echo e(route('support.clients.debug-api', array_filter(['system' => $system ?? null]))); ?>" target="_blank" rel="noopener" class="small">Debug ERP API response</a>
+                                    <?php endif; ?>
+                                    <?php endif; ?>
+                                </p>
+                                <?php if(!($search ?? '') && ($listRoute ?? 'support.customers') === 'contacts.index'): ?>
+                                <a href="<?php echo e(route('contacts.create')); ?>" class="btn btn-primary-custom"><i class="bi bi-plus-lg me-1"></i>Add Prospect</a>
+                                <?php endif; ?>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endif; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php if($clientsLazyLoad ?? false): ?>
+    <div class="clients-table-footer" id="clientsTableFooter" style="display:none">
+        <span class="clients-pagination-info" id="clientsPaginationInfo">—</span>
+        <nav id="clientsPaginationNav" aria-label="Clients pagination"></nav>
+    </div>
+    <?php elseif($isErpList): ?>
+    <div class="clients-table-footer" id="clientsTableFooter" style="<?php echo e(($customers->hasPages() || ($search ?? '')) ? '' : 'display:none'); ?>">
+        <span class="clients-pagination-info" id="clientsPaginationInfo">
+            <?php if($customers->total() > 0): ?>
+                Showing <?php echo e($customers->firstItem() ?? 0); ?>–<?php echo e($customers->lastItem() ?? 0); ?> of <?php echo e(number_format($customers->total())); ?>
+
+            <?php else: ?>
+                —
+            <?php endif; ?>
+        </span>
+        <nav id="clientsPaginationNav" aria-label="Clients pagination">
+            <?php if($customers->hasPages()): ?>
+                <?php echo e($customers->withQueryString()->links('pagination::bootstrap-5')); ?>
+
+            <?php endif; ?>
+        </nav>
+    </div>
+    <?php elseif($customers->hasPages()): ?>
+    <div class="clients-table-footer">
+        <span class="clients-pagination-info">Showing <?php echo e($customers->firstItem() ?? 0); ?>–<?php echo e($customers->lastItem() ?? 0); ?> of <?php echo e(number_format($customers->total())); ?></span>
+        <?php echo e($customers->withQueryString()->links('pagination::bootstrap-5')); ?>
+
+    </div>
+    <?php endif; ?>
+</div>
+
+<style>
+/* Clients page - modern, fast, presentable */
+
+/* Hero header */
+.clients-hero {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    padding: 1.5rem 1.75rem;
+    border-radius: 18px;
+    background: linear-gradient(120deg, #14346b 0%, #1A468A 55%, #2563a8 100%);
+    color: #fff;
+    box-shadow: 0 12px 30px rgba(20, 52, 107, 0.28);
+    position: relative;
+    overflow: hidden;
+}
+.clients-hero::after {
+    content: "";
+    position: absolute;
+    right: -60px; top: -60px;
+    width: 220px; height: 220px;
+    background: radial-gradient(circle, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0) 70%);
+    pointer-events: none;
+}
+.clients-hero-main { display: flex; align-items: center; gap: 1.1rem; min-width: 0; }
+.clients-hero-icon {
+    width: 58px; height: 58px; flex-shrink: 0;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.16);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem;
+    backdrop-filter: blur(4px);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.2);
+}
+.clients-hero-title { font-size: 1.6rem; font-weight: 700; margin: 0; line-height: 1.1; }
+.clients-hero-subtitle { margin: 0.25rem 0 0; font-size: 0.9rem; opacity: 0.85; max-width: 34rem; }
+.clients-hero-side { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
+.clients-hero-count { text-align: right; padding-right: 1.1rem; border-right: 1px solid rgba(255,255,255,0.22); }
+.clients-hero-count-value { display: block; font-size: 1.9rem; font-weight: 800; line-height: 1; }
+.clients-hero-count-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.8; }
+.clients-hero-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.clients-hero-btn-primary {
+    background: #fff; color: #14346b; font-weight: 600; border: none;
+    padding: 0.55rem 1.1rem; border-radius: 10px; display: inline-flex; align-items: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: transform 0.12s, box-shadow 0.12s;
+}
+.clients-hero-btn-primary:hover { color: #0f2a57; transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0,0,0,0.22); }
+.clients-hero-btn-ghost {
+    background: rgba(255,255,255,0.12); color: #fff; font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.35);
+    padding: 0.55rem 1.1rem; border-radius: 10px; display: inline-flex; align-items: center; transition: background 0.12s;
+}
+.clients-hero-btn-ghost:hover { background: rgba(255,255,255,0.22); color: #fff; }
+@media (max-width: 575.98px) {
+    .clients-hero { padding: 1.15rem; }
+    .clients-hero-count { border-right: none; padding-right: 0; text-align: left; }
+    .clients-hero-side { width: 100%; justify-content: space-between; }
+}
+
+.clients-table-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1.25rem;
+    background: #fff;
+    border-bottom: 1px solid var(--agile-border);
+}
+.clients-table-filter-status {
+    font-size: 0.82rem;
+    color: var(--agile-text-muted);
+}
+.clients-table-toolbar-meta { flex-shrink: 0; }
+.clients-toolbar-stat {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    padding: 0.45rem 0.85rem;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--agile-primary) 0%, var(--agile-primary-dark) 100%);
+    color: #fff;
+    min-width: 7rem;
+    text-align: right;
+    box-shadow: 0 4px 14px rgba(26, 70, 138, 0.18);
+}
+.clients-toolbar-stat-value { font-size: 1.25rem; font-weight: 700; line-height: 1.1; }
+.clients-toolbar-stat-label { font-size: 0.68rem; opacity: 0.92; text-transform: uppercase; letter-spacing: 0.04em; }
+
+.clients-stat-card {
+    background: linear-gradient(135deg, var(--agile-primary) 0%, var(--agile-primary-dark) 100%);
+    color: #fff; padding: 1rem 1.5rem; border-radius: 14px; text-align: center; box-shadow: 0 4px 14px rgba(26, 70, 138, 0.25);
+}
+.clients-stat-value { display: block; font-size: 1.75rem; font-weight: 700; }
+.clients-stat-label { font-size: 0.75rem; opacity: 0.9; }
+
+.clients-table-card {
+    position: relative;
+    background: #fff; border-radius: 16px; box-shadow: 0 2px 16px rgba(0,0,0,0.06); overflow: hidden; border: 1px solid var(--agile-border);
+}
+.clients-table-wrapper { overflow-x: auto; }
+.clients-table {
+    width: 100%; border-collapse: collapse; font-size: 0.9rem;
+}
+.clients-table thead { background: linear-gradient(180deg, #1e3a5f 0%, #1A468A 100%); color: #fff; }
+.clients-table-head-labels th {
+    padding: 0.85rem 0.75rem 0.45rem;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: none;
+    white-space: nowrap;
+}
+.clients-table-head-filters th {
+    padding: 0 0.75rem 0.85rem;
+    vertical-align: top;
+    border-bottom: 2px solid rgba(255,255,255,0.12);
+    background: linear-gradient(180deg, #1A468A 0%, #163a72 100%);
+}
+.clients-col-filter {
+    width: 100%;
+    min-width: 4.5rem;
+    max-width: 100%;
+    border: 1px solid rgba(255,255,255,0.22);
+    background: rgba(255,255,255,0.96);
+    border-radius: 8px;
+    padding: 0.38rem 0.55rem;
+    font-size: 0.78rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    color: #1e293b;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.clients-col-filter::placeholder { color: #94a3b8; font-size: 0.76rem; }
+.clients-col-filter:focus {
+    outline: none;
+    border-color: #fff;
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.45);
+}
+.clients-col-filter-active {
+    border-color: #bfdbfe;
+    background: #fff;
+}
+.clients-col-filter-spacer { display: block; height: 2rem; }
+.clients-clear-filters {
+    border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.15s;
+}
+.clients-clear-filters:hover { background: rgba(255,255,255,0.22); color: #fff; }
+.clients-table th {
+    padding: 1rem 1.25rem; text-align: left; font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
+}
+.clients-table tbody tr {
+    border-bottom: 1px solid var(--agile-border); transition: background 0.15s;
+}
+.clients-table tbody tr:hover { background: var(--agile-primary-muted); }
+.clients-table tbody tr:last-child { border-bottom: none; }
+.clients-table td { padding: 1rem 1.25rem; vertical-align: middle; }
+
+.clients-policy-link { font-weight: 600; color: var(--agile-primary); text-decoration: none; }
+.clients-policy-link:hover { color: var(--agile-primary-dark); text-decoration: underline; }
+.clients-name { font-weight: 500; color: var(--agile-text); }
+.clients-product { color: var(--agile-text-muted); font-size: 0.85rem; }
+.clients-kra { font-family: ui-monospace, monospace; font-size: 0.85rem; }
+
+.clients-status-badge {
+    display: inline-block; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600;
+}
+.clients-status-active { background: #dcfce7; color: #166534; }
+.clients-status-lapsed { background: #fee2e2; color: #991b1b; }
+.clients-status-other { background: #f1f5f9; color: #475569; }
+
+.clients-system-pills { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.clients-system-pill {
+    padding: 0.4rem 1rem; border-radius: 20px; font-size: 0.85rem; font-weight: 500; text-decoration: none; color: var(--agile-text-muted);
+    border: 1px solid var(--agile-border); background: #fff; transition: all 0.15s;
+}
+.clients-system-pill:hover { border-color: var(--agile-primary); color: var(--agile-primary); background: var(--agile-primary-muted); }
+.clients-system-pill.active { background: var(--agile-primary); border-color: var(--agile-primary); color: #fff; }
+.clients-system-group.active { background: #0d9488; border-color: #0d9488; }
+.clients-system-individual.active { background: #6366f1; border-color: #6366f1; }
+.clients-system-mortgage.active { background: #c2410c; border-color: #c2410c; }
+.clients-system-group-pension.active { background: #7c3aed; border-color: #7c3aed; }
+.clients-system-badge {
+    display: inline-block; padding: 0.2rem 0.55rem; border-radius: 6px; font-size: 0.7rem; font-weight: 600;
+}
+.clients-system-badge.clients-system-group { background: #ccfbf1; color: #0f766e; }
+.clients-system-badge.clients-system-individual { background: #e0e7ff; color: #4338ca; }
+.clients-system-badge.clients-system-mortgage { background: #ffedd5; color: #9a3412; }
+.clients-system-badge.clients-system-group_pension { background: #ede9fe; color: #5b21b6; }
+
+.clients-actions { display: flex; gap: 0.35rem; justify-content: flex-end; flex-wrap: wrap; }
+.clients-btn-view { background: var(--agile-primary-muted); color: var(--agile-primary) !important; border: none; padding: 0.35rem 0.65rem; border-radius: 8px; font-size: 0.8rem; text-decoration: none; display: inline-flex; align-items: center; }
+.clients-btn-view:hover { background: var(--agile-primary-light); color: var(--agile-primary-dark) !important; }
+.clients-btn-serve { background: var(--agile-primary); color: #fff !important; border: none; padding: 0.35rem 0.65rem; border-radius: 8px; font-size: 0.8rem; text-decoration: none; display: inline-flex; align-items: center; }
+.clients-btn-serve:hover { background: var(--agile-primary-dark); color: #fff !important; }
+
+.clients-avatar { width: 36px; height: 36px; border-radius: 10px; background: var(--agile-primary); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; flex-shrink: 0; }
+.clients-name-link { color: var(--agile-text); text-decoration: none; font-weight: 500; }
+.clients-name-link:hover { color: var(--agile-primary); }
+.clients-row-open { cursor: pointer; }
+.clients-row-open:hover { background: rgba(26, 70, 138, 0.04); }
+
+.clients-table-footer {
+    padding: 1rem 1.25rem; background: #f8fafc; border-top: 1px solid var(--agile-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;
+}
+.clients-pagination-info { font-size: 0.85rem; color: var(--agile-text-muted); }
+
+.clients-empty { padding: 2rem; }
+.clients-empty-icon { width: 72px; height: 72px; margin: 0 auto; background: var(--agile-primary-muted); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 1.75rem; color: var(--agile-primary); }
+
+/* Modal */
+.clients-modal-content { border-radius: 16px; overflow: hidden; border: none; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+.clients-modal-header { background: linear-gradient(135deg, var(--agile-primary) 0%, var(--agile-primary-dark) 100%); color: #fff; padding: 1.25rem 1.5rem; border: none; }
+.clients-modal-body { padding: 1.5rem; }
+.clients-detail-row { display: flex; flex-direction: column; gap: 0.25rem; }
+.clients-detail-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--agile-text-muted); font-weight: 600; }
+.clients-detail-value { font-size: 0.95rem; color: var(--agile-text); font-weight: 500; }
+.clients-search-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.85); display: flex; align-items: center; justify-content: center; z-index: 10; border-radius: inherit; }
+.clients-search-overlay-inner { text-align: center; color: var(--agile-text-muted); font-size: 0.9rem; }
+.clients-table-card.is-filter-loading tbody { opacity: 0.55; transition: opacity 0.15s; }
+.clients-ajax-page { padding: 0.35rem 0.75rem; border-radius: 6px; text-decoration: none; color: var(--agile-primary); font-weight: 500; }
+.clients-ajax-page:hover { background: var(--agile-primary-muted); color: var(--agile-primary-dark); }
+
+/* Extra polish */
+.clients-table-card { box-shadow: 0 6px 24px rgba(15, 42, 87, 0.08); }
+
+/* Toolbar */
+.clients-table-toolbar { border-radius: 16px 16px 0 0; }
+.clients-table-filter-status { display: inline-flex; align-items: center; font-weight: 500; }
+.clients-toolbar-hint {
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    color: #0d9488; background: #ccfbf1; padding: 0.28rem 0.6rem; border-radius: 999px;
+}
+
+/* Filter inputs get a search icon + a touch more breathing room */
+.clients-col-filter {
+    padding-left: 1.85rem !important;
+    background-color: rgba(255,255,255,0.96);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 0.55rem center;
+    background-size: 0.8rem;
+}
+.clients-col-filter:focus { background-color: #fff; }
+.clients-table-head-labels th { font-size: 0.7rem; }
+.clients-table tbody tr:nth-child(even) { background: #fbfcfe; }
+.clients-table tbody tr:hover { background: var(--agile-primary-muted); }
+.clients-table tbody tr { transition: background 0.12s, box-shadow 0.12s; }
+.clients-name-link:hover .clients-name { text-decoration: underline; }
+.clients-name-link .font-monospace,
+.clients-table td .font-monospace { letter-spacing: 0.01em; }
+.clients-btn-view, .clients-actions .btn { border-radius: 8px; transition: transform 0.1s; }
+.clients-actions .btn:hover { transform: translateY(-1px); }
+.clients-status-badge { border: 1px solid transparent; }
+.clients-status-active { border-color: #bbf7d0; }
+.clients-status-lapsed { border-color: #fecaca; }
+.clients-system-pill { box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+.clients-toolbar-stat { border-radius: 12px; }
+.clients-empty-icon { box-shadow: inset 0 0 0 1px rgba(26,70,138,0.08); }
+</style>
+
+<script>
+(function() {
+    var apiUrl = <?php echo json_encode(route('api.support.clients'), 15, 512) ?>;
+    var listUrl = <?php echo json_encode(route($listRoute ?? 'support.customers'), 15, 512) ?>;
+    var serveUrl = <?php echo json_encode(route('support.serve-client'), 15, 512) ?>;
+    var showUrl = <?php echo json_encode(route('support.clients.show'), 15, 512) ?>;
+    var ticketUrl = <?php echo json_encode(route('support.clients.create-ticket'), 15, 512) ?>;
+    var isErpList = <?php echo json_encode($isErpList, 15, 512) ?>;
+    var tableColspan = <?php echo json_encode($tableColspan, 15, 512) ?>;
+    var system = <?php echo json_encode($system ?? '', 15, 512) ?>;
+    var showAllClients = <?php echo json_encode(request()->boolean('all'), 15, 512) ?>;
+    var initialPage = <?php echo e((int) ($page ?? 1)); ?>;
+    var lazyLoad = <?php echo json_encode($clientsLazyLoad ?? false, 15, 512) ?>;
+    var systemLabels = <?php echo json_encode(config('clients_ui.tab_labels'), 15, 512) ?>;
+    var grandTotalOnAll = <?php echo json_encode(($clientsGrandTotal !== null && ! ($system ?? '') && ($clientsSource ?? '') === 'erp_http'), 15, 512) ?>;
+    var filterKeys = isErpList
+        ? ['name', 'id', 'phone', 'intermediary', 'prepared', 'product', 'status', 'policy']
+        : ['name', 'email', 'mobile', 'product'];
+
+    var statusEl = document.getElementById('clientsFilterStatus');
+    var tableCard = document.querySelector('.clients-table-card');
+    var tbody = document.getElementById('clientsTableBody');
+    var footer = document.getElementById('clientsTableFooter');
+    var paginationInfo = document.getElementById('clientsPaginationInfo');
+    var paginationNav = document.getElementById('clientsPaginationNav');
+    var totalEl = document.getElementById('clientsTotalValue');
+    var clearAllBtn = document.getElementById('clearColumnFilters');
+    var filterInputs = Array.prototype.slice.call(document.querySelectorAll('[data-col-filter]'));
+
+    var currentPage = initialPage;
+    var debounceTimer = null;
+    var localFilterTimer = null;
+    var fetchController = null;
+    var localBatch = [];
+    var batchFetchKey = '';
+    var perPage = 25;
+    var erpFilterKeys = ['name', 'id', 'phone', 'policy', 'prepared', 'intermediary'];
+    var minFilterChars = 2;
+    var fetchDebounceMs = 600;
+    var localFilterDebounceMs = 150;
+
+    function erpQueryFromFilters(filters) {
+        var i, v;
+        for (i = 0; i < erpFilterKeys.length; i++) {
+            v = (filters[erpFilterKeys[i]] || '').trim();
+            if (v.length >= minFilterChars) return v;
+        }
+        return '';
+    }
+
+    function getBatchFetchKey(filters) {
+        return (system || '') + '|' + erpQueryFromFilters(filters).toLowerCase();
+    }
+
+    function filtersNeedMinChars(filters) {
+        return filterKeys.some(function(key) {
+            var v = (filters[key] || '').trim();
+            return v.length > 0 && v.length < minFilterChars;
+        });
+    }
+
+    function rowMatchesFilters(row, filters) {
+        var map = {
+            policy: (row.policy_no || row.policy || '').toString(),
+            prepared: (row.pol_prepared_by || '').toString(),
+            intermediary: (row.intermediary || '').toString(),
+            name: (row.life_assur || '').toString(),
+            product: (row.product || '').toString(),
+            status: (row.status || '').toString(),
+            id: (row.id_no || '').toString(),
+            phone: (row.phone_no || row.mobile || '').toString()
+        };
+        var key, term, hay;
+        for (key in filters) {
+            if (!Object.prototype.hasOwnProperty.call(filters, key)) continue;
+            term = (filters[key] || '').trim();
+            if (!term) continue;
+            hay = (map[key] || '').toLowerCase();
+            if (hay.indexOf(term.toLowerCase()) === -1) return false;
+        }
+        return true;
+    }
+
+    function setLoading(loading) {
+        if (tableCard) tableCard.classList.toggle('is-filter-loading', !!loading);
+    }
+
+    function esc(s) {
+        var d = document.createElement('div');
+        d.textContent = s == null ? '' : String(s);
+        return d.innerHTML;
+    }
+
+    function parseApiResponse(r) {
+        return r.json().then(function(d) {
+            if (!r.ok) {
+                var msg = (d && d.error) ? d.error : ('Request failed (' + r.status + ')');
+                return Promise.reject({ message: msg, status: r.status, data: d });
+            }
+            return d;
+        });
+    }
+
+    function showLoadError(message) {
+        setLoading(false);
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="' + tableColspan + '" class="text-center py-4 text-warning">' + esc(message) + '</td></tr>';
+        }
+        setStatus('Could not load clients');
+    }
+
+    function getFilters() {
+        var filters = {};
+        filterKeys.forEach(function(key) {
+            var el = document.querySelector('[data-col-filter="' + key + '"]');
+            filters[key] = el ? el.value.trim() : '';
+        });
+        return filters;
+    }
+
+    function hasActiveFilters(filters) {
+        return filterKeys.some(function(key) { return (filters[key] || '').length > 0; });
+    }
+
+    function syncFilterStyles(filters) {
+        filterInputs.forEach(function(el) {
+            var active = (el.value || '').trim().length > 0;
+            el.classList.toggle('clients-col-filter-active', active);
+        });
+    }
+
+    function setStatus(text) {
+        if (statusEl) statusEl.textContent = text;
+    }
+
+    function updateUrl(filters, page) {
+        var params = new URLSearchParams();
+        if (system) params.set('system', system);
+        else if (showAllClients) params.set('all', '1');
+        if (page && page > 1) params.set('page', String(page));
+        filterKeys.forEach(function(key) {
+            if (filters[key]) params.set('f_' + key, filters[key]);
+        });
+        var qs = params.toString();
+        window.history.replaceState({}, '', listUrl + (qs ? '?' + qs : ''));
+    }
+
+    function buildApiUrl(page, filters, batchAll) {
+        var url = apiUrl + '?page=' + (page || 1);
+        if (system) url += '&system=' + encodeURIComponent(system);
+        else if (showAllClients) url += '&all=1';
+        if (batchAll) url += '&batch_all=1';
+        filterKeys.forEach(function(key) {
+            if (filters[key]) url += '&f_' + key + '=' + encodeURIComponent(filters[key]);
+        });
+        return url;
+    }
+
+    function renderErpRow(c) {
+        var policy = (c.policy_no || c.policy_number || c.policy || '').toString().trim();
+        var statusClass = (c.status === 'A') ? 'active' : ((c.status === 'FL') ? 'lapsed' : 'other');
+        var ls = c.life_system || 'individual';
+        var systemLabel = systemLabels[ls] || systemLabels.individual || 'Individual Life';
+        var sysQ = system ? '&system=' + encodeURIComponent(system) : '';
+        var showLink = showUrl + '?policy=' + encodeURIComponent(policy) + sysQ;
+        var phone = (c.phone_no || c.mobile || '').toString().trim();
+        var idNo = (c.id_no || '').toString().trim();
+        return '<tr class="clients-row-open" data-client-open="' + esc(showLink) + '">' +
+            '<td><a href="' + esc(showLink) + '" class="clients-name-link text-decoration-none"><span class="clients-name">' + esc(c.life_assur || '—') + '</span></a>' +
+            (policy ? '<div class="small text-muted font-monospace">' + esc(policy) + '</div>' : '') + '</td>' +
+            '<td class="font-monospace small">' + esc(idNo || '—') + '</td>' +
+            '<td>' + (phone ? '<a href="tel:' + esc(phone) + '" class="text-decoration-none">' + esc(phone) + '</a>' : '<span class="text-muted">—</span>') + '</td>' +
+            '<td>' + esc((c.intermediary || '—').substring(0, 25)) + '</td>' +
+            '<td>' + esc(c.pol_prepared_by || '—') + '</td>' +
+            '<td class="clients-product">' + esc((c.product || '—').substring(0, 40)) + '</td>' +
+            '<td><span class="clients-system-badge clients-system-' + esc(ls) + '">' + esc(systemLabel) + '</span></td>' +
+            '<td><span class="clients-status-badge clients-status-' + statusClass + '">' + esc(c.status || '—') + '</span></td>' +
+            '<td class="text-end"><div class="clients-actions">' +
+            (policy ? (
+                '<a href="' + ticketUrl + '?policy=' + encodeURIComponent(policy) + '" class="btn btn-sm btn-success" title="Create ticket"><i class="bi bi-ticket-perforated"></i> Ticket</a> ' +
+                '<a href="' + esc(showLink) + '" class="btn btn-sm clients-btn-view" title="View full details"><i class="bi bi-eye"></i> View</a>'
+            ) : '<span class="text-muted small">—</span>') +
+            '</div></td></tr>';
+    }
+
+    function renderEmptyRow() {
+        return '<tr><td colspan="' + tableColspan + '" class="text-center py-5">' +
+            '<div class="clients-empty"><div class="clients-empty-icon"><i class="bi bi-funnel"></i></div>' +
+            '<h6 class="mt-3 mb-2">No clients match your filters</h6>' +
+            '<p class="text-muted mb-0">Try adjusting the column filters above.</p></div></td></tr>';
+    }
+
+    function renderPagination(page, lastPage, onPage) {
+        if (!paginationNav || lastPage <= 1) {
+            if (paginationNav) paginationNav.innerHTML = '';
+            return;
+        }
+        var html = '';
+        if (page > 1) html += '<button type="button" class="page-link clients-ajax-page border-0 bg-transparent" data-page="' + (page - 1) + '">Previous</button> ';
+        html += '<span class="mx-2">Page ' + page + ' of ' + lastPage + '</span> ';
+        if (page < lastPage) html += '<button type="button" class="page-link clients-ajax-page border-0 bg-transparent" data-page="' + (page + 1) + '">Next</button>';
+        paginationNav.innerHTML = html;
+        paginationNav.querySelectorAll('.clients-ajax-page').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                onPage(parseInt(btn.dataset.page, 10));
+            });
+        });
+    }
+
+    function paintTable(rows, filters, page, total, options) {
+        options = options || {};
+        if (!tbody) return;
+        tbody.innerHTML = rows.length ? rows.map(renderErpRow).join('') : renderEmptyRow();
+
+        if (totalEl) {
+            var statTotal = options.grandTotal != null ? options.grandTotal : total;
+            totalEl.textContent = Number(statTotal).toLocaleString();
+        }
+
+        var pg = page || 1;
+        var first = total ? ((pg - 1) * perPage + 1) : 0;
+        var last = Math.min(pg * perPage, total);
+        if (paginationInfo) paginationInfo.textContent = 'Showing ' + first + '–' + last + ' of ' + Number(total).toLocaleString();
+        if (footer) footer.style.display = (total > 0 || hasActiveFilters(filters)) ? 'flex' : footer.style.display;
+
+        if (hasActiveFilters(filters)) {
+            setStatus(total ? (Number(total).toLocaleString() + ' match' + (total === 1 ? '' : 'es')) : 'No rows match filters');
+        } else {
+            setStatus('Filter by column — type at least 2 characters');
+        }
+        syncFilterStyles(filters);
+    }
+
+    function renderLocalPage(page, filters) {
+        page = page || 1;
+        currentPage = page;
+        var filtered = localBatch.filter(function(row) { return rowMatchesFilters(row, filters); });
+        var total = filtered.length;
+        var pageRows = filtered.slice((page - 1) * perPage, page * perPage);
+        paintTable(pageRows, filters, page, total, {});
+        renderPagination(page, Math.ceil(total / perPage) || 1, function(p) {
+            renderLocalPage(p, filters);
+            updateUrl(filters, p);
+        });
+        updateUrl(filters, page);
+    }
+
+    function applyResponse(d, page, filters) {
+        setLoading(false);
+        if (!tbody) return;
+
+        if (d.error && !(d.customers || []).length) {
+            showLoadError(d.error);
+            return;
+        }
+
+        if (d.batch_mode) {
+            localBatch = d.customers || [];
+            batchFetchKey = getBatchFetchKey(filters);
+            renderLocalPage(1, filters);
+            return;
+        }
+
+        localBatch = [];
+        batchFetchKey = '';
+        var rows = d.customers || [];
+        var grand = null;
+        if (!hasActiveFilters(filters)) {
+            if (!system && grandTotalOnAll && d.grand_total != null) {
+                grand = d.grand_total;
+            } else if (system) {
+                grand = d.grand_total != null ? d.grand_total : (d.total || null);
+            }
+        }
+        paintTable(rows, filters, d.page || page || 1, d.total || 0, { grandTotal: grand });
+        renderPagination(d.page || page || 1, Math.ceil((d.total || 0) / perPage) || 1, function(p) {
+            loadClients(p, filters, false);
+        });
+    }
+
+    function fetchBatch(filters, key) {
+        if (fetchController) fetchController.abort();
+        fetchController = new AbortController();
+        setLoading(true);
+        setStatus('Loading matches…');
+
+        fetch(buildApiUrl(1, filters, true), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin', signal: fetchController.signal })
+            .then(parseApiResponse)
+            .then(function(d) {
+                batchFetchKey = key;
+                applyResponse(d, 1, filters);
+            })
+            .catch(function(err) {
+                if (err && err.name === 'AbortError') return;
+                showLoadError((err && err.message) ? err.message : 'Filter failed — try again');
+            });
+    }
+
+    function loadClients(page, filters, batchMode) {
+        page = page || 1;
+        filters = filters || getFilters();
+        currentPage = page;
+
+        if (!isErpList) {
+            debounceTimer = setTimeout(function() {
+                updateUrl(filters, page);
+                window.location.href = listUrl + (window.location.search || '');
+            }, fetchDebounceMs);
+            return;
+        }
+
+        if (hasActiveFilters(filters)) {
+            var key = getBatchFetchKey(filters);
+            if (localBatch.length && key === batchFetchKey) {
+                renderLocalPage(page, filters);
+                return;
+            }
+            fetchBatch(filters, key);
+            return;
+        }
+
+        localBatch = [];
+        batchFetchKey = '';
+
+        if (fetchController) fetchController.abort();
+        fetchController = new AbortController();
+        setLoading(true);
+        setStatus('Loading clients…');
+
+        fetch(buildApiUrl(page, filters, false), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin', signal: fetchController.signal })
+            .then(parseApiResponse)
+            .then(function(d) {
+                applyResponse(d, page, filters);
+                updateUrl(filters, page);
+            })
+            .catch(function(err) {
+                if (err && err.name === 'AbortError') return;
+                showLoadError((err && err.message) ? err.message : 'Failed to load clients. Please try again.');
+            });
+    }
+
+    function scheduleFilter() {
+        var filters = getFilters();
+        syncFilterStyles(filters);
+
+        clearTimeout(debounceTimer);
+        clearTimeout(localFilterTimer);
+
+        if (!hasActiveFilters(filters)) {
+            localBatch = [];
+            batchFetchKey = '';
+            debounceTimer = setTimeout(function() { loadClients(1, filters, false); }, 400);
+            return;
+        }
+
+        if (filtersNeedMinChars(filters)) {
+            setStatus('Type at least ' + minFilterChars + ' characters to filter');
+            return;
+        }
+
+        var key = getBatchFetchKey(filters);
+        if (localBatch.length && key === batchFetchKey) {
+            localFilterTimer = setTimeout(function() { renderLocalPage(1, filters); }, localFilterDebounceMs);
+            return;
+        }
+
+        debounceTimer = setTimeout(function() {
+            fetchBatch(filters, key);
+        }, fetchDebounceMs);
+    }
+
+    filterInputs.forEach(function(el) {
+        el.addEventListener('input', scheduleFilter);
+        el.addEventListener('search', function() {
+            if (!(el.value || '').trim()) scheduleFilter();
+        });
+    });
+
+    if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', function() {
+            filterInputs.forEach(function(el) { el.value = ''; });
+            localBatch = [];
+            batchFetchKey = '';
+            syncFilterStyles(getFilters());
+            loadClients(1, getFilters(), false);
+        });
+    }
+
+    document.addEventListener('click', function(e) {
+        var row = e.target.closest('tr.clients-row-open[data-client-open]');
+        if (!row || e.target.closest('a, button, .clients-actions')) return;
+        window.location.href = row.getAttribute('data-client-open');
+    });
+
+    syncFilterStyles(getFilters());
+
+    function hasServerRenderedRows() {
+        if (!tbody) return false;
+        return !!tbody.querySelector('tr.clients-row-open, a.clients-policy-link');
+    }
+
+    if (lazyLoad || (isErpList && (!hasServerRenderedRows() || hasActiveFilters(getFilters())))) {
+        loadClients(initialPage, getFilters(), hasActiveFilters(getFilters()));
+    }
+})();
+</script>
+<?php $__env->stopSection(); ?>
+
+<?php echo $__env->make('layouts.app', \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?><?php /**PATH C:\xampp\htdocs\sites\agile-crm-laravel\resources\views/support/customers.blade.php ENDPATH**/ ?>

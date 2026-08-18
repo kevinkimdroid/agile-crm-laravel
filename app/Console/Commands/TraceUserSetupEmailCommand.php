@@ -35,7 +35,7 @@ class TraceUserSetupEmailCommand extends Command
             ['APP_URL', config('app.url', '(not set)')],
             ['PASSWORD_RESET_BASE_URL', config('services.password_reset.base_url') ?: '(uses APP_URL)'],
             ['MAIL_FROM', config('mail.from.address')],
-            ['SendGrid', trim((string) config('services.sendgrid.api_key', '')) !== '' ? 'configured' : 'off'],
+            ['SendGrid', 'skipped (password mail uses SMTP)'],
             ['SMTP', config('mail.mailers.smtp.host') . ':' . config('mail.mailers.smtp.port')],
             ['Token DB connection', $conn],
         ]);
@@ -129,9 +129,8 @@ class TraceUserSetupEmailCommand extends Command
             $this->newLine();
             $this->line('If the inbox is empty:');
             $this->line('  1. Check spam/junk/quarantine on ' . $email);
-            $this->line('  2. Corporate mail (geminialife.co.ke) may block mail FROM info@agilecraft.co.ke');
-            $this->line('  3. SendGrid → Activity — search for ' . $email . ' (delivered / deferred / bounce)');
-            $this->line('  4. Ask IT to whitelist info@agilecraft.co.ke and SendGrid');
+            $this->line('  2. Confirm the CRM user email1 is this address (Settings → Users)');
+            $this->line('  3. Ask IT to allowlist From: ' . config('mail.from.address'));
 
             return self::SUCCESS;
         }

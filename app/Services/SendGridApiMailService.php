@@ -12,6 +12,10 @@ class SendGridApiMailService
 {
     public function isConfigured(): bool
     {
+        if (! (bool) config('services.sendgrid.enabled', false)) {
+            return false;
+        }
+
         return trim((string) config('services.sendgrid.api_key', '')) !== '';
     }
 

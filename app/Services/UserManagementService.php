@@ -152,6 +152,9 @@ class UserManagementService
             Log::info('UserManagementService: setup/reset email sent', [
                 'to' => $to,
                 'subject' => $subject,
+                'from' => config('mail.from.address'),
+                'via' => 'smtp',
+                'host' => config('mail.mailers.smtp.host'),
             ]);
             return true;
         }
