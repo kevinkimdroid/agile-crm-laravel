@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\GmailApiMailService;
 use App\Services\MicrosoftGraphMailService;
 use App\Services\PlainTextMailSender;
 use App\Services\SendGridApiMailService;
@@ -14,7 +15,7 @@ class TestPasswordResetEmailCommand extends Command
                             {--to= : Recipient email address (required)}
                             {--smtp-only : Skip Graph/SendGrid API and test SMTP only}';
 
-    protected $description = 'Test password setup / reset email via SMTP from info@agilecraft.co.ke (not Graph/SendGrid)';
+    protected $description = 'Test password setup / reset email (Gmail API, SendGrid, or SMTP)';
 
     public function handle(): int
     {
@@ -28,12 +29,14 @@ class TestPasswordResetEmailCommand extends Command
         $connection = config('services.password_reset.connection') ?? config('database.default');
         $graph = app(MicrosoftGraphMailService::class);
         $sendGrid = app(SendGridApiMailService::class);
+        $gmail = app(GmailApiMailService::class);
 
-        $this->info('Password email uses SMTP only (info@agilecraft.co.ke). Graph and SendGrid are skipped.');
+        $this->info('Password email: Gmail API, then SendGrid, then SMTP. Graph is skipped.');
         $this->table(['Key', 'Value'], [
-            ['From', config('mail.from.address')],
+            ['From', $gmail->isConfigured() ? $gmail->fromAddress() : config('mail.from.address')],
+            ['Gmail API', $gmail->isConfigured() ? 'configured (kelvinkimutai1@gmail.com)' : 'off — run php artisan mail:gmail-auth'],
+            ['SendGrid', $sendGrid->isConfigured() ? 'configured' : 'off'],
             ['SMTP', config('mail.mailers.smtp.host') . ':' . config('mail.mailers.smtp.port')],
-            ['SendGrid', $sendGrid->isConfigured() ? 'configured but skipped for password mail' : 'off'],
             ['Microsoft Graph', $graph->isConfigured() ? 'configured but skipped' : 'off'],
             ['password_reset_tokens', Schema::connection($connection)->hasTable('password_reset_tokens') ? 'yes' : 'NO — run migrate'],
         ]);

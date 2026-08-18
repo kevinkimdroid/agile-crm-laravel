@@ -18,16 +18,38 @@ class PlainTextMailSender
     }
 
     /**
-     * Password / login emails: SMTP only, From = MAIL_FROM (info@agilecraft.co.ke).
-     * Skips Microsoft Graph, Geminia Outlook, and SendGrid.
+     * Password / login emails. Skips Microsoft Graph / Geminia Outlook.
+     * Gmail API (HTTPS) first, then SendGrid, then SMTP.
+     * DigitalOcean blocks SMTP :465, so HTTPS is required on the droplet.
      */
     public function sendForAuth(string $to, ?string $toName, string $subject, string $body, ?string $htmlBody = null): bool
     {
         $this->lastError = null;
+        $useHtml = is_string($htmlBody) && trim($htmlBody) !== '';
+        $htmlOrText = $useHtml ? $htmlBody : $body;
+        $from = $this->mailFromAddress();
+
+        if ($this->deliverViaGmailApi($to, $toName, $subject, $body, $useHtml, $htmlBody)) {
+            Log::info('PlainTextMailSender: auth email via Gmail API', [
+                'to' => $to,
+                'from' => $from,
+            ]);
+
+            return true;
+        }
+
+        if ($this->deliverViaSendGridApi($to, $toName, $subject, $htmlOrText, $useHtml)) {
+            Log::info('PlainTextMailSender: auth email via SendGrid', [
+                'to' => $to,
+                'from' => $from,
+            ]);
+
+            return true;
+        }
 
         Log::info('PlainTextMailSender: auth email via SMTP', [
             'to' => $to,
-            'from' => $this->mailFromAddress(),
+            'from' => $from,
             'host' => config('mail.mailers.smtp.host'),
             'port' => config('mail.mailers.smtp.port'),
         ]);
@@ -101,6 +123,28 @@ class PlainTextMailSender
         }
 
         return $this->deliverViaLaravelMail($to, $toName, $subject, $body, [], $htmlBody);
+    }
+
+    protected function deliverViaGmailApi(
+        string $to,
+        ?string $toName,
+        string $subject,
+        string $body,
+        bool $bodyIsHtml,
+        ?string $htmlBody
+    ): bool {
+        $gmail = app(GmailApiMailService::class);
+        if (! $gmail->isConfigured()) {
+            return false;
+        }
+
+        if ($gmail->sendMail($to, $toName, $subject, $body, $bodyIsHtml, $htmlBody)) {
+            return true;
+        }
+
+        $this->lastError = 'Gmail API: ' . ($gmail->getLastError() ?: 'send failed');
+
+        return false;
     }
 
     protected function deliverViaSendGridApi(string $to, ?string $toName, string $subject, string $body, bool $bodyIsHtml): bool
@@ -183,6 +227,11 @@ class PlainTextMailSender
 
     protected function mailFromAddress(): string
     {
+        $gmail = app(GmailApiMailService::class);
+        if ($gmail->isConfigured()) {
+            return $gmail->fromAddress();
+        }
+
         $from = config('mail.from.address') ?: config('email-service.sender', 'info@agilecraft.co.ke');
         $from = trim((string) $from, " \t\n\r\0\x0B\"'");
 

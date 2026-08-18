@@ -417,6 +417,14 @@
                     </a>
                     <?php endif; ?>
                 </div>
+                <?php if($can('ai.integration')): ?>
+                <div class="app-nav-group">
+                    <div class="app-nav-label">AI Integration</div>
+                    <a href="<?php echo e(route('ai.integration')); ?>" class="app-nav-link app-nav-sublink <?php echo e(request()->routeIs('ai.integration*') ? 'active' : ''); ?>">
+                        <i class="bi bi-stars"></i><span>Overview</span>
+                    </a>
+                </div>
+                <?php endif; ?>
                 <?php if($can('settings')): ?>
                 <div class="app-nav-group">
                     <div class="app-nav-label">Settings</div>

@@ -35,7 +35,8 @@ class TraceUserSetupEmailCommand extends Command
             ['APP_URL', config('app.url', '(not set)')],
             ['PASSWORD_RESET_BASE_URL', config('services.password_reset.base_url') ?: '(uses APP_URL)'],
             ['MAIL_FROM', config('mail.from.address')],
-            ['SendGrid', 'skipped (password mail uses SMTP)'],
+            ['Gmail API', trim((string) config('services.gmail.refresh_token', '')) !== '' ? 'configured' : 'off'],
+            ['SendGrid', trim((string) config('services.sendgrid.api_key', '')) !== '' ? 'configured' : 'off'],
             ['SMTP', config('mail.mailers.smtp.host') . ':' . config('mail.mailers.smtp.port')],
             ['Token DB connection', $conn],
         ]);

@@ -145,15 +145,18 @@ class UserManagementController extends Controller
             ->where('status', 'Active')
             ->firstOrFail();
 
-        $sent = app(UserManagementService::class)->sendPasswordResetEmail($targetUser);
+        $service = app(UserManagementService::class);
+        $sent = $service->sendPasswordResetEmail($targetUser);
 
         if ($sent) {
             return redirect($this->safeRedirect($request))
                 ->with('success', 'Password reset link sent to ' . ($targetUser->email1 ?? $targetUser->user_name));
         }
 
+        $detail = $service->getLastMailError();
+
         return redirect($this->safeRedirect($request))
-            ->with('error', 'Could not send reset email. Ensure the user has an email address and mail is configured.');
+            ->with('error', 'Could not send reset email' . ($detail ? ': ' . $detail : '. Ensure the user has an email address and mail is configured.'));
     }
 
     public function edit(int $user): View|RedirectResponse

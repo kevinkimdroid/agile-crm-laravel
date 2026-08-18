@@ -12,7 +12,7 @@ class SendGridApiMailService
 {
     public function isConfigured(): bool
     {
-        if (! (bool) config('services.sendgrid.enabled', false)) {
+        if (! (bool) config('services.sendgrid.enabled', true)) {
             return false;
         }
 

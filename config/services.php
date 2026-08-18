@@ -29,8 +29,16 @@ return [
     ],
 
     'sendgrid' => [
-        'enabled' => filter_var(env('SENDGRID_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'enabled' => filter_var(env('SENDGRID_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
         'api_key' => env('SENDGRID_API_KEY'),
+    ],
+
+    'gmail' => [
+        'client_id' => env('GMAIL_CLIENT_ID'),
+        'client_secret' => env('GMAIL_CLIENT_SECRET'),
+        'refresh_token' => env('GMAIL_REFRESH_TOKEN'),
+        'from' => env('GMAIL_FROM_ADDRESS', 'kelvinkimutai1@gmail.com'),
+        'redirect_uri' => env('GMAIL_REDIRECT_URI', 'http://127.0.0.1'),
     ],
 
     'slack' => [

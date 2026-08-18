@@ -13,6 +13,13 @@ class UserManagementService
 {
     protected int $tokenExpiryMinutes = 60;
 
+    protected ?string $lastMailError = null;
+
+    public function getLastMailError(): ?string
+    {
+        return $this->lastMailError;
+    }
+
     protected function tokensConnection(): string
     {
         return config('services.password_reset.connection') ?? config('database.default');
@@ -25,8 +32,10 @@ class UserManagementService
      */
     public function sendPasswordResetEmail(object $user, bool $isNewAccount = false): bool
     {
+        $this->lastMailError = null;
         $email = trim($user->email1 ?? '');
         if ($email === '') {
+            $this->lastMailError = 'User has no email address.';
             Log::warning('UserManagementService: user has no email', ['user_id' => $user->id ?? null]);
 
             return false;
@@ -52,6 +61,7 @@ class UserManagementService
                     ]
                 );
         } catch (\Throwable $e) {
+            $this->lastMailError = 'Could not store reset token: ' . $e->getMessage();
             Log::error('UserManagementService: failed to store reset token', [
                 'email' => $email,
                 'error' => $e->getMessage(),
@@ -87,17 +97,24 @@ class UserManagementService
                 . "Kind regards,\n{$brandName}";
         }
 
-        $html = view('emails.password-reset', [
-            'subject' => $subject,
-            'displayName' => $displayName,
-            'loginUsername' => $loginUsername,
-            'email' => $email,
-            'resetUrl' => $resetUrl,
-            'expiryMinutes' => $this->tokenExpiryMinutes,
-            'isNewAccount' => $isNewAccount,
-            'brandName' => $brandName,
-            'brandShort' => $brandShort,
-        ])->render();
+        $html = null;
+        try {
+            $html = view('emails.password-reset', [
+                'subject' => $subject,
+                'displayName' => $displayName,
+                'loginUsername' => $loginUsername,
+                'email' => $email,
+                'resetUrl' => $resetUrl,
+                'expiryMinutes' => $this->tokenExpiryMinutes,
+                'isNewAccount' => $isNewAccount,
+                'brandName' => $brandName,
+                'brandShort' => $brandShort,
+            ])->render();
+        } catch (\Throwable $e) {
+            Log::warning('UserManagementService: HTML template failed, sending plain text', [
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return $this->send($email, $displayName, $subject, $body, $html);
     }
@@ -153,15 +170,16 @@ class UserManagementService
                 'to' => $to,
                 'subject' => $subject,
                 'from' => config('mail.from.address'),
-                'via' => 'smtp',
+                'via' => 'sendgrid_or_smtp',
                 'host' => config('mail.mailers.smtp.host'),
             ]);
             return true;
         }
 
+        $this->lastMailError = $sender->getLastError() ?: 'SMTP send failed.';
         Log::warning('UserManagementService: send failed', [
             'to' => $to,
-            'error' => $sender->getLastError(),
+            'error' => $this->lastMailError,
             'mail_host' => config('mail.mailers.smtp.host'),
             'mail_port' => config('mail.mailers.smtp.port'),
             'mail_encryption' => config('mail.mailers.smtp.encryption'),
