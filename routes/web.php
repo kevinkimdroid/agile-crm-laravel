@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\AiIntegrationController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DealController;
@@ -195,7 +196,10 @@ Route::get('/support/clients/documents/{document}/download', [\App\Http\Controll
 Route::get('/support/clients/debug-api', [\App\Http\Controllers\CustomerController::class, 'debugApi'])->name('support.clients.debug-api');
 Route::get('/support/clients/debug-products', [\App\Http\Controllers\CustomerController::class, 'debugProducts'])->name('support.clients.debug-products');
 Route::get('/support/clients/create-ticket', [\App\Http\Controllers\ServeClientController::class, 'createTicketFromPolicy'])->name('support.clients.create-ticket');
-Route::get('/ai-integration', fn () => view('ai.integration'))->name('ai.integration');
+if (config('modules.ai_enabled', false)) {
+    Route::get('/ai-integration', [AiIntegrationController::class, 'index'])->name('ai.integration');
+    Route::post('/ai-integration/generate', [AiIntegrationController::class, 'generate'])->name('ai.integration.generate');
+}
 Route::get('/tools', fn () => view('tools'))->name('tools');
 Route::get('/tools/erp-messaging', [\App\Http\Controllers\ErpMessagingController::class, 'index'])->name('tools.erp-messaging');
 Route::get('/tools/erp-messaging/sent', [\App\Http\Controllers\ErpMessagingController::class, 'sent'])->name('tools.erp-messaging.sent');

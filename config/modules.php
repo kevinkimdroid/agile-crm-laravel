@@ -15,6 +15,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | AI module (chat / draft assistant)
+    |--------------------------------------------------------------------------
+    | Hidden for POC by default. Set AI_MODULE_ENABLED=true to show it again.
+    */
+    'ai_enabled' => filter_var(
+        env('AI_MODULE_ENABLED', false),
+        FILTER_VALIDATE_BOOLEAN
+    ),
+
+    /*
+    |--------------------------------------------------------------------------
     | App modules mapped to Vtiger tab names
     |--------------------------------------------------------------------------
     | Keys are our route/module identifiers. Values are vtiger_tab.name values.
@@ -55,7 +66,7 @@ return [
         'settings.crm' => null,
         'settings.manage-users' => null,
         'compliance.complaints' => null, // IRA complaint register - compliance requirement
-        'ai.integration' => null,
+        // 'ai.integration' => null, // gated by modules.ai_enabled
     ],
 
     /*
@@ -94,9 +105,6 @@ return [
             ['key' => 'calendar', 'label' => 'Calendar', 'icon' => 'bi-calendar3', 'route' => 'activities.index'],
             ['key' => 'reports', 'label' => 'Reports', 'icon' => 'bi-file-text', 'route' => 'reports'],
             ['key' => 'settings', 'label' => 'Settings', 'icon' => 'bi-gear-fill', 'route' => 'settings'],
-        ],
-        'ai' => [
-            ['key' => 'ai.integration', 'label' => 'AI Integration', 'icon' => 'bi-stars', 'route' => 'ai.integration'],
         ],
     ],
 ];

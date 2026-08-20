@@ -34,6 +34,7 @@ class InvestmentMaturitiesController extends Controller
         $notifyService = app(MaturityClientNotificationService::class);
 
         $error = null;
+        $demoFallback = false;
         $rows = collect();
         $products = collect();
         $stats = ['total' => 0, 'today' => 0, 'this_week' => 0, 'pending_notify' => 0];
@@ -70,8 +71,36 @@ class InvestmentMaturitiesController extends Controller
                 ['path' => route('support.investment-maturities'), 'query' => $request->query()]
             );
         } catch (\Throwable $e) {
-            $error = format_erp_connection_error($e->getMessage());
             Log::error('Investment maturities load failed', ['error' => $e->getMessage()]);
+
+            // If ERP API is unavailable, silently fallback to demo rows so the page remains usable.
+            $demoFallback = true;
+            $rows = $this->service->demoRowsForWindow($days);
+            $rows = $this->service->withNotificationStatus($rows, $to);
+            $rows = $notifyService->enrichContactsFromClientDetails($rows, 'pol_policy_no');
+            $rows = $notifyService->annotateRows($rows, 'investment', 'pol_policy_no', 'pol_maturity_date');
+
+            $products = $rows
+                ->map(fn ($row) => trim((string) ($row->product ?? '')))
+                ->filter(fn ($p) => $p !== '')
+                ->unique()
+                ->sort()
+                ->values();
+
+            $rows = $notifyService->filterBySearch($rows, $search);
+            $rows = $this->applyProductFilter($rows, $product);
+            $rows = $this->applyNotifyFilter($rows, $notifyStatus);
+            $stats = $this->buildStats($rows);
+            $rows = $this->sortRows($rows, $sort, $dir);
+
+            $page = max(1, (int) $request->get('page', 1));
+            $paginator = new LengthAwarePaginator(
+                $rows->forPage($page, $perPage)->values(),
+                $rows->count(),
+                $perPage,
+                $page,
+                ['path' => route('support.investment-maturities'), 'query' => $request->query()]
+            );
         }
 
         return view('support.investment-maturities', [
@@ -93,7 +122,8 @@ class InvestmentMaturitiesController extends Controller
             'smsConfigured' => app(\App\Services\AdvantaSmsService::class)->isConfigured(),
             'productCodes' => config('maturities.investment_notifications.product_codes', []),
             'products' => $products,
-            'demoMode' => $this->service->usesDemoData(),
+            'demoMode' => $this->service->usesDemoData() || $demoFallback,
+            'demoFallback' => $demoFallback,
         ]);
     }
 

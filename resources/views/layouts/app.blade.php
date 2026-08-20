@@ -417,7 +417,7 @@
                     </a>
                     @endif
                 </div>
-                @if($can('ai.integration'))
+                @if(config('modules.ai_enabled') && $can('ai.integration'))
                 <div class="app-nav-group">
                     <div class="app-nav-label">AI Integration</div>
                     <a href="{{ route('ai.integration') }}" class="app-nav-link app-nav-sublink {{ request()->routeIs('ai.integration*') ? 'active' : '' }}">

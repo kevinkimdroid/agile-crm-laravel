@@ -214,6 +214,13 @@
     $maturitiesColspan = ! empty($trackingEnabled) ? 7 : 6;
     $stats = $stats ?? ['total' => $policies->total(), 'today' => 0, 'this_week' => 0, 'pending_renewal' => 0];
     $hasActiveFilters = request('search') || request('product') || request('renewal_status');
+    $sessionError = (string) session('error', '');
+    $hideErpErrorBanner = $sessionError !== '' && (
+        \Illuminate\Support\Str::contains($sessionError, 'ERP API is not running or not reachable')
+        || \Illuminate\Support\Str::contains($sessionError, 'erp:test-http-api')
+        || \Illuminate\Support\Str::contains($sessionError, 'localhost:5000/health')
+        || \Illuminate\Support\Str::contains($sessionError, 'Investment maturities load policy data from the ERP API')
+    );
 @endphp
 
 <nav class="mb-3">
@@ -378,9 +385,15 @@
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 @endif
-@if (session('error'))
+@if (session('error') && ! $hideErpErrorBanner)
     <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
         <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ session('error') }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+@endif
+@if ($hideErpErrorBanner)
+    <div class="alert alert-info alert-dismissible fade show mb-4" role="alert">
+        ERP is currently unavailable. Showing available maturities data without the connection error details.
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 @endif

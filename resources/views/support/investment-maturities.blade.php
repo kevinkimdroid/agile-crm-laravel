@@ -304,7 +304,11 @@
 <div class="alert border-0 shadow-sm d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4" style="background:var(--agile-primary-muted);">
     <div>
         <p class="mb-1 fw-semibold text-dark">POC demo data</p>
-        <p class="mb-0 text-muted small">Showing {{ number_format($stats['total'] ?? 0) }} sample investment maturities using aligned <code>KOL-*</code> policies (no ERP API). Set <code>INVESTMENT_MATURITIES_DEMO=false</code> in <code>.env</code> for live Oracle data.</p>
+        @if (!empty($demoFallback))
+            <p class="mb-0 text-muted small">Showing {{ number_format($stats['total'] ?? 0) }} sample investment maturities because ERP API is currently unreachable.</p>
+        @else
+            <p class="mb-0 text-muted small">Showing {{ number_format($stats['total'] ?? 0) }} sample investment maturities using aligned <code>KOL-*</code> policies (no ERP API). Set <code>INVESTMENT_MATURITIES_DEMO=false</code> in <code>.env</code> for live Oracle data.</p>
+        @endif
     </div>
 </div>
 @endif
@@ -463,7 +467,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 @endif
-@if ($error)
+@if ($error && empty($demoFallback))
     <div class="alert alert-danger mb-4" role="alert">
         <div class="d-flex align-items-start gap-2">
             <i class="bi bi-exclamation-octagon-fill mt-1"></i>

@@ -22,6 +22,16 @@ class InvestmentMaturityService
     /**
      * @return Collection<int, object>
      */
+    public function demoRowsForWindow(int $days = 14): Collection
+    {
+        $days = max(1, min(90, $days));
+
+        return $this->demoData->forWindow($days);
+    }
+
+    /**
+     * @return Collection<int, object>
+     */
     public function dueWithinDays(int $days = 14): Collection
     {
         $days = max(1, min(90, $days));

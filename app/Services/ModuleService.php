@@ -41,7 +41,6 @@ class ModuleService
             ['key' => 'support.sms-notifier', 'label' => 'SMS Notifier', 'icon' => 'bi-chat-dots', 'sort' => 18],
             ['key' => 'tools.erp-messaging', 'label' => 'ERP Messaging', 'icon' => 'bi-chat-square-text', 'sort' => 19],
             ['key' => 'compliance.complaints', 'label' => 'Complaint Register', 'icon' => 'bi-clipboard2-data', 'sort' => 20],
-            ['key' => 'ai.integration', 'label' => 'AI Integration', 'icon' => 'bi-stars', 'sort' => 21],
         ];
     }
 
@@ -80,7 +79,7 @@ class ModuleService
             if (empty($rows)) {
                 $enabled = $allKeys;
             } else {
-                $alwaysOn = ['dashboard', 'marketing', 'support', 'tools', 'settings', 'settings.crm', 'settings.manage-users', 'compliance.complaints', 'ai.integration'];
+                $alwaysOn = ['dashboard', 'marketing', 'support', 'tools', 'settings', 'settings.crm', 'settings.manage-users', 'compliance.complaints'];
                 $enabled = [];
                 foreach ($allKeys as $key) {
                     if (in_array($key, $alwaysOn, true)) {
@@ -101,6 +100,14 @@ class ModuleService
                 $enabled = array_values(array_filter(
                     $enabled,
                     fn ($key) => ! str_starts_with((string) $key, 'finance.')
+                ));
+            }
+
+            // AI hidden for POC unless AI_MODULE_ENABLED=true
+            if (! config('modules.ai_enabled', false)) {
+                $enabled = array_values(array_filter(
+                    $enabled,
+                    fn ($key) => ! str_starts_with((string) $key, 'ai.')
                 ));
             }
 
